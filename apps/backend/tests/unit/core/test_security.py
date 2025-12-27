@@ -115,3 +115,110 @@ class TestGenerateLoginFlowId:
         flow_id = generate_login_flow_id()
         # 16 bytes base64url encoded = ~22 characters
         assert len(flow_id) >= 20
+
+
+class TestInsecureSecretValidation:
+    """Tests for FINGERPRINT_SECRET validation."""
+    
+    def test_empty_secret_fails_in_any_environment(self):
+        """Empty FINGERPRINT_SECRET should fail-fast in ANY environment."""
+        from src.core.security import InsecureSecretError
+        
+        with patch.dict(os.environ, {
+            "FINGERPRINT_SECRET": "",
+            "ENVIRONMENT": "development",
+        }):
+            from src.core.config import get_settings
+            get_settings.cache_clear()
+            
+            from src.core.security import hash_fingerprint
+            with pytest.raises(InsecureSecretError) as exc:
+                hash_fingerprint("test-fingerprint")
+            
+            assert "must be set" in str(exc.value)
+            get_settings.cache_clear()
+
+    def test_empty_secret_fails_in_production(self):
+        """Empty FINGERPRINT_SECRET should fail in production."""
+        from src.core.security import InsecureSecretError
+        
+        with patch.dict(os.environ, {
+            "FINGERPRINT_SECRET": "",
+            "ENVIRONMENT": "production",
+        }):
+            from src.core.config import get_settings
+            get_settings.cache_clear()
+            
+            from src.core.security import hash_fingerprint
+            with pytest.raises(InsecureSecretError):
+                hash_fingerprint("test-fingerprint")
+            
+            get_settings.cache_clear()
+
+    def test_weak_secret_raises_in_production(self):
+        """Default .env.example value should raise in production."""
+        from src.core.security import InsecureSecretError
+        
+        with patch.dict(os.environ, {
+            "FINGERPRINT_SECRET": "a-random-string",
+            "ENVIRONMENT": "production",
+        }):
+            from src.core.config import get_settings
+            get_settings.cache_clear()
+            
+            from src.core.security import hash_fingerprint
+            with pytest.raises(InsecureSecretError) as exc:
+                hash_fingerprint("test-fingerprint")
+            
+            assert "weak" in str(exc.value).lower()
+            get_settings.cache_clear()
+
+    def test_weak_secret_allowed_in_development(self):
+        """Non-empty weak secrets are allowed in development for convenience."""
+        with patch.dict(os.environ, {
+            "FINGERPRINT_SECRET": "a-random-string",
+            "ENVIRONMENT": "development",
+        }):
+            from src.core.config import get_settings
+            get_settings.cache_clear()
+            
+            from src.core.security import hash_fingerprint
+            # Should not raise in development with non-empty weak secret
+            result = hash_fingerprint("test-fingerprint")
+            assert len(result) == 64
+            
+            get_settings.cache_clear()
+
+
+class TestMalformedHashHandling:
+    """Tests for handling malformed stored hashes from DB corruption."""
+    
+    def test_short_hash_returns_false(self):
+        """Stored hash shorter than 64 chars should return False."""
+        from src.core.security import compare_fingerprints
+        assert compare_fingerprints("abc123", "any-fingerprint") is False
+
+    def test_long_hash_returns_false(self):
+        """Stored hash longer than 64 chars should return False."""
+        from src.core.security import compare_fingerprints
+        long_hash = "a" * 100
+        assert compare_fingerprints(long_hash, "any-fingerprint") is False
+
+    def test_empty_hash_returns_false(self):
+        """Empty stored hash should return False."""
+        from src.core.security import compare_fingerprints
+        assert compare_fingerprints("", "any-fingerprint") is False
+
+    def test_none_hash_returns_false(self):
+        """None stored hash should return False (handles DB NULL)."""
+        from src.core.security import compare_fingerprints
+        assert compare_fingerprints(None, "any-fingerprint") is False
+
+    def test_valid_length_hash_proceeds_to_comparison(self):
+        """Valid 64-char hash should proceed to actual comparison."""
+        from src.core.security import compare_fingerprints, hash_fingerprint
+        valid_hash = hash_fingerprint("test-value")
+        assert len(valid_hash) == 64
+        assert compare_fingerprints(valid_hash, "test-value") is True
+        assert compare_fingerprints(valid_hash, "wrong-value") is False
+
