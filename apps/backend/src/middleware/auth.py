@@ -6,18 +6,42 @@ from starlette.responses import Response
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.core.cookies import SESSION_COOKIE_NAME, create_session_cookie
-from src.services.session_service import get_session_by_id, refresh_session
+from src.core.audit import AuditEvent, log_audit_event
+from src.models.identity import User, Session
+from src.services.session_service import get_session_by_id, refresh_session, invalidate_session
+from src.services.risk_assessment import assess_session_risk, RiskResult
 from src.middleware.context import RequestContext, get_request_context
+
+
+async def _log_and_update_deviation(
+    db: AsyncSession,
+    session: Session,
+    risk: RiskResult,
+    ctx: RequestContext,
+) -> None:
+    """Logs deviation to audit trail and updates throttle timestamp"""
+    log_audit_event(
+        AuditEvent.SESSION_DEVIATION,
+        user_id=session.user_id,
+        session_id=session.id,
+        ip_address=ctx.ip_address,
+        user_agent=ctx.user_agent,
+        metadata={
+            "risk_score": risk.score,
+            "factors": risk.factors,
+        },
+    )
+    
+    session.deviation_logged_at = datetime.now(timezone.utc)
+    await db.commit()
 
 
 async def get_current_session(
     request: Request,
     ctx: RequestContext = Depends(get_request_context),
-    db: AsyncSession = Depends(lambda: None),  # todo: replace with actual dependency at route level
-) -> "Session":
-    """Rejects if session invalid; expired; or fingerprint mismatch"""
-    from src.models.identity import Session
-    
+    db: AsyncSession = Depends(lambda: None),
+) -> Session:
+    """Validates session and performs risk assessment; rejects high-risk requests"""
     session_id_str = request.cookies.get(SESSION_COOKIE_NAME)
     if not session_id_str:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -32,28 +56,34 @@ async def get_current_session(
     if session is None:
         raise HTTPException(status_code=401, detail="Session expired or invalid")
     
-    # Hard enforcement; reject on fingerprint mismatch to prevent session hijacking
-    if ctx.fingerprint_hash and ctx.fingerprint_hash != session.fingerprint:
-        raise HTTPException(
-            status_code=401,
-            detail="Session invalid for this device"
-        )
+    # Risk-based session validation (replaces hard fingerprint blocking)
+    risk = assess_session_risk(session, ctx)
     
-    if session.fingerprint and not ctx.fingerprint_hash:
-        raise HTTPException(
-            status_code=401,
-            detail="Device identification required"
+    if risk.should_reauthenticate:
+        log_audit_event(
+            AuditEvent.SESSION_KILLED,
+            user_id=session.user_id,
+            session_id=session.id,
+            ip_address=ctx.ip_address,
+            user_agent=ctx.user_agent,
+            metadata={
+                "risk_score": risk.score,
+                "factors": risk.factors,
+            },
         )
+        await invalidate_session(db, session.id)
+        raise HTTPException(status_code=401, detail="Session requires reauthentication")
+    
+    if risk.should_log:
+        await _log_and_update_deviation(db, session, risk, ctx)
     
     return session
 
 
 async def get_current_user(
-    session: "Session" = Depends(get_current_session),
+    session: Session = Depends(get_current_session),
     db: AsyncSession = Depends(lambda: None),
-) -> "User":
-    from src.models.identity import User
-    
+) -> User:
     user = await db.get(User, session.user_id)
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
@@ -62,10 +92,10 @@ async def get_current_user(
 
 async def require_auth(
     request: Request,
-    session: "Session" = Depends(get_current_session),
-    user: "User" = Depends(get_current_user),
+    session: Session = Depends(get_current_session),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(lambda: None),
-) -> tuple["User", "Session"]:
+) -> tuple[User, Session]:
     """Stores new expires_at in request state for response middleware"""
     new_expires = await refresh_session(db, session)
     if new_expires:
@@ -100,3 +130,4 @@ async def session_cookie_sync_middleware(request: Request, call_next) -> Respons
             )
     
     return response
+

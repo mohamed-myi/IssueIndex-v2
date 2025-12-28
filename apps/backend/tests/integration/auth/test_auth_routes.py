@@ -8,6 +8,16 @@ from httpx import AsyncClient
 from src.main import app
 from src.api.routes.auth import STATE_COOKIE_NAME
 from src.core.oauth import OAuthProvider, UserProfile, OAuthToken
+from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limit():
+    """Reset rate limiter before each test to prevent 429 errors."""
+    reset_rate_limiter()
+    reset_rate_limiter_instance()
+    yield
+    reset_rate_limiter()
 
 
 @pytest.fixture
@@ -216,3 +226,24 @@ class TestCallbackSuccessFlow:
         )
         
         assert "session_id" in response.cookies
+        
+        # SECURITY: Verify session_id is a valid UUID format (not empty/malformed)
+        from uuid import UUID
+        session_value = response.cookies.get("session_id")
+        UUID(session_value)  # Raises ValueError if invalid
+    
+    def test_callback_success_clears_state_cookie(self, client, mock_oauth_flow):
+        """SECURITY: State cookie must be cleared to prevent replay attacks."""
+        state = "validstate123456789012345678901234"
+        client.cookies.set(STATE_COOKIE_NAME, f"{state}:0")
+        
+        response = client.get(
+            "/auth/callback/github",
+            params={"code": "valid_code", "state": state},
+            headers={"X-Device-Fingerprint": "test_fingerprint"},
+        )
+        
+        # State cookie should be deleted (empty or max-age=0)
+        state_cookie = response.cookies.get(STATE_COOKIE_NAME)
+        assert state_cookie == "" or state_cookie is None, \
+            "State cookie must be cleared after callback to prevent replay"

@@ -42,3 +42,35 @@ def clear_session_cookie(response: Response) -> None:
         secure=is_production,
         path="/",
     )
+
+
+LOGIN_FLOW_COOKIE_NAME = "login_flow_id"
+LOGIN_FLOW_COOKIE_MAX_AGE = 300
+
+
+def create_login_flow_cookie(response, flow_id: str) -> None:
+    settings = get_settings()
+    is_production = settings.environment == "production"
+    
+    response.set_cookie(
+        key=LOGIN_FLOW_COOKIE_NAME,
+        value=flow_id,
+        httponly=True,
+        samesite="lax",
+        secure=is_production,
+        path="/",
+        max_age=LOGIN_FLOW_COOKIE_MAX_AGE,
+    )
+
+
+def clear_login_flow_cookie(response) -> None:
+    settings = get_settings()
+    is_production = settings.environment == "production"
+    
+    response.delete_cookie(
+        key=LOGIN_FLOW_COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        secure=is_production,
+        path="/",
+    )

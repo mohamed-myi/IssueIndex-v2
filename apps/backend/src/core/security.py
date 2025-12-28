@@ -43,15 +43,6 @@ def generate_session_id() -> str:
     return str(uuid4())
 
 
-def compare_fingerprints(stored_hash: str, request_raw: str) -> bool:
-    """O(1) comparison to prevent timing attacks; rejects malformed hashes"""
-    if not stored_hash or len(stored_hash) != 64:
-        return False
-    
-    request_hash = hash_fingerprint(request_raw)
-    return secrets.compare_digest(stored_hash, request_hash)
-
-
 def generate_login_flow_id() -> str:
     """16 byte token for rate limiting auth flows"""
     return secrets.token_urlsafe(16)

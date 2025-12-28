@@ -3,7 +3,6 @@ from .config import Settings, get_settings
 from .security import (
     hash_fingerprint,
     generate_session_id,
-    compare_fingerprints,
     generate_login_flow_id,
     InsecureSecretError,
 )
@@ -28,7 +27,6 @@ __all__ = [
     "get_settings",
     "hash_fingerprint",
     "generate_session_id",
-    "compare_fingerprints",
     "generate_login_flow_id",
     "InsecureSecretError",
     "OAuthProvider",

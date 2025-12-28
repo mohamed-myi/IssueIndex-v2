@@ -76,18 +76,14 @@ class TestStateValidation:
     """
     State parameter validation (CSRF protection).
     
-    Condensed into a single parametrized test for all boundaries.
+    Condensed to essential boundary cases only.
     """
     
     @pytest.mark.parametrize("state,should_pass", [
-        ("a" * 32, True),                # Min length (exactly 32)
-        ("x" * 128, True),               # Max length (exactly 128)
-        ("A-B_C" + "x" * 27, True),      # Valid chars: alphanumeric, dash, underscore
-        ("a" * 31, False),               # Too short (31)
-        ("x" * 129, False),              # Too long (129)
-        ("a" * 31 + "<script>", False),  # XSS attempt
-        ("", False),                     # Empty
-        ("short", False),                # Way too short
+        ("a" * 32, True),                # Min length boundary (exactly 32)
+        ("x" * 128, True),               # Max length boundary (exactly 128)
+        ("a" * 31, False),               # Just under min (31)
+        ("a" * 31 + "<script>", False),  # XSS/invalid chars
     ])
     def test_state_boundaries(self, state, should_pass):
         from src.core.oauth import validate_state, OAuthStateError

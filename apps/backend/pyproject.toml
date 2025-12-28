@@ -19,6 +19,7 @@ dependencies = [
     
     # Auth & Security
     "python-jose[cryptography]>=3.3.0",
+    "ua-parser>=1.0.0",
     
     # HTTP Client
     "httpx>=0.28.1",

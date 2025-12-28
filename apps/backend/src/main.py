@@ -1,11 +1,27 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.core.config import get_settings
+from src.core.redis import close_redis
 from src.middleware.auth import session_cookie_sync_middleware
 from src.api.dependencies import close_http_client
+
+# Configure logging for Cloud Logging compatibility
+# JSON audit logs need raw message format; other logs use standard format
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+
+# Audit logger uses raw format for JSON output
+audit_logger = logging.getLogger("audit")
+audit_handler = logging.StreamHandler()
+audit_handler.setFormatter(logging.Formatter("%(message)s"))
+audit_logger.handlers = [audit_handler]
+audit_logger.propagate = False
 
 settings = get_settings()
 
@@ -14,6 +30,7 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     yield
     await close_http_client()
+    await close_redis()
 
 
 app = FastAPI(

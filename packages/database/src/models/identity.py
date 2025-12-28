@@ -28,7 +28,6 @@ class Session(SQLModel, table=True):
     
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="public.user.id")
-    fingerprint: str
     jti: str = Field(unique=True)
     expires_at: datetime
     remember_me: bool = Field(default=False)
@@ -36,6 +35,12 @@ class Session(SQLModel, table=True):
     last_active_at: datetime = Field(default_factory=datetime.utcnow)
     ip_address: Optional[str] = Field(default=None, max_length=45)
     user_agent_string: Optional[str] = Field(default=None)
+    # Metadata binding fields, populated at login, used for risk assessment
+    os_family: Optional[str] = Field(default=None, max_length=32)
+    ua_family: Optional[str] = Field(default=None, max_length=64)
+    asn: Optional[str] = Field(default=None, max_length=32)
+    country_code: Optional[str] = Field(default=None, max_length=2)
+    deviation_logged_at: Optional[datetime] = Field(default=None)
 
     user: User = Relationship(back_populates="sessions")
 

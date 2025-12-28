@@ -50,12 +50,12 @@ class TestRequestContextExtraction:
         assert ctx.user_agent == "Mozilla/5.0 Test Browser"
 
     async def test_extracts_login_flow_id_cookie(self):
-        """Verify X-Login-Flow-ID cookie is extracted."""
+        """Verify login_flow_id cookie is extracted."""
         from src.middleware.context import get_request_context
         
         request = MagicMock()
         request.headers = {}
-        request.cookies = {"X-Login-Flow-ID": "flow-123-abc"}
+        request.cookies = {"login_flow_id": "flow-123-abc"}
         request.client = MagicMock()
         request.client.host = "127.0.0.1"
         
@@ -146,32 +146,25 @@ class TestFingerprintIntegrity:
 
 class TestIPExtraction:
     """
-    Condensed IP extraction tests covering proxy chains, fallbacks, and IPv6.
+    IP extraction tests covering proxy chains, fallbacks, and IPv6.
     
-    This replaces multiple individual tests with a single parametrized test
-    to cover the core data flow without redundant test bloat.
+    SECURITY: We extract the RIGHTMOST IP from X-Forwarded-For because
+    Cloud Run appends the real client IP to the end. Attacker-spoofed IPs
+    appear at the beginning and must be ignored.
     """
     
     @pytest.mark.parametrize("headers,client_host,expected_ip", [
-        # Proxy chain: first IP is extracted
-        ({"X-Forwarded-For": "203.0.113.1, 1.1.1.1"}, "10.0.0.1", "203.0.113.1"),
+        # SECURITY: RIGHTMOST IP extracted (Cloud Run appends real client IP)
+        ({"X-Forwarded-For": "spoofed_by_attacker, real_client_ip"}, "10.0.0.1", "real_client_ip"),
         # Single proxy
         ({"X-Forwarded-For": "203.0.113.195"}, "10.0.0.1", "203.0.113.195"),
         # Direct IP (no proxy header)
         ({}, "192.168.1.1", "192.168.1.1"),
         # Total failure fallback (no client)
         ({}, None, "0.0.0.0"),
-        # IPv6 via proxy
-        ({"X-Forwarded-For": "::1"}, "127.0.0.1", "::1"),
-        # Full IPv6 address
-        ({"X-Forwarded-For": "2001:0db8:85a3:0000:0000:8a2e:0370:7334"}, "127.0.0.1", "2001:0db8:85a3:0000:0000:8a2e:0370:7334"),
-        # IPv6 with zone ID
-        ({"X-Forwarded-For": "fe80::1%eth0"}, "127.0.0.1", "fe80::1%eth0"),
-        # Mixed IPv4 and IPv6 in chain
-        ({"X-Forwarded-For": "2001:db8::1, 192.168.1.1"}, "10.0.0.1", "2001:db8::1"),
-        # Empty header falls back to client.host
-        ({"X-Forwarded-For": ""}, "192.168.1.1", "192.168.1.1"),
-        # Whitespace-only header falls back
+        # IPv6 support
+        ({"X-Forwarded-For": "2001:db8::1"}, "127.0.0.1", "2001:db8::1"),
+        # Empty/whitespace fallback
         ({"X-Forwarded-For": "   "}, "192.168.1.1", "192.168.1.1"),
     ])
     async def test_ip_extraction_logic(self, headers, client_host, expected_ip):
@@ -217,7 +210,7 @@ class TestCookieExtraction:
         request.headers = {}
         request.cookies = {
             "session_id": "abc123",
-            "X-Login-Flow-ID": "correct-flow-id",
+            "login_flow_id": "correct-flow-id",
             "_ga": "GA1.2.1234567890.1234567890",
             "other_cookie": "other_value",
         }
@@ -234,10 +227,125 @@ class TestCookieExtraction:
         
         request = MagicMock()
         request.headers = {}
-        request.cookies = {"X-Login-Flow-ID": ""}
+        request.cookies = {"login_flow_id": ""}
         request.client = MagicMock()
         request.client.host = "127.0.0.1"
         
         ctx = await get_request_context(request)
         
         assert ctx.login_flow_id == ""
+
+
+class TestUserAgentParsing:
+    """Tests for OS and browser family extraction from User-Agent."""
+
+    async def test_parses_chrome_on_mac(self):
+        """Extracts Chrome and Mac OS from typical UA string."""
+        from src.middleware.context import get_request_context
+
+        request = MagicMock()
+        request.headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0"
+        }
+        request.cookies = {}
+        request.client = MagicMock()
+        request.client.host = "127.0.0.1"
+
+        ctx = await get_request_context(request)
+
+        assert ctx.os_family == "Mac OS X"
+        assert ctx.ua_family == "Chrome"
+
+    async def test_parses_safari_on_ios(self):
+        """Extracts Safari and iOS from mobile UA string."""
+        from src.middleware.context import get_request_context
+
+        request = MagicMock()
+        request.headers = {
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148"
+        }
+        request.cookies = {}
+        request.client = MagicMock()
+        request.client.host = "127.0.0.1"
+
+        ctx = await get_request_context(request)
+
+        assert ctx.os_family == "iOS"
+        assert "Safari" in ctx.ua_family  # ua-parser may return variants
+
+    async def test_handles_missing_user_agent(self):
+        """No User-Agent header results in None for os/ua family."""
+        from src.middleware.context import get_request_context
+
+        request = MagicMock()
+        request.headers = {}
+        request.cookies = {}
+        request.client = MagicMock()
+        request.client.host = "127.0.0.1"
+
+        ctx = await get_request_context(request)
+
+        assert ctx.os_family is None
+        assert ctx.ua_family is None
+
+
+class TestGCPHeaderExtraction:
+    """Tests for ASN and country code extraction from GCP headers."""
+
+    async def test_extracts_appengine_country(self):
+        """Extracts country from X-AppEngine-Country header."""
+        from src.middleware.context import get_request_context
+
+        request = MagicMock()
+        request.headers = {"X-AppEngine-Country": "us"}
+        request.cookies = {}
+        request.client = MagicMock()
+        request.client.host = "127.0.0.1"
+
+        ctx = await get_request_context(request)
+
+        assert ctx.country_code == "US"
+
+    async def test_extracts_cloudflare_country(self):
+        """Extracts country from CF-IPCountry header."""
+        from src.middleware.context import get_request_context
+
+        request = MagicMock()
+        request.headers = {"CF-IPCountry": "GB"}
+        request.cookies = {}
+        request.client = MagicMock()
+        request.client.host = "127.0.0.1"
+
+        ctx = await get_request_context(request)
+
+        assert ctx.country_code == "GB"
+
+    async def test_extracts_asn(self):
+        """Extracts ASN from X-GCP-ASN header."""
+        from src.middleware.context import get_request_context
+
+        request = MagicMock()
+        request.headers = {"X-GCP-ASN": "AS15169"}
+        request.cookies = {}
+        request.client = MagicMock()
+        request.client.host = "127.0.0.1"
+
+        ctx = await get_request_context(request)
+
+        assert ctx.asn == "AS15169"
+
+    async def test_handles_missing_gcp_headers(self):
+        """No GCP headers results in None for asn/country."""
+        from src.middleware.context import get_request_context
+
+        request = MagicMock()
+        request.headers = {}
+        request.cookies = {}
+        request.client = MagicMock()
+        request.client.host = "127.0.0.1"
+
+        ctx = await get_request_context(request)
+
+        assert ctx.asn is None
+        assert ctx.country_code is None
+

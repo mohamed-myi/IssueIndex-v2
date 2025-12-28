@@ -147,26 +147,6 @@ class TestIdentityConflicts:
             await link_provider(mock_db, user, github_profile, OAuthProvider.GITHUB)
 
 
-class TestFingerprintEnforcement:
-    """Proves device fingerprint is validated at the SQL level, not in Python"""
-    
-    async def test_fingerprint_included_in_query_where_clause(self, mock_db):
-        """
-        Fingerprint must be part of the SQL WHERE clause;
-        database enforces device lock rather than fetching then checking in Python
-        """
-        from src.services.session_service import get_session_by_id_and_fingerprint
-        
-        session_id = uuid4()
-        fingerprint = "test_fingerprint_hash"
-        
-        mock_result = MagicMock()
-        mock_result.first.return_value = None
-        mock_db.exec.return_value = mock_result
-        
-        await get_session_by_id_and_fingerprint(mock_db, session_id, fingerprint)
-        
-        mock_db.exec.assert_called_once()
 
 
 class TestBulkSessionOperations:

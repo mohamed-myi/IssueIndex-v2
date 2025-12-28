@@ -178,3 +178,17 @@ class TestAccountLinkingFlow:
         # First checks auth so will get not_authenticated
         assert response.status_code == 302
 
+    def test_link_callback_route_exists_and_requires_state(self, client):
+        """Verify link callback endpoint exists and validates state parameter."""
+        # Without state cookie, should redirect with csrf_failed
+        response = client.get(
+            "/auth/link/callback/google",
+            params={"code": "valid_code", "state": "orphan_state"},
+            headers={"X-Device-Fingerprint": "test_fp"},
+        )
+        
+        # Should redirect (not 404/405) - route exists and processes
+        assert response.status_code == 302
+        # Either not_authenticated (no session) or csrf_failed (no state cookie)
+        location = response.headers["location"]
+        assert "error=" in location
