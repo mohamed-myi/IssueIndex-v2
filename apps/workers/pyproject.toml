@@ -9,14 +9,23 @@ description = "Data ingestion and maintenance workers for IssueIndex"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    # GraphQL Client
-    "gql[all]>=3.5.0",
+    # HTTP Client for GitHub GraphQL
+    "httpx>=0.27.0",
     
-    # Data Processing
-    "pandas>=2.2.3",
+    # Embedding Generation
+    "sentence-transformers>=2.2.0",
+    
+    # Database
+    "sqlmodel>=0.0.22",
+    "asyncpg>=0.29.0",
+    "pgvector>=0.3.0",
+    
+    # Configuration
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
     
     # Note: Install internal deps first with:
-    # pip install -e ../../packages/database -e ../../packages/shared
+    # pip install -e ../../packages/database -e ../../packages/shared -e ../backend
 ]
 
 [project.optional-dependencies]
@@ -25,7 +34,7 @@ dev = [
     "pytest-asyncio>=0.24.0",
 ]
 redis = [
-    # Optional: for rate limiting
+    # Optional: for distributed rate limiting
     "redis>=5.2.1",
 ]
 

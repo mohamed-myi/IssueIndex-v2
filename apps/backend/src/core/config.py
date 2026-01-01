@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     max_auth_requests_per_minute: int = 10
     rate_limit_window_seconds: int = 60
     
+    git_token: str = ""
+    
     model_config = SettingsConfigDict(
         env_file=".env.local",
         env_file_encoding="utf-8",

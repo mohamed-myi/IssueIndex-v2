@@ -7,7 +7,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.core.cookies import SESSION_COOKIE_NAME, create_session_cookie
 from src.core.audit import AuditEvent, log_audit_event
-from src.models.identity import User, Session
+from models.identity import User, Session
 from src.services.session_service import get_session_by_id, refresh_session, invalidate_session
 from src.services.risk_assessment import assess_session_risk, RiskResult
 from src.middleware.context import RequestContext, get_request_context

@@ -9,7 +9,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.core.config import get_settings
 from src.core.oauth import UserProfile, OAuthProvider
 from src.core.security import generate_session_id
-from src.models.identity import User, Session
+from models.identity import User, Session
 
 
 USER_AGENT_MAX_LENGTH = 512

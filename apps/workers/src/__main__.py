@@ -1,0 +1,62 @@
+"""
+Single entrypoint for IssueIndex worker jobs.
+
+Usage:
+    JOB_TYPE=gatherer python -m src
+    JOB_TYPE=janitor python -m src
+"""
+
+import asyncio
+import logging
+import os
+import sys
+from pathlib import Path
+
+# Ensure src packages are importable
+src_path = Path(__file__).parent
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
+from logging_config import setup_logging
+
+
+async def main() -> None:
+    job_id = setup_logging()
+    logger = logging.getLogger(__name__)
+    
+    job_type = os.getenv("JOB_TYPE", "gatherer").lower()
+    
+    logger.info(
+        f"Starting job",
+        extra={"job_type": job_type, "job_id": job_id},
+    )
+
+    try:
+        match job_type:
+            case "gatherer":
+                from jobs.gatherer_job import run_gatherer_job
+                result = await run_gatherer_job()
+            
+            case "janitor":
+                from jobs.janitor_job import run_janitor_job
+                result = await run_janitor_job()
+            
+            case _:
+                raise ValueError(f"Unknown job type: {job_type}")
+
+        logger.info(
+            "Job completed successfully",
+            extra={"job_type": job_type, "result": result},
+        )
+
+    except Exception as e:
+        logger.exception(
+            f"Job failed: {e}",
+            extra={"job_type": job_type},
+        )
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+

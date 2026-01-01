@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from src.middleware.context import RequestContext
-    from src.models.identity import Session
+    from models.identity import Session
 
 
 @dataclass
