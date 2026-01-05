@@ -1,0 +1,422 @@
+"""Unit tests for profile service business logic."""
+import pytest
+from datetime import datetime, timezone
+from uuid import uuid4
+from unittest.mock import AsyncMock, MagicMock
+import sys
+from pathlib import Path
+
+project_root = Path(__file__).resolve().parent.parent.parent.parent.parent
+database_src = project_root / "packages" / "database" / "src"
+if str(database_src) not in sys.path:
+    sys.path.insert(0, str(database_src))
+
+import models.identity
+import models.profiles
+import models.persistence
+
+
+@pytest.fixture
+def mock_db():
+    db = AsyncMock()
+    db.add = MagicMock()
+    db.commit = AsyncMock()
+    db.refresh = AsyncMock()
+    db.exec = AsyncMock()
+    return db
+
+
+@pytest.fixture
+def mock_profile():
+    profile = MagicMock()
+    profile.user_id = uuid4()
+    profile.intent_vector = None
+    profile.resume_vector = None
+    profile.github_vector = None
+    profile.combined_vector = None
+    profile.intent_stack_areas = None
+    profile.intent_text = None
+    profile.intent_experience = None
+    profile.resume_skills = None
+    profile.resume_job_titles = None
+    profile.resume_raw_entities = None
+    profile.resume_uploaded_at = None
+    profile.github_username = None
+    profile.github_languages = None
+    profile.github_topics = None
+    profile.github_data = None
+    profile.github_fetched_at = None
+    profile.preferred_languages = None
+    profile.preferred_topics = None
+    profile.min_heat_threshold = 0.6
+    profile.is_calculating = False
+    profile.onboarding_status = "not_started"
+    profile.onboarding_completed_at = None
+    profile.updated_at = datetime.now(timezone.utc)
+    return profile
+
+
+class TestValidation:
+    """Taxonomy validation boundary tests."""
+    
+    def test_validate_languages_accepts_all_valid_options(self):
+        from src.services.profile_service import validate_languages
+        validate_languages(["Python", "TypeScript", "Go", "Rust", "Java"])
+    
+    def test_validate_languages_rejects_invalid_value(self):
+        from src.services.profile_service import validate_languages, InvalidTaxonomyValueError
+        
+        with pytest.raises(InvalidTaxonomyValueError) as exc:
+            validate_languages(["Python", "Cobol"])
+        
+        assert exc.value.field == "language"
+        assert exc.value.invalid_value == "Cobol"
+    
+    def test_validate_languages_rejects_empty_string(self):
+        from src.services.profile_service import validate_languages, InvalidTaxonomyValueError
+        
+        with pytest.raises(InvalidTaxonomyValueError):
+            validate_languages([""])
+    
+    def test_validate_languages_case_sensitive(self):
+        from src.services.profile_service import validate_languages, InvalidTaxonomyValueError
+        
+        with pytest.raises(InvalidTaxonomyValueError):
+            validate_languages(["python"])
+    
+    def test_validate_stack_areas_accepts_all_valid_options(self):
+        from src.services.profile_service import validate_stack_areas
+        validate_stack_areas(["backend", "frontend", "data_engineering", "machine_learning"])
+    
+    def test_validate_stack_areas_rejects_invalid_value(self):
+        from src.services.profile_service import validate_stack_areas, InvalidTaxonomyValueError
+        
+        with pytest.raises(InvalidTaxonomyValueError) as exc:
+            validate_stack_areas(["backend", "hacking"])
+        
+        assert exc.value.field == "stack_area"
+        assert exc.value.invalid_value == "hacking"
+    
+    def test_validate_experience_level_accepts_all_valid_options(self):
+        from src.services.profile_service import validate_experience_level
+        validate_experience_level("beginner")
+        validate_experience_level("intermediate")
+        validate_experience_level("advanced")
+        validate_experience_level(None)
+    
+    def test_validate_experience_level_rejects_invalid_value(self):
+        from src.services.profile_service import validate_experience_level, InvalidTaxonomyValueError
+        
+        with pytest.raises(InvalidTaxonomyValueError) as exc:
+            validate_experience_level("expert")
+        
+        assert exc.value.field == "experience_level"
+
+
+class TestCalculateOptimizationPercent:
+    """Optimization percentage calculation for all source combinations."""
+    
+    def test_no_sources_returns_zero(self, mock_profile):
+        from src.services.profile_service import calculate_optimization_percent
+        assert calculate_optimization_percent(mock_profile) == 0
+    
+    def test_intent_only_returns_50(self, mock_profile):
+        from src.services.profile_service import calculate_optimization_percent
+        mock_profile.intent_text = "I want to work on Python projects"
+        assert calculate_optimization_percent(mock_profile) == 50
+    
+    def test_resume_only_returns_30(self, mock_profile):
+        from src.services.profile_service import calculate_optimization_percent
+        mock_profile.resume_skills = ["Python", "FastAPI"]
+        assert calculate_optimization_percent(mock_profile) == 30
+    
+    def test_github_only_returns_20(self, mock_profile):
+        from src.services.profile_service import calculate_optimization_percent
+        mock_profile.github_username = "octocat"
+        assert calculate_optimization_percent(mock_profile) == 20
+    
+    def test_intent_plus_resume_returns_80(self, mock_profile):
+        from src.services.profile_service import calculate_optimization_percent
+        mock_profile.intent_text = "I want to work on Python projects"
+        mock_profile.resume_skills = ["Python", "FastAPI"]
+        assert calculate_optimization_percent(mock_profile) == 80
+    
+    def test_intent_plus_github_returns_70(self, mock_profile):
+        from src.services.profile_service import calculate_optimization_percent
+        mock_profile.intent_text = "I want to work on Python projects"
+        mock_profile.github_username = "octocat"
+        assert calculate_optimization_percent(mock_profile) == 70
+    
+    def test_resume_plus_github_returns_50(self, mock_profile):
+        from src.services.profile_service import calculate_optimization_percent
+        mock_profile.resume_skills = ["Python"]
+        mock_profile.github_username = "octocat"
+        assert calculate_optimization_percent(mock_profile) == 50
+    
+    def test_all_sources_returns_100(self, mock_profile):
+        from src.services.profile_service import calculate_optimization_percent
+        mock_profile.intent_text = "I want to work on Python projects"
+        mock_profile.resume_skills = ["Python", "FastAPI"]
+        mock_profile.github_username = "octocat"
+        assert calculate_optimization_percent(mock_profile) == 100
+    
+    def test_empty_list_does_not_count_as_populated(self, mock_profile):
+        from src.services.profile_service import calculate_optimization_percent
+        mock_profile.resume_skills = []
+        assert calculate_optimization_percent(mock_profile) == 0
+
+
+class TestGetOrCreateProfile:
+    """Profile upsert behavior."""
+    
+    async def test_returns_existing_profile(self, mock_db, mock_profile):
+        from src.services.profile_service import get_or_create_profile
+        
+        user_id = uuid4()
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        result = await get_or_create_profile(mock_db, user_id)
+        
+        assert result == mock_profile
+        mock_db.add.assert_not_called()
+    
+    async def test_creates_profile_with_correct_defaults(self, mock_db):
+        from src.services.profile_service import get_or_create_profile
+        
+        user_id = uuid4()
+        mock_result = MagicMock()
+        mock_result.first.return_value = None
+        mock_db.exec.return_value = mock_result
+        
+        await get_or_create_profile(mock_db, user_id)
+        
+        mock_db.add.assert_called_once()
+        added_profile = mock_db.add.call_args[0][0]
+        assert added_profile.user_id == user_id
+        assert added_profile.min_heat_threshold == 0.6
+        assert added_profile.onboarding_status == "not_started"
+        assert added_profile.is_calculating is False
+
+
+class TestIntentCrud:
+    """Intent CRUD business logic."""
+    
+    async def test_create_intent_stores_languages_in_preferred_languages(self, mock_db, mock_profile):
+        from src.services.profile_service import create_intent
+        
+        mock_profile.intent_text = None
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        await create_intent(
+            db=mock_db,
+            user_id=mock_profile.user_id,
+            languages=["Python", "TypeScript"],
+            stack_areas=["backend"],
+            text="I want to contribute to async Python libraries",
+        )
+        
+        assert mock_profile.preferred_languages == ["Python", "TypeScript"]
+    
+    async def test_create_intent_rejects_duplicate(self, mock_db, mock_profile):
+        from src.services.profile_service import create_intent, IntentAlreadyExistsError
+        
+        mock_profile.intent_text = "Existing intent"
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        with pytest.raises(IntentAlreadyExistsError):
+            await create_intent(
+                db=mock_db,
+                user_id=mock_profile.user_id,
+                languages=["Python"],
+                stack_areas=["backend"],
+                text="New intent text",
+            )
+    
+    async def test_create_intent_validates_before_storing(self, mock_db, mock_profile):
+        from src.services.profile_service import create_intent, InvalidTaxonomyValueError
+        
+        mock_profile.intent_text = None
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        with pytest.raises(InvalidTaxonomyValueError):
+            await create_intent(
+                db=mock_db,
+                user_id=mock_profile.user_id,
+                languages=["InvalidLang"],
+                stack_areas=["backend"],
+                text="Some intent text",
+            )
+        
+        mock_db.commit.assert_not_called()
+    
+    async def test_get_intent_returns_none_when_empty(self, mock_db, mock_profile):
+        from src.services.profile_service import get_intent
+        
+        mock_profile.intent_text = None
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        result = await get_intent(mock_db, mock_profile.user_id)
+        assert result is None
+    
+    async def test_update_intent_preserves_unmodified_fields(self, mock_db, mock_profile):
+        from src.services.profile_service import update_intent
+        
+        mock_profile.intent_text = "Original text"
+        mock_profile.preferred_languages = ["Python"]
+        mock_profile.intent_stack_areas = ["backend"]
+        mock_profile.intent_experience = "beginner"
+        
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        await update_intent(
+            db=mock_db,
+            user_id=mock_profile.user_id,
+            experience_level="advanced",
+            _experience_level_provided=True,
+        )
+        
+        assert mock_profile.intent_experience == "advanced"
+        assert mock_profile.intent_text == "Original text"
+        assert mock_profile.preferred_languages == ["Python"]
+    
+    async def test_update_intent_raises_when_no_intent(self, mock_db, mock_profile):
+        from src.services.profile_service import update_intent, IntentNotFoundError
+        
+        mock_profile.intent_text = None
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        with pytest.raises(IntentNotFoundError):
+            await update_intent(db=mock_db, user_id=mock_profile.user_id, text="Updated")
+    
+    async def test_delete_intent_clears_preferred_languages(self, mock_db, mock_profile):
+        from src.services.profile_service import delete_intent
+        
+        mock_profile.intent_text = "Some intent"
+        mock_profile.preferred_languages = ["Python"]
+        
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        await delete_intent(mock_db, mock_profile.user_id)
+        
+        assert mock_profile.preferred_languages is None
+        assert mock_profile.intent_text is None
+    
+    async def test_delete_intent_returns_false_when_empty(self, mock_db, mock_profile):
+        from src.services.profile_service import delete_intent
+        
+        mock_profile.intent_text = None
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        result = await delete_intent(mock_db, mock_profile.user_id)
+        assert result is False
+
+
+class TestPreferences:
+    """Preferences CRUD business logic."""
+    
+    async def test_update_preferences_validates_languages(self, mock_db, mock_profile):
+        from src.services.profile_service import update_preferences, InvalidTaxonomyValueError
+        
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        with pytest.raises(InvalidTaxonomyValueError):
+            await update_preferences(
+                db=mock_db,
+                user_id=mock_profile.user_id,
+                preferred_languages=["InvalidLang"],
+            )
+    
+    async def test_update_preferences_preserves_unmodified_fields(self, mock_db, mock_profile):
+        from src.services.profile_service import update_preferences
+        
+        mock_profile.preferred_languages = ["Python"]
+        mock_profile.preferred_topics = ["web"]
+        mock_profile.min_heat_threshold = 0.6
+        
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        await update_preferences(db=mock_db, user_id=mock_profile.user_id, min_heat_threshold=0.8)
+        
+        assert mock_profile.min_heat_threshold == 0.8
+        assert mock_profile.preferred_languages == ["Python"]
+
+
+class TestDeleteProfile:
+    """Profile reset behavior."""
+    
+    async def test_delete_profile_resets_to_defaults(self, mock_db, mock_profile):
+        from src.services.profile_service import delete_profile
+        
+        mock_profile.intent_text = "Some intent"
+        mock_profile.resume_skills = ["Python"]
+        mock_profile.github_username = "octocat"
+        mock_profile.min_heat_threshold = 0.9
+        
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        await delete_profile(mock_db, mock_profile.user_id)
+        
+        assert mock_profile.intent_text is None
+        assert mock_profile.resume_skills is None
+        assert mock_profile.github_username is None
+        assert mock_profile.min_heat_threshold == 0.6
+        assert mock_profile.onboarding_status == "not_started"
+    
+    async def test_delete_profile_returns_false_when_not_found(self, mock_db):
+        from src.services.profile_service import delete_profile
+        
+        mock_result = MagicMock()
+        mock_result.first.return_value = None
+        mock_db.exec.return_value = mock_result
+        
+        result = await delete_profile(mock_db, uuid4())
+        assert result is False
+
+
+class TestGetFullProfile:
+    """Full profile response structure."""
+    
+    async def test_response_structure_matches_spec(self, mock_db, mock_profile):
+        from src.services.profile_service import get_full_profile
+        
+        mock_profile.intent_text = "I want to work on Python"
+        mock_profile.preferred_languages = ["Python"]
+        mock_profile.intent_stack_areas = ["backend"]
+        
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        result = await get_full_profile(mock_db, mock_profile.user_id)
+        
+        assert "user_id" in result
+        assert "optimization_percent" in result
+        assert "sources" in result
+        assert "preferences" in result
+        assert result["sources"]["intent"]["populated"] is True
+        assert result["sources"]["resume"]["populated"] is False
+        assert result["sources"]["github"]["populated"] is False
