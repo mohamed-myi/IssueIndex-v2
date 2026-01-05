@@ -16,10 +16,13 @@ from .oauth import (
     OAuthStateError,
     InvalidCodeError,
     get_authorization_url,
+    get_profile_authorization_url,
     exchange_code_for_token,
     fetch_user_profile,
-    get_http_client,
     validate_state,
+    GITHUB_LOGIN_SCOPES,
+    GITHUB_PROFILE_SCOPES,
+    GOOGLE_LOGIN_SCOPES,
 )
 
 __all__ = [
@@ -38,8 +41,11 @@ __all__ = [
     "OAuthStateError",
     "InvalidCodeError",
     "get_authorization_url",
+    "get_profile_authorization_url",
     "exchange_code_for_token",
     "fetch_user_profile",
-    "get_http_client",
     "validate_state",
+    "GITHUB_LOGIN_SCOPES",
+    "GITHUB_PROFILE_SCOPES",
+    "GOOGLE_LOGIN_SCOPES",
 ]
