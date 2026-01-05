@@ -1,7 +1,7 @@
 """profile engine schema: linked_accounts and user_profiles extension
 
 Revision ID: f1a2b3c4d5e6
-Revises: e3f4a5b6c7d8
+Revises: c1d2e3f4a5b6
 Create Date: 2026-01-04
 
 Adds support for the Profile Engine feature:
@@ -20,7 +20,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 
 revision: str = 'f1a2b3c4d5e6'
-down_revision: Union[str, Sequence[str], None] = 'e3f4a5b6c7d8'
+down_revision: Union[str, Sequence[str], None] = 'c1d2e3f4a5b6'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
