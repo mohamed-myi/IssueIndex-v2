@@ -115,7 +115,7 @@ class StreamingPersistence:
             values_list.append(
                 f"(:node_id_{i}, :repo_id_{i}, :has_code_{i}, :has_template_headers_{i}, "
                 f":tech_stack_weight_{i}, :q_score_{i}, :survival_score_{i}, :title_{i}, "
-                f":body_text_{i}, :labels_{i}, CAST(:embedding_{i} AS vector), :github_created_at_{i})"
+                f":body_text_{i}, :labels_{i}, CAST(:embedding_{i} AS vector), :github_created_at_{i}, :state_{i})"
             )
 
             params[f"node_id_{i}"] = issue.node_id
@@ -130,13 +130,14 @@ class StreamingPersistence:
             params[f"labels_{i}"] = issue.labels
             params[f"embedding_{i}"] = str(item.embedding)
             params[f"github_created_at_{i}"] = issue.github_created_at
+            params[f"state_{i}"] = issue.state
 
         values_sql = ", ".join(values_list)
 
         query = text(f"""
             INSERT INTO ingestion.issue
                 (node_id, repo_id, has_code, has_template_headers, tech_stack_weight,
-                 q_score, survival_score, title, body_text, labels, embedding, github_created_at)
+                 q_score, survival_score, title, body_text, labels, embedding, github_created_at, state)
             VALUES {values_sql}
             ON CONFLICT (node_id) DO UPDATE SET
                 repo_id = EXCLUDED.repo_id,
@@ -149,7 +150,8 @@ class StreamingPersistence:
                 body_text = EXCLUDED.body_text,
                 labels = EXCLUDED.labels,
                 embedding = EXCLUDED.embedding,
-                github_created_at = EXCLUDED.github_created_at
+                github_created_at = EXCLUDED.github_created_at,
+                state = EXCLUDED.state
         """)
 
         await self._session.execute(query, params)

@@ -37,6 +37,7 @@ class IssueData:
     github_created_at: datetime
     q_score: float
     q_components: QScoreComponents
+    state: str
 
 
 class Gatherer:
@@ -60,10 +61,10 @@ class Gatherer:
         return """
         query GathererIssues($owner: String!, $name: String!, $first: Int!, $after: String) {
           repository(owner: $owner, name: $name) {
-            issues(states: OPEN, first: $first, after: $after, orderBy: {field: CREATED_AT, direction: DESC}) {
+            issues(first: $first, after: $after, orderBy: {field: CREATED_AT, direction: DESC}) {
               pageInfo { hasNextPage endCursor }
               nodes {
-                id title bodyText createdAt
+                id title bodyText createdAt state
                 labels(first: 10) { nodes { name } }
               }
             }
@@ -104,7 +105,7 @@ class Gatherer:
             try:
                 async for issue in self._fetch_repo_issues(repo):
                     yield issue
-                return  # Success; exit retry loop
+                return  # Success? exit retry loop
             except Exception as e:
                 last_error = e
                 if attempt < self.MAX_RETRIES - 1:
@@ -175,6 +176,10 @@ class Gatherer:
             if label and label.get("name")
         ]
 
+        # GitHub returns state as OPEN or CLOSED; normalize to lowercase
+        raw_state = node.get("state", "OPEN")
+        state = raw_state.lower() if raw_state else "open"
+
         try:
             github_created_at = datetime.fromisoformat(
                 created_at_str.replace("Z", "+00:00")
@@ -195,5 +200,6 @@ class Gatherer:
             github_created_at=github_created_at,
             q_score=q_score,
             q_components=components,
+            state=state,
         )
 

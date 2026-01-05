@@ -259,6 +259,37 @@ class TestStage1SQLBuilder:
         
         assert "<=>" in sql  # cosine distance operator
 
+    def test_sql_filters_open_issues_in_vector_cte(self):
+        """Vector CTE should only include open issues."""
+        filters = SearchFilters()
+        sql = _build_stage1_sql(filters, use_vector_path=True)
+        
+        # Find the vector_results CTE
+        vector_cte_start = sql.find("vector_results AS")
+        bm25_cte_start = sql.find("bm25_results AS")
+        vector_cte = sql[vector_cte_start:bm25_cte_start]
+        
+        assert "i.state = 'open'" in vector_cte
+
+    def test_sql_filters_open_issues_in_bm25_cte(self):
+        """BM25 CTE should only include open issues."""
+        filters = SearchFilters()
+        sql = _build_stage1_sql(filters, use_vector_path=True)
+        
+        # Find the bm25_results CTE
+        bm25_cte_start = sql.find("bm25_results AS")
+        fused_start = sql.find("fused AS")
+        bm25_cte = sql[bm25_cte_start:fused_start]
+        
+        assert "i.state = 'open'" in bm25_cte
+
+    def test_sql_filters_open_issues_in_bm25_only_mode(self):
+        """BM25-only SQL (embedding failed) should filter open issues."""
+        filters = SearchFilters()
+        sql = _build_stage1_sql(filters, use_vector_path=False)
+        
+        assert "i.state = 'open'" in sql
+
 
 class TestStage1Result:
     """Tests for Stage1Result dataclass."""

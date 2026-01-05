@@ -35,6 +35,7 @@ def make_issue(sample_q_components):
             github_created_at=datetime.now(timezone.utc),
             q_score=0.75,
             q_components=sample_q_components,
+            state="open",
         )
     return _make
 

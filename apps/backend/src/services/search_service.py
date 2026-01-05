@@ -368,7 +368,7 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
                 i.q_score,
                 ROW_NUMBER() OVER (ORDER BY i.embedding <=> CAST(:query_vec AS vector)) AS v_rank
             FROM ingestion.issue i
-            WHERE i.embedding IS NOT NULL
+            WHERE i.embedding IS NOT NULL AND i.state = 'open'
             ORDER BY i.embedding <=> CAST(:query_vec AS vector)
             LIMIT :candidate_limit
         ),
@@ -382,7 +382,7 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
                     ORDER BY ts_rank(i.search_vector, plainto_tsquery('english', :query_text)) DESC
                 ) AS b_rank
             FROM ingestion.issue i
-            WHERE i.search_vector @@ plainto_tsquery('english', :query_text)
+            WHERE i.search_vector @@ plainto_tsquery('english', :query_text) AND i.state = 'open'
             ORDER BY ts_rank(i.search_vector, plainto_tsquery('english', :query_text)) DESC
             LIMIT :candidate_limit
         ),
@@ -426,7 +426,7 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
                     ORDER BY ts_rank(i.search_vector, plainto_tsquery('english', :query_text)) DESC
                 ) AS b_rank
             FROM ingestion.issue i
-            WHERE i.search_vector @@ plainto_tsquery('english', :query_text)
+            WHERE i.search_vector @@ plainto_tsquery('english', :query_text) AND i.state = 'open'
             ORDER BY ts_rank(i.search_vector, plainto_tsquery('english', :query_text)) DESC
             LIMIT :candidate_limit
         ),

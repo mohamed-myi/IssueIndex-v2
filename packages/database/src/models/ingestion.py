@@ -5,7 +5,6 @@ from sqlmodel import SQLModel, Field, Relationship, Column
 from sqlalchemy.dialects.postgresql import JSONB, ARRAY, REAL
 from pgvector.sqlalchemy import Vector
 
-# Aligns with nomic-embed-text-v1.5 output and INGESTION.md Phase 2 spec
 VECTOR_DIM = 768
 
 
@@ -16,7 +15,7 @@ class Repository(SQLModel, table=True):
     full_name: str = Field(index=True, unique=True)
     primary_language: Optional[str] = Field(default=None, index=True)
 
-    # Scout logic: repo-level velocity for discovery queries
+    # Repo velocity for discovery queries
     issue_velocity_week: int = Field(default=0)
     stargazer_count: int = Field(default=0, index=True)
 
@@ -33,7 +32,7 @@ class Repository(SQLModel, table=True):
 
 class Issue(SQLModel, table=True):
     __table_args__ = (
-        # Composite index for Janitor's bottom-20% pruning query
+        # Composite index for clean-up bottom-20% pruning query
         sa.Index("ix_issue_survival_vacuum", "survival_score", "ingested_at"),
         {"schema": "ingestion"},
     )
@@ -46,16 +45,19 @@ class Issue(SQLModel, table=True):
     has_template_headers: bool = Field(default=False)
     tech_stack_weight: float = Field(default=0.0)
 
-    # Calculated scores (Phase III logic)
+    # Calculated scores
     q_score: float = Field(default=0.0, index=True, sa_column=Column(REAL))
     survival_score: float = Field(default=0.0, index=True, sa_column=Column(REAL))
+
+    # GitHub issue state: open or closed
+    state: str = Field(default="open", index=True)
 
     # Content
     title: str
     body_text: str
     labels: List[str] = Field(default_factory=list, sa_column=Column(ARRAY(sa.String)))
 
-    # 768-dim Nomic embeddings; cast to halfvec at DB level for 10GB optimization
+    # 768-dim Nomic embeddings: cast to halfvec at DB level for 10GB optimization
     embedding: List[float] = Field(sa_column=Column(Vector(VECTOR_DIM)))
 
     github_created_at: datetime

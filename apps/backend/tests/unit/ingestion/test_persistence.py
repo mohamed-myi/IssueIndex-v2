@@ -50,7 +50,7 @@ def sample_q_components():
 
 @pytest.fixture
 def make_embedded_issue(sample_q_components):
-    def _make(node_id: str = "I_123", q_score: float = 0.75):
+    def _make(node_id: str = "I_123", q_score: float = 0.75, state: str = "open"):
         issue = IssueData(
             node_id=node_id,
             repo_id="R_456",
@@ -60,6 +60,7 @@ def make_embedded_issue(sample_q_components):
             github_created_at=datetime.now(timezone.utc),
             q_score=q_score,
             q_components=sample_q_components,
+            state=state,
         )
         return EmbeddedIssue(
             issue=issue,
@@ -225,3 +226,26 @@ class TestEmbeddingStorage:
         # Should be string representation of list for ::vector cast
         assert isinstance(embedding_param, str)
         assert embedding_param.startswith("[")
+
+
+class TestStateStorage:
+    async def test_state_passed_to_sql(self, persistence, mock_session, make_embedded_issue):
+        """Verify state parameter is passed to SQL"""
+        async def single_issue():
+            yield make_embedded_issue(state="open")
+        
+        await persistence.persist_stream(single_issue())
+        
+        call_args = mock_session.execute.call_args[0][1]
+        assert "state_0" in call_args
+        assert call_args["state_0"] == "open"
+
+    async def test_closed_state_passed_to_sql(self, persistence, mock_session, make_embedded_issue):
+        """Verify closed state is correctly passed"""
+        async def single_issue():
+            yield make_embedded_issue(state="closed")
+        
+        await persistence.persist_stream(single_issue())
+        
+        call_args = mock_session.execute.call_args[0][1]
+        assert call_args["state_0"] == "closed"

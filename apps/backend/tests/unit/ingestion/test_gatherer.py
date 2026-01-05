@@ -43,12 +43,14 @@ def make_issue_node(
     body: str = "## Description\n```typescript\nthrow new TypeError()\n```",
     created_at: str = "2024-01-15T12:00:00Z",
     labels: list[str] | None = None,
+    state: str = "OPEN",
 ):
     return {
         "id": node_id,
         "title": title,
         "bodyText": body,
         "createdAt": created_at,
+        "state": state,
         "labels": {
             "nodes": [{"name": l} for l in (labels or [])]
         },
@@ -175,6 +177,40 @@ class TestParseIssue:
         assert issue is not None
         assert issue.q_score > 0.6
         assert isinstance(issue.q_components, QScoreComponents)
+
+    def test_parses_open_state(self, gatherer, sample_repo):
+        node = make_issue_node(state="OPEN")
+
+        issue = gatherer._parse_issue(node, sample_repo)
+
+        assert issue is not None
+        assert issue.state == "open"
+
+    def test_parses_closed_state(self, gatherer, sample_repo):
+        node = make_issue_node(state="CLOSED")
+
+        issue = gatherer._parse_issue(node, sample_repo)
+
+        assert issue is not None
+        assert issue.state == "closed"
+
+    def test_defaults_to_open_when_state_missing(self, gatherer, sample_repo):
+        node = make_issue_node()
+        del node["state"]
+
+        issue = gatherer._parse_issue(node, sample_repo)
+
+        assert issue is not None
+        assert issue.state == "open"
+
+    def test_defaults_to_open_when_state_none(self, gatherer, sample_repo):
+        node = make_issue_node()
+        node["state"] = None
+
+        issue = gatherer._parse_issue(node, sample_repo)
+
+        assert issue is not None
+        assert issue.state == "open"
 
 
 class TestFetchRepoIssues:
@@ -387,12 +423,14 @@ class TestIssueData:
             github_created_at=datetime.now(timezone.utc),
             q_score=0.75,
             q_components=components,
+            state="open",
         )
 
         assert issue.node_id == "I_123"
         assert issue.repo_id == "R_456"
         assert issue.q_score == 0.75
         assert issue.q_components.has_code is True
+        assert issue.state == "open"
 
 
 class TestBodyTruncation:
