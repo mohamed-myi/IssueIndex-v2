@@ -61,6 +61,11 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 RETRYABLE_STATUS_CODES = {500, 502, 503, 504, 429}
 
+# OAuth scope constants (login vs profile connect)
+GITHUB_LOGIN_SCOPES = "read:user user:email"
+GITHUB_PROFILE_SCOPES = "read:user repo"  # for starred repos and contributions
+GOOGLE_LOGIN_SCOPES = "openid email profile"
+
 
 STATE_MIN_LENGTH = 32
 STATE_MAX_LENGTH = 128
@@ -91,7 +96,7 @@ def get_authorization_url(provider: OAuthProvider, redirect_uri: str, state: str
         params = {
             "client_id": settings.github_client_id,
             "redirect_uri": redirect_uri,
-            "scope": "read:user user:email",
+            "scope": GITHUB_LOGIN_SCOPES,
             "state": state,
         }
         return f"{GITHUB_AUTHORIZE_URL}?{urlencode(params)}"
@@ -101,7 +106,7 @@ def get_authorization_url(provider: OAuthProvider, redirect_uri: str, state: str
             "client_id": settings.google_client_id,
             "redirect_uri": redirect_uri,
             "response_type": "code",
-            "scope": "openid email profile",
+            "scope": GOOGLE_LOGIN_SCOPES,
             "state": state,
             "access_type": "offline",
             "prompt": "consent",
@@ -109,6 +114,26 @@ def get_authorization_url(provider: OAuthProvider, redirect_uri: str, state: str
         return f"{GOOGLE_AUTHORIZE_URL}?{urlencode(params)}"
     
     raise ValueError(f"Unknown provider: {provider}")
+
+
+def get_profile_authorization_url(provider: OAuthProvider, redirect_uri: str, state: str) -> str:
+    """
+    Generates OAuth URL for profile connect flow (different scopes than login).
+    Only supports GitHub; Google login already has sufficient profile access.
+    """
+    validate_state(state)
+    settings = get_settings()
+    
+    if provider == OAuthProvider.GITHUB:
+        params = {
+            "client_id": settings.github_client_id,
+            "redirect_uri": redirect_uri,
+            "scope": GITHUB_PROFILE_SCOPES,
+            "state": state,
+        }
+        return f"{GITHUB_AUTHORIZE_URL}?{urlencode(params)}"
+    
+    raise ValueError(f"Profile connect not supported for provider: {provider}")
 
 
 async def exchange_code_for_token(
@@ -278,12 +303,4 @@ async def _fetch_google_profile(access_token: str, client: httpx.AsyncClient) ->
         avatar_url=user_data.get("picture"),
         is_verified=is_verified,
         username=None,
-    )
-
-
-def get_http_client() -> httpx.AsyncClient:
-    """todo: remove this; use dependency injection version instead"""
-    return httpx.AsyncClient(
-        timeout=httpx.Timeout(10.0),
-        limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
     )

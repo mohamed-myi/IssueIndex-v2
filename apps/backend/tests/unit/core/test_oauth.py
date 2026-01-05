@@ -45,8 +45,8 @@ class TestAuthorizationUrlGeneration:
     Ensures client_id and scopes are correctly injected.
     """
     
-    def test_github_authorization_url(self):
-        from src.core.oauth import get_authorization_url, OAuthProvider
+    def test_github_login_url_uses_login_scopes(self):
+        from src.core.oauth import get_authorization_url, OAuthProvider, GITHUB_LOGIN_SCOPES
         state = "a" * 32
         url = get_authorization_url(
             OAuthProvider.GITHUB,
@@ -56,7 +56,7 @@ class TestAuthorizationUrlGeneration:
         assert "github.com/login/oauth/authorize" in url
         assert "client_id=test-github-client-id" in url
         assert f"state={state}" in url
-        assert "scope=read%3Auser+user%3Aemail" in url
+        assert "scope=read%3Auser+user%3Aemail" in url  # Login scopes (no repo)
 
     def test_google_authorization_url(self):
         from src.core.oauth import get_authorization_url, OAuthProvider
@@ -70,6 +70,34 @@ class TestAuthorizationUrlGeneration:
         assert "client_id=test-google-client-id" in url
         assert f"state={state}" in url
         assert "response_type=code" in url
+
+    def test_github_profile_url_uses_profile_scopes(self):
+        """Profile connect flow uses different scopes (includes repo access)."""
+        from src.core.oauth import get_profile_authorization_url, OAuthProvider
+        state = "c" * 32
+        url = get_profile_authorization_url(
+            OAuthProvider.GITHUB,
+            redirect_uri="http://localhost:3000/connect/callback",
+            state=state
+        )
+        assert "github.com/login/oauth/authorize" in url
+        assert "client_id=test-github-client-id" in url
+        assert f"state={state}" in url
+        assert "repo" in url  # Profile scopes include repo
+
+    def test_profile_url_rejects_unsupported_provider(self):
+        """Google profile connect is not supported (login already has sufficient scopes)."""
+        from src.core.oauth import get_profile_authorization_url, OAuthProvider
+        state = "d" * 32
+        
+        with pytest.raises(ValueError) as exc:
+            get_profile_authorization_url(
+                OAuthProvider.GOOGLE,
+                redirect_uri="http://localhost:3000/connect/callback",
+                state=state
+            )
+        
+        assert "not supported" in str(exc.value).lower()
 
 
 class TestStateValidation:
