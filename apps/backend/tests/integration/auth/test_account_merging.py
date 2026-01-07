@@ -5,8 +5,18 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.api.routes.auth import STATE_COOKIE_NAME, LINK_STATE_COOKIE_NAME
+from src.api.routes.auth import STATE_COOKIE_NAME, LINK_STATE_COOKIE_NAME, CONNECT_STATE_COOKIE_NAME
 from src.core.oauth import OAuthProvider, UserProfile, OAuthToken
+from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limit():
+    """Reset rate limiter before each test to prevent 429 errors."""
+    reset_rate_limiter()
+    reset_rate_limiter_instance()
+    yield
+    reset_rate_limiter()
 
 
 @pytest.fixture

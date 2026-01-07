@@ -18,12 +18,14 @@ from src.core.cookies import (
 from src.core.oauth import (
     OAuthProvider,
     get_authorization_url,
+    get_profile_authorization_url,
     exchange_code_for_token,
     fetch_user_profile,
     InvalidCodeError,
     EmailNotVerifiedError,
     NoEmailError,
     OAuthStateError,
+    GITHUB_PROFILE_SCOPES,
 )
 from src.middleware.auth import require_fingerprint, get_current_session, get_current_user
 from src.middleware.context import RequestContext, get_request_context
@@ -38,6 +40,12 @@ from src.services.session_service import (
     get_session_by_id,
     ExistingAccountError,
     ProviderConflictError,
+)
+from src.services.linked_account_service import (
+    store_linked_account,
+    get_active_linked_account,
+    mark_revoked,
+    LinkedAccountNotFoundError,
 )
 
 
@@ -572,3 +580,230 @@ async def logout_all(
     response = JSONResponse(content={"revoked_count": revoked_count, "logged_out": True})
     clear_session_cookie(response)
     return response
+
+
+# Stores OAuth tokens for background API access
+CONNECT_STATE_COOKIE_NAME = "oauth_connect_state"
+
+
+def _build_profile_redirect(error_code: str | None = None, success: bool = False) -> str:
+    """Builds redirect URL to profile onboarding page"""
+    settings = get_settings()
+    base = f"{settings.frontend_base_url}/profile/onboarding"
+    if error_code:
+        return f"{base}?{urlencode({'error': error_code})}"
+    if success:
+        return f"{base}?{urlencode({'connected': 'github'})}"
+    return base
+
+
+@router.get("/connect/github")
+async def connect_github(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _: None = Depends(check_auth_rate_limit),
+) -> RedirectResponse:
+    """
+    Initiates GitHub OAuth flow for profile data access.
+    Uses different scopes than login (includes repo access for activity data).
+    Requires authenticated session.
+    """
+    ctx = await get_request_context(request)
+    
+    try:
+        session = await get_current_session(request, ctx, db)
+        user = await get_current_user(session, db)
+    except Exception:
+        return RedirectResponse(
+            url=_build_error_redirect("not_authenticated"),
+            status_code=302,
+        )
+    
+    settings = get_settings()
+    state = secrets.token_urlsafe(32)
+    redirect_uri = str(request.url_for("connect_github_callback"))
+    auth_url = get_profile_authorization_url(OAuthProvider.GITHUB, redirect_uri, state)
+    response = RedirectResponse(url=auth_url, status_code=302)
+    
+    response.set_cookie(
+        key=CONNECT_STATE_COOKIE_NAME,
+        value=state,
+        **_get_state_cookie_params(settings),
+    )
+    
+    return response
+
+
+@router.get("/connect/callback/github")
+async def connect_github_callback(
+    request: Request,
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    client: httpx.AsyncClient = Depends(get_http_client),
+    _: None = Depends(check_auth_rate_limit),
+) -> RedirectResponse:
+    """
+    Handles OAuth callback for GitHub profile connect.
+    Stores token in linked_accounts table for background profile data fetching.
+    """
+    ctx = await get_request_context(request)
+    
+    try:
+        session = await get_current_session(request, ctx, db)
+        user = await get_current_user(session, db)
+    except Exception:
+        return RedirectResponse(
+            url=_build_error_redirect("not_authenticated"),
+            status_code=302,
+        )
+    
+    if error:
+        log_audit_event(
+            AuditEvent.ACCOUNT_LINKED,
+            user_id=user.id,
+            ip_address=ctx.ip_address,
+            provider="github",
+            metadata={"action": "connect_denied", "error": error},
+        )
+        return RedirectResponse(
+            url=_build_profile_redirect("consent_denied"),
+            status_code=302,
+        )
+    
+    stored_state = request.cookies.get(CONNECT_STATE_COOKIE_NAME)
+    if not stored_state or not state or state != stored_state:
+        return RedirectResponse(
+            url=_build_profile_redirect("csrf_failed"),
+            status_code=302,
+        )
+    
+    if not code:
+        return RedirectResponse(
+            url=_build_profile_redirect("missing_code"),
+            status_code=302,
+        )
+    
+    redirect_uri = str(request.url_for("connect_github_callback"))
+    
+    try:
+        token = await exchange_code_for_token(
+            OAuthProvider.GITHUB, code, redirect_uri, client
+        )
+        profile = await fetch_user_profile(OAuthProvider.GITHUB, token, client)
+        
+        # Parse scopes from token response
+        scopes = token.scope.split(",") if token.scope else GITHUB_PROFILE_SCOPES.split(" ")
+        
+        await store_linked_account(
+            db=db,
+            user_id=user.id,
+            provider="github",
+            provider_user_id=profile.provider_id,
+            access_token=token.access_token,
+            refresh_token=token.refresh_token,
+            scopes=scopes,
+            expires_at=None,  # GitHub tokens dont expire unless revoked
+        )
+        
+        log_audit_event(
+            AuditEvent.ACCOUNT_LINKED,
+            user_id=user.id,
+            session_id=session.id,
+            ip_address=ctx.ip_address,
+            provider="github",
+            metadata={"action": "connect_profile", "scopes": scopes},
+        )
+        
+        # To-do: Cloud Tasks job trigger
+        
+        response = RedirectResponse(
+            url=_build_profile_redirect(success=True),
+            status_code=302,
+        )
+        response.delete_cookie(key=CONNECT_STATE_COOKIE_NAME, path="/")
+        
+        return response
+        
+    except InvalidCodeError:
+        log_audit_event(
+            AuditEvent.ACCOUNT_LINKED,
+            user_id=user.id,
+            ip_address=ctx.ip_address,
+            provider="github",
+            metadata={"action": "connect_failed", "reason": "code_expired"},
+        )
+        return RedirectResponse(
+            url=_build_profile_redirect("code_expired"),
+            status_code=302,
+        )
+    except EmailNotVerifiedError:
+        return RedirectResponse(
+            url=_build_profile_redirect("email_not_verified"),
+            status_code=302,
+        )
+    except NoEmailError:
+        return RedirectResponse(
+            url=_build_profile_redirect("no_email"),
+            status_code=302,
+        )
+
+
+@router.delete("/connect/github")
+async def disconnect_github(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Disconnects GitHub from profile (marks linked_account as revoked).
+    Does NOT delete historical profile data; marks it as stale for recommendations.
+    """
+    ctx = await get_request_context(request)
+    
+    try:
+        session = await get_current_session(request, ctx, db)
+        user = await get_current_user(session, db)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    was_revoked = await mark_revoked(db, user.id, "github")
+    
+    if not was_revoked:
+        raise HTTPException(status_code=404, detail="No connected GitHub account found")
+    
+    log_audit_event(
+        AuditEvent.ACCOUNT_LINKED,
+        user_id=user.id,
+        session_id=session.id,
+        ip_address=ctx.ip_address,
+        provider="github",
+        metadata={"action": "disconnect_profile"},
+    )
+    
+    return {"disconnected": True, "provider": "github"}
+
+
+@router.get("/connect/status")
+async def get_connect_status(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Returns status of connected accounts for profile features"""
+    ctx = await get_request_context(request)
+    
+    try:
+        session = await get_current_session(request, ctx, db)
+        user = await get_current_user(session, db)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    github_account = await get_active_linked_account(db, user.id, "github")
+    
+    return {
+        "github": {
+            "connected": github_account is not None,
+            "username": github_account.provider_user_id if github_account else None,
+            "connected_at": github_account.created_at.isoformat() if github_account else None,
+        }
+    }
