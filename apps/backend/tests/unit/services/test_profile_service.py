@@ -11,9 +11,11 @@ database_src = project_root / "packages" / "database" / "src"
 if str(database_src) not in sys.path:
     sys.path.insert(0, str(database_src))
 
-import models.identity
-import models.profiles
-import models.persistence
+# Side-effect imports: register models with SQLAlchemy ORM mapper
+import models.identity  # noqa: F401
+import models.profiles  # noqa: F401
+import models.persistence  # noqa: F401
+
 
 
 @pytest.fixture
@@ -367,6 +369,7 @@ class TestDeleteProfile:
     """Profile reset behavior."""
     
     async def test_delete_profile_resets_to_defaults(self, mock_db, mock_profile):
+        from unittest.mock import patch
         from src.services.profile_service import delete_profile
         
         mock_profile.intent_text = "Some intent"
@@ -378,7 +381,9 @@ class TestDeleteProfile:
         mock_result.first.return_value = mock_profile
         mock_db.exec.return_value = mock_result
         
-        await delete_profile(mock_db, mock_profile.user_id)
+        with patch("src.services.profile_service.cancel_user_tasks", new_callable=AsyncMock) as mock_cancel:
+            mock_cancel.return_value = 0
+            await delete_profile(mock_db, mock_profile.user_id)
         
         assert mock_profile.intent_text is None
         assert mock_profile.resume_skills is None
@@ -387,14 +392,32 @@ class TestDeleteProfile:
         assert mock_profile.onboarding_status == "not_started"
     
     async def test_delete_profile_returns_false_when_not_found(self, mock_db):
+        from unittest.mock import patch
         from src.services.profile_service import delete_profile
         
         mock_result = MagicMock()
         mock_result.first.return_value = None
         mock_db.exec.return_value = mock_result
         
-        result = await delete_profile(mock_db, uuid4())
+        with patch("src.services.profile_service.cancel_user_tasks", new_callable=AsyncMock) as mock_cancel:
+            mock_cancel.return_value = 0
+            result = await delete_profile(mock_db, uuid4())
+        
         assert result is False
+    
+    async def test_delete_profile_cancels_cloud_tasks(self, mock_db, mock_profile):
+        from unittest.mock import patch
+        from src.services.profile_service import delete_profile
+        
+        mock_profile.intent_text = "Some intent"
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        with patch("src.services.profile_service.cancel_user_tasks", new_callable=AsyncMock) as mock_cancel:
+            mock_cancel.return_value = 2
+            await delete_profile(mock_db, mock_profile.user_id)
+            mock_cancel.assert_called_once_with(mock_profile.user_id)
 
 
 class TestGetFullProfile:

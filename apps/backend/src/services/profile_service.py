@@ -11,7 +11,7 @@ from models.profiles import UserProfile
 from src.services.profile_embedding_service import calculate_combined_vector
 from src.services.vector_generation import generate_intent_vector_with_retry
 from src.services.onboarding_service import mark_onboarding_in_progress
-from src.services.retry_queue import get_retry_queue
+from src.services.cloud_tasks_service import cancel_user_tasks
 
 import sys
 from pathlib import Path
@@ -182,7 +182,7 @@ async def delete_profile(
     db: AsyncSession,
     user_id: UUID,
 ) -> bool:
-    """Resets all fields to defaults; does not delete the row. Cancels pending jobs."""
+    """Resets all fields to defaults; does not delete the row. Cancels pending Cloud Tasks."""
     statement = select(UserProfile).where(UserProfile.user_id == user_id)
     result = await db.exec(statement)
     profile = result.first()
@@ -190,10 +190,9 @@ async def delete_profile(
     if profile is None:
         return False
     
-    retry_queue = get_retry_queue()
-    cancelled_count = retry_queue.cancel_user_jobs(user_id)
+    cancelled_count = await cancel_user_tasks(user_id)
     if cancelled_count > 0:
-        logger.info(f"Cancelled {cancelled_count} pending jobs for user {user_id}")
+        logger.info(f"Cancelled {cancelled_count} pending Cloud Tasks for user {user_id}")
     
     profile.intent_vector = None
     profile.resume_vector = None
