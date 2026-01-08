@@ -7,7 +7,12 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from dotenv import load_dotenv
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
-load_dotenv(os.path.join(project_root, '.env.local'))
+try:
+    load_dotenv(os.path.join(project_root, '.env.local'))
+except PermissionError:
+    # Some environments may deny access to local secret files.
+    # Configuration should fall back to process environment variables or .env.
+    pass
 load_dotenv(os.path.join(project_root, '.env'))
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
@@ -21,7 +26,7 @@ engine = create_async_engine(
     echo=False,
     pool_pre_ping=True,
     connect_args={
-        # Required for Supabase transaction pooler compatibility
+        # Required for transaction pooler compatibility.
         "prepared_statement_cache_size": 0,
         "statement_cache_size": 0,
     },
