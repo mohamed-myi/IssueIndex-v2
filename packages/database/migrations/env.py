@@ -26,7 +26,8 @@ config = context.config
 database_url = os.getenv("DIRECT_DATABASE_URL", "")
 if database_url.startswith("postgresql://"):
     database_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
-config.set_main_option("sqlalchemy.url", database_url)
+# Escape percent signs to prevent parsing issues
+config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
