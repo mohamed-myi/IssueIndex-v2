@@ -6,7 +6,7 @@ Time to Live: 5 min
 import json
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from src.core.redis import get_redis
@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 CACHE_TTL_SECONDS = 300
 CACHE_PREFIX = "search:"
+CONTEXT_PREFIX = "searchctx:"
 
 
 def _serialize_response(response: SearchResponse) -> str:
@@ -90,6 +91,63 @@ def _deserialize_response(data: str) -> SearchResponse:
         query=parsed["query"],
         filters=filters,
     )
+
+
+def _context_key(search_id: UUID) -> str:
+    return f"{CONTEXT_PREFIX}{search_id}"
+
+
+async def cache_search_context(
+    *,
+    search_id: UUID,
+    query_text: str,
+    filters_json: dict[str, Any],
+    result_count: int,
+    page: int,
+    page_size: int,
+) -> None:
+    """
+    Store validated search context for later interaction logging.
+    Silently fails if Redis unavailable.
+    """
+    redis = await get_redis()
+    if redis is None:
+        return
+
+    payload = {
+        "query_text": query_text,
+        "filters_json": filters_json,
+        "result_count": int(result_count),
+        "page": int(page),
+        "page_size": int(page_size),
+    }
+
+    try:
+        await redis.setex(_context_key(search_id), CACHE_TTL_SECONDS, json.dumps(payload))
+    except Exception as e:
+        logger.warning(f"Search context cache write error: {e}")
+
+
+async def get_cached_search_context(search_id: UUID) -> Optional[dict[str, Any]]:
+    """
+    Retrieve cached search context for interaction validation.
+    Returns None if missing or Redis unavailable.
+    """
+    redis = await get_redis()
+    if redis is None:
+        return None
+
+    try:
+        cached = await redis.get(_context_key(search_id))
+        if not cached:
+            return None
+        parsed = json.loads(cached)
+        if not isinstance(parsed, dict):
+            return None
+        return parsed
+    except Exception as e:
+        logger.warning(f"Search context cache read error: {e}")
+        return None
 
 
 async def get_cached_search(request: SearchRequest) -> Optional[SearchResponse]:
@@ -172,8 +230,11 @@ async def invalidate_search_cache(pattern: str = "*") -> int:
 __all__ = [
     "CACHE_TTL_SECONDS",
     "CACHE_PREFIX",
+    "CONTEXT_PREFIX",
     "get_cached_search",
     "cache_search_response",
+    "cache_search_context",
+    "get_cached_search_context",
     "invalidate_search_cache",
     "_serialize_response",
     "_deserialize_response",

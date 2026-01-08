@@ -7,6 +7,7 @@ import pytest
 import json
 from datetime import datetime, timezone
 from uuid import uuid4
+from unittest.mock import AsyncMock, patch
 
 from src.services.search_service import (
     SearchFilters,
@@ -17,8 +18,11 @@ from src.services.search_service import (
 from src.services.search_cache import (
     CACHE_TTL_SECONDS,
     CACHE_PREFIX,
+    CONTEXT_PREFIX,
     _serialize_response,
     _deserialize_response,
+    cache_search_context,
+    get_cached_search_context,
 )
 
 
@@ -245,6 +249,74 @@ class TestCacheKeyGeneration:
         )
         
         assert request1.cache_key() == request2.cache_key()
+
+
+class _FakeRedis:
+    def __init__(self):
+        self._kv: dict[str, tuple[int, str]] = {}
+
+    async def setex(self, key: str, ttl: int, value: str) -> None:
+        self._kv[key] = (ttl, value)
+
+    async def get(self, key: str):
+        item = self._kv.get(key)
+        return item[1] if item else None
+
+
+class TestSearchContextCaching:
+    @pytest.mark.asyncio
+    async def test_cache_search_context_writes_expected_key_and_payload(self):
+        fake_redis = _FakeRedis()
+
+        with patch("src.services.search_cache.get_redis", new=AsyncMock(return_value=fake_redis)):
+            search_id = uuid4()
+            await cache_search_context(
+                search_id=search_id,
+                query_text="python error",
+                filters_json={"languages": ["Python"], "labels": [], "repos": []},
+                result_count=123,
+                page=2,
+                page_size=20,
+            )
+
+        key = f"{CONTEXT_PREFIX}{search_id}"
+        assert key in fake_redis._kv
+
+        ttl, raw = fake_redis._kv[key]
+        assert ttl == CACHE_TTL_SECONDS
+
+        parsed = json.loads(raw)
+        assert parsed["query_text"] == "python error"
+        assert parsed["filters_json"]["languages"] == ["Python"]
+        assert parsed["result_count"] == 123
+        assert parsed["page"] == 2
+        assert parsed["page_size"] == 20
+
+    @pytest.mark.asyncio
+    async def test_get_cached_search_context_returns_parsed_dict(self):
+        fake_redis = _FakeRedis()
+        search_id = uuid4()
+        key = f"{CONTEXT_PREFIX}{search_id}"
+        fake_redis._kv[key] = (CACHE_TTL_SECONDS, json.dumps({
+            "query_text": "q",
+            "filters_json": {"languages": [], "labels": [], "repos": []},
+            "result_count": 5,
+            "page": 1,
+            "page_size": 20,
+        }))
+
+        with patch("src.services.search_cache.get_redis", new=AsyncMock(return_value=fake_redis)):
+            ctx = await get_cached_search_context(search_id)
+
+        assert ctx is not None
+        assert ctx["query_text"] == "q"
+        assert ctx["result_count"] == 5
+
+    @pytest.mark.asyncio
+    async def test_get_cached_search_context_returns_none_when_redis_unavailable(self):
+        with patch("src.services.search_cache.get_redis", new=AsyncMock(return_value=None)):
+            ctx = await get_cached_search_context(uuid4())
+        assert ctx is None
 
     def test_different_query_different_key(self):
         """Different queries should produce different cache keys."""
