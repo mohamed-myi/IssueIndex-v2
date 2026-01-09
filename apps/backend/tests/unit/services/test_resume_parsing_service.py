@@ -342,20 +342,26 @@ class TestGenerateResumeVector:
         
         mock_vector = [0.1] * 768
         
-        with patch("src.services.resume_parsing_service.embed_query", new_callable=AsyncMock) as mock_embed:
-            mock_embed.return_value = mock_vector
+        with patch(
+            "src.services.resume_parsing_service.generate_resume_vector_with_retry",
+            new_callable=AsyncMock,
+        ) as mock_gen:
+            mock_gen.return_value = mock_vector
             
             result = await generate_resume_vector("# Resume\n\nPython developer with 5 years experience")
             
-            mock_embed.assert_called_once()
+            mock_gen.assert_called_once()
             assert result == mock_vector
     
     @pytest.mark.asyncio
     async def test_returns_none_on_embedding_failure(self):
         from src.services.resume_parsing_service import generate_resume_vector
         
-        with patch("src.services.resume_parsing_service.embed_query", new_callable=AsyncMock) as mock_embed:
-            mock_embed.return_value = None
+        with patch(
+            "src.services.resume_parsing_service.generate_resume_vector_with_retry",
+            new_callable=AsyncMock,
+        ) as mock_gen:
+            mock_gen.return_value = None
             
             result = await generate_resume_vector("Resume text")
             
@@ -365,20 +371,26 @@ class TestGenerateResumeVector:
     async def test_returns_none_for_empty_text(self):
         from src.services.resume_parsing_service import generate_resume_vector
         
-        with patch("src.services.resume_parsing_service.embed_query", new_callable=AsyncMock) as mock_embed:
+        with patch(
+            "src.services.resume_parsing_service.generate_resume_vector_with_retry",
+            new_callable=AsyncMock,
+        ) as mock_gen:
             result = await generate_resume_vector("")
             
-            mock_embed.assert_not_called()
+            mock_gen.assert_not_called()
             assert result is None
     
     @pytest.mark.asyncio
     async def test_returns_none_for_whitespace_text(self):
         from src.services.resume_parsing_service import generate_resume_vector
         
-        with patch("src.services.resume_parsing_service.embed_query", new_callable=AsyncMock) as mock_embed:
+        with patch(
+            "src.services.resume_parsing_service.generate_resume_vector_with_retry",
+            new_callable=AsyncMock,
+        ) as mock_gen:
             result = await generate_resume_vector("   \n\t   ")
             
-            mock_embed.assert_not_called()
+            mock_gen.assert_not_called()
             assert result is None
 
 

@@ -1,6 +1,11 @@
 """
 Service for parsing resumes and extracting profile data.
 Implements a 4 stage pipeline; Parse via Docling, Extract via GLiNER, Normalize, Embed.
+
+For async processing via Cloud Tasks:
+  - initiate_resume_processing() validates and enqueues task; returns immediately
+  - process_resume() is the synchronous version for testing or fallback
+  - Worker calls parse_resume_to_markdown, extract_entities, normalize_entities directly
 """
 import logging
 from datetime import datetime, timezone
@@ -15,6 +20,7 @@ from models.profiles import UserProfile
 from src.services.profile_embedding_service import calculate_combined_vector
 from src.services.vector_generation import generate_resume_vector_with_retry
 from src.services.onboarding_service import mark_onboarding_in_progress
+from src.services.cloud_tasks_service import enqueue_resume_task
 
 import sys
 
@@ -197,6 +203,44 @@ async def _get_or_create_profile(
     return profile
 
 
+async def initiate_resume_processing(
+    db: AsyncSession,
+    user_id: UUID,
+    file_bytes: bytes,
+    filename: str,
+    content_type: str | None = None,
+) -> dict:
+    """
+    Validates file and enqueues Cloud Task for async processing.
+    Returns immediately with job_id and status 'processing'.
+    
+    The actual parsing happens in the resume worker via Cloud Tasks.
+    """
+    validate_file(filename, content_type, len(file_bytes))
+    
+    profile = await _get_or_create_profile(db, user_id)
+    
+    await mark_onboarding_in_progress(db, profile)
+    
+    profile.is_calculating = True
+    await db.commit()
+    
+    job_id = await enqueue_resume_task(
+        user_id=user_id,
+        file_bytes=file_bytes,
+        filename=filename,
+        content_type=content_type,
+    )
+    
+    logger.info(f"Resume processing initiated for user {user_id}, job_id {job_id}")
+    
+    return {
+        "job_id": job_id,
+        "status": "processing",
+        "message": "Resume uploaded. Processing in background.",
+    }
+
+
 async def process_resume(
     db: AsyncSession,
     user_id: UUID,
@@ -204,7 +248,10 @@ async def process_resume(
     filename: str,
     content_type: str | None = None,
 ) -> dict:
-    """Orchestrates all 4 pipeline stages and updates profile."""
+    """
+    Synchronous version: Orchestrates all 4 pipeline stages and updates profile.
+    Used for testing or as fallback when Cloud Tasks is unavailable.
+    """
     validate_file(filename, content_type, len(file_bytes))
     
     profile = await _get_or_create_profile(db, user_id)
@@ -318,6 +365,7 @@ __all__ = [
     "normalize_entities",
     "generate_resume_vector",
     "check_minimal_data",
+    "initiate_resume_processing",
     "process_resume",
     "get_resume_data",
     "delete_resume",
