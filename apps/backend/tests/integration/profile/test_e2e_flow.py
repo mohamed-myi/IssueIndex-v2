@@ -428,17 +428,34 @@ class TestCombinedVectorCalculation:
 
 
 class TestProfileDeletionCancelsJobs:
-    """Tests that profile deletion cancels pending jobs."""
+    """Tests that profile deletion cancels pending Cloud Tasks."""
     
-    def test_retry_queue_cancel_user_jobs(self):
-        """Verifies retry queue can cancel jobs for a user."""
-        from src.services.retry_queue import RetryQueue
+    async def test_cloud_tasks_cancel_user_tasks(self):
+        """Verifies Cloud Tasks client can cancel tasks for a user in mock mode."""
+        from src.services.cloud_tasks_service import (
+            get_cloud_tasks_client,
+            reset_client_for_testing,
+        )
         
-        queue = RetryQueue()
+        reset_client_for_testing()
+        
+        client = get_cloud_tasks_client()
+        
         user_id = uuid4()
         
-        cancelled_count = queue.cancel_user_jobs(user_id)
+        job_id = await client.enqueue_resume_task(
+            user_id=user_id,
+            file_bytes=b"test content",
+            filename="resume.pdf",
+        )
         
-        assert cancelled_count >= 0
-        assert user_id in queue._cancelled_users
+        mock_tasks = client.get_mock_tasks()
+        assert len(mock_tasks) == 1
+        
+        cancelled_count = await client.cancel_user_tasks(user_id)
+        
+        assert cancelled_count == 1
+        assert len(client.get_mock_tasks()) == 0
+        
+        reset_client_for_testing()
 

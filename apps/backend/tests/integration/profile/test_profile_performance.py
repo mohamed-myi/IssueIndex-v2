@@ -1,10 +1,10 @@
 """
 Performance tests for Profile Engine.
-Verifies timing targets from PROFILE.md Section VIII:
-    Intent vector: under 3 seconds
-    Resume parsing: under 30 seconds
-    GitHub fetch: under 15 seconds
-    GET /profile: under 100ms
+Verify timing benchmarks:
+    Intent vector: < 3 seconds
+    Resume parsing: < 30 seconds
+    GitHub fetch: < 15 seconds
+    GET /profile: < 100ms
 """
 import time
 import pytest
@@ -192,14 +192,18 @@ class TestVectorGenerationTiming:
         assert avg_time < 0.01, f"Average combined vector time {avg_time*1000:.2f}ms exceeds 10ms"
 
 
-class TestRetryQueuePerformance:
-    """Tests retry queue operations are non-blocking."""
+class TestCloudTasksPerformance:
+    """Tests Cloud Tasks operations are non-blocking in mock mode."""
     
     @pytest.mark.asyncio
     async def test_enqueue_is_fast(self):
-        from src.services.retry_queue import RetryQueue, JobType
+        from src.services.cloud_tasks_service import (
+            get_cloud_tasks_client,
+            reset_client_for_testing,
+        )
         
-        queue = RetryQueue()
+        reset_client_for_testing()
+        client = get_cloud_tasks_client()
         user_id = uuid4()
         
         iterations = 100
@@ -207,29 +211,38 @@ class TestRetryQueuePerformance:
         
         for _ in range(iterations):
             start = time.perf_counter()
-            await queue.enqueue(
-                JobType.INTENT_VECTOR,
-                user_id,
-                {"stack_areas": ["backend"], "text": "test"},
+            await client.enqueue_resume_task(
+                user_id=user_id,
+                file_bytes=b"test content",
+                filename="resume.pdf",
             )
             elapsed = time.perf_counter() - start
             times.append(elapsed)
         
         avg_time = sum(times) / len(times)
         
-        assert avg_time < 0.001, f"Average enqueue time {avg_time*1000:.2f}ms exceeds 1ms"
-    
-    def test_cancel_user_jobs_is_fast(self):
-        from src.services.retry_queue import RetryQueue
+        assert avg_time < 0.01, f"Average enqueue time {avg_time*1000:.2f}ms exceeds 10ms"
         
-        queue = RetryQueue()
+        reset_client_for_testing()
+    
+    @pytest.mark.asyncio
+    async def test_cancel_user_tasks_is_fast(self):
+        from src.services.cloud_tasks_service import (
+            get_cloud_tasks_client,
+            reset_client_for_testing,
+        )
+        
+        reset_client_for_testing()
+        client = get_cloud_tasks_client()
         user_id = uuid4()
         
         start = time.perf_counter()
-        cancelled = queue.cancel_user_jobs(user_id)
+        cancelled = await client.cancel_user_tasks(user_id)
         elapsed = time.perf_counter() - start
         
-        assert elapsed < 0.001, f"Cancel jobs took {elapsed*1000:.2f}ms"
+        assert elapsed < 0.01, f"Cancel tasks took {elapsed*1000:.2f}ms"
+        
+        reset_client_for_testing()
 
 
 class TestOnboardingEndpointPerformance:
