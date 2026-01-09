@@ -3,6 +3,8 @@ Feed API route for personalized issue recommendations.
 Uses combined_vector for similarity; falls back to trending when no profile.
 """
 from typing import Optional
+from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -15,10 +17,18 @@ from src.services.feed_service import (
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
 )
+from src.services.recommendation_event_service import (
+    generate_recommendation_batch_id,
+    store_recommendation_batch_context,
+)
 from models.identity import User, Session
 
 
 router = APIRouter()
+
+class WhyThisItemOutput(BaseModel):
+    entity: str
+    score: float
 
 
 class FeedItemOutput(BaseModel):
@@ -35,10 +45,17 @@ class FeedItemOutput(BaseModel):
         default=None,
         description="Cosine similarity to user profile; null for trending feed",
     )
+    why_this: Optional[list[WhyThisItemOutput]] = Field(
+        default=None,
+        description="Top explanation entities with raw scores; present for personalized feed only.",
+    )
 
 
 class FeedResponse(BaseModel):
     """Paginated feed response with personalization metadata."""
+    recommendation_batch_id: str = Field(
+        description="Server generated identifier for logging impressions and clicks for this response.",
+    )
     results: list[FeedItemOutput]
     total: int
     page: int
@@ -91,8 +108,21 @@ async def get_feed_route(
         page=page,
         page_size=page_size,
     )
+
+    recommendation_batch_id = generate_recommendation_batch_id()
+    served_at = datetime.now(timezone.utc)
+    issue_node_ids = [item.node_id for item in feed.results]
+    await store_recommendation_batch_context(
+        recommendation_batch_id=recommendation_batch_id,
+        issue_node_ids=issue_node_ids,
+        page=feed.page,
+        page_size=feed.page_size,
+        is_personalized=feed.is_personalized,
+        served_at=served_at,
+    )
     
     return FeedResponse(
+        recommendation_batch_id=str(recommendation_batch_id),
         results=[
             FeedItemOutput(
                 node_id=item.node_id,
@@ -104,6 +134,11 @@ async def get_feed_route(
                 primary_language=item.primary_language,
                 github_created_at=item.github_created_at.isoformat(),
                 similarity_score=item.similarity_score,
+                why_this=(
+                    [WhyThisItemOutput(entity=w.entity, score=w.score) for w in item.why_this]
+                    if feed.is_personalized and item.why_this
+                    else None
+                ),
             )
             for item in feed.results
         ],
