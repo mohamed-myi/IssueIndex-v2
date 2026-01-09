@@ -7,7 +7,12 @@ from dotenv import load_dotenv
 # This ensures integration tests use the real DATABASE_URL.
 project_root = Path(__file__).resolve().parent.parent.parent.parent
 env_local_path = project_root / ".env.local"
-load_dotenv(env_local_path)
+try:
+    load_dotenv(env_local_path)
+except PermissionError:
+    # CI may deny access to local secret files.
+    # Tests fall back to defaults below.
+    pass
 load_dotenv(project_root / ".env")
 
 if str(project_root) not in sys.path:
@@ -24,3 +29,4 @@ os.environ.setdefault("GITHUB_CLIENT_SECRET", "test_github_client_secret")
 os.environ.setdefault("GOOGLE_CLIENT_ID", "test_google_client_id")
 os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test_google_client_secret")
 os.environ.setdefault("ENVIRONMENT", "development")
+os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/testdb")
