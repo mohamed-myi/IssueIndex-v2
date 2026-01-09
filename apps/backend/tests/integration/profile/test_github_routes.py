@@ -65,15 +65,15 @@ class TestAuthRequired:
 
 
 class TestPostGitHub:
-    """Tests for POST /profile/github endpoint."""
+    """Tests for POST /profile/github endpoint (async processing)."""
     
     def test_returns_400_when_no_github_connected(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.fetch_github_profile",
+            "src.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
-        ) as mock_fetch:
-            from src.services.github_profile_service import GitHubNotConnectedError
-            mock_fetch.side_effect = GitHubNotConnectedError(
+        ) as mock_initiate:
+            from src.core.errors import GitHubNotConnectedError
+            mock_initiate.side_effect = GitHubNotConnectedError(
                 "No GitHub account connected. Please connect GitHub first at /auth/connect/github"
             )
             
@@ -84,11 +84,11 @@ class TestPostGitHub:
     
     def test_returns_400_when_token_revoked(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.fetch_github_profile",
+            "src.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
-        ) as mock_fetch:
-            from src.services.github_profile_service import GitHubNotConnectedError
-            mock_fetch.side_effect = GitHubNotConnectedError(
+        ) as mock_initiate:
+            from src.core.errors import GitHubNotConnectedError
+            mock_initiate.side_effect = GitHubNotConnectedError(
                 "Please reconnect your GitHub account"
             )
             
@@ -97,71 +97,24 @@ class TestPostGitHub:
         assert response.status_code == 400
         assert "connect github" in response.json()["detail"].lower()
     
-    def test_successful_fetch_returns_data(self, authenticated_client, mock_user):
+    def test_successful_initiate_returns_202_accepted(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.fetch_github_profile",
+            "src.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
-        ) as mock_fetch:
-            mock_fetch.return_value = {
-                "status": "ready",
-                "username": "octocat",
-                "starred_count": 42,
-                "contributed_repos": 10,
-                "languages": ["Python", "Go"],
-                "topics": ["web", "cli"],
-                "vector_status": "ready",
-                "fetched_at": "2026-01-04T12:00:00+00:00",
-                "minimal_data_warning": None,
+        ) as mock_initiate:
+            mock_initiate.return_value = {
+                "job_id": "job-github-123",
+                "status": "processing",
+                "message": "GitHub profile fetch started. Processing in background.",
             }
             
             response = authenticated_client.post("/profile/github")
         
-        assert response.status_code == 200
+        assert response.status_code == 202
         data = response.json()
-        assert data["status"] == "ready"
-        assert data["username"] == "octocat"
-        assert data["starred_count"] == 42
-        assert data["contributed_repos"] == 10
-        assert data["languages"] == ["Python", "Go"]
-        assert data["topics"] == ["web", "cli"]
-        assert data["vector_status"] == "ready"
-    
-    def test_returns_minimal_data_warning(self, authenticated_client, mock_user):
-        with patch(
-            "src.api.routes.profile_github.fetch_github_profile",
-            new_callable=AsyncMock,
-        ) as mock_fetch:
-            mock_fetch.return_value = {
-                "status": "ready",
-                "username": "newuser",
-                "starred_count": 2,
-                "contributed_repos": 1,
-                "languages": ["Python"],
-                "topics": [],
-                "vector_status": "ready",
-                "fetched_at": "2026-01-04T12:00:00+00:00",
-                "minimal_data_warning": "We found limited public activity on your GitHub profile.",
-            }
-            
-            response = authenticated_client.post("/profile/github")
-        
-        assert response.status_code == 200
-        data = response.json()
-        assert data["minimal_data_warning"] is not None
-        assert "limited" in data["minimal_data_warning"].lower()
-    
-    def test_returns_503_on_github_rate_limit(self, authenticated_client, mock_user):
-        with patch(
-            "src.api.routes.profile_github.fetch_github_profile",
-            new_callable=AsyncMock,
-        ) as mock_fetch:
-            from src.ingestion.github_client import GitHubRateLimitError
-            mock_fetch.side_effect = GitHubRateLimitError()
-            
-            response = authenticated_client.post("/profile/github")
-        
-        assert response.status_code == 503
-        assert "busy" in response.json()["detail"].lower()
+        assert data["status"] == "processing"
+        assert data["job_id"] == "job-github-123"
+        assert "background" in data["message"].lower()
 
 
 class TestGetGitHub:
@@ -212,39 +165,34 @@ class TestRefreshGitHub:
     
     def test_returns_429_when_too_soon(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.fetch_github_profile",
+            "src.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
-        ) as mock_fetch:
-            from src.services.github_profile_service import RefreshRateLimitError
-            mock_fetch.side_effect = RefreshRateLimitError(1800)
+        ) as mock_initiate:
+            from src.core.errors import RefreshRateLimitError
+            mock_initiate.side_effect = RefreshRateLimitError(1800)
             
             response = authenticated_client.post("/profile/github/refresh")
         
         assert response.status_code == 429
         assert "minute" in response.json()["detail"].lower()
     
-    def test_allows_refresh_after_cooldown(self, authenticated_client, mock_user):
+    def test_allows_refresh_after_cooldown_returns_202(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.fetch_github_profile",
+            "src.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
-        ) as mock_fetch:
-            mock_fetch.return_value = {
-                "status": "ready",
-                "username": "octocat",
-                "starred_count": 50,
-                "contributed_repos": 15,
-                "languages": ["Python", "Go", "Rust"],
-                "topics": ["web", "cli", "systems"],
-                "vector_status": "ready",
-                "fetched_at": "2026-01-04T13:00:00+00:00",
-                "minimal_data_warning": None,
+        ) as mock_initiate:
+            mock_initiate.return_value = {
+                "job_id": "job-refresh-456",
+                "status": "processing",
+                "message": "GitHub profile fetch started. Processing in background.",
             }
             
             response = authenticated_client.post("/profile/github/refresh")
         
-        assert response.status_code == 200
+        assert response.status_code == 202
         data = response.json()
-        assert data["starred_count"] == 50
+        assert data["status"] == "processing"
+        assert data["job_id"] == "job-refresh-456"
 
 
 class TestDeleteGitHub:
@@ -277,45 +225,50 @@ class TestDeleteGitHub:
         assert "cleared" in data["message"].lower()
 
 
-class TestCombinedVectorUpdates:
-    """Tests verifying combined vector is recalculated."""
+class TestAsyncProcessingFlow:
+    """Tests verifying async processing via Cloud Tasks."""
     
-    def test_fetch_updates_combined_vector(self, authenticated_client, mock_user):
-        """Verifies that fetching GitHub data triggers combined vector recalculation."""
+    def test_initiate_returns_job_id_for_polling(self, authenticated_client, mock_user):
+        """Verifies that initiate returns job_id for status polling."""
         with patch(
-            "src.api.routes.profile_github.fetch_github_profile",
+            "src.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
-        ) as mock_fetch:
-            mock_fetch.return_value = {
-                "status": "ready",
-                "username": "octocat",
-                "starred_count": 42,
-                "contributed_repos": 10,
-                "languages": ["Python"],
-                "topics": ["web"],
-                "vector_status": "ready",
-                "fetched_at": "2026-01-04T12:00:00+00:00",
-                "minimal_data_warning": None,
+        ) as mock_initiate:
+            mock_initiate.return_value = {
+                "job_id": "test-github-job-789",
+                "status": "processing",
+                "message": "GitHub profile fetch started. Processing in background.",
             }
             
             response = authenticated_client.post("/profile/github")
             
-            assert response.status_code == 200
-            assert response.json()["vector_status"] == "ready"
+            assert response.status_code == 202
+            data = response.json()
+            assert "job_id" in data
+            assert data["job_id"] == "test-github-job-789"
     
-    def test_delete_recalculates_combined_vector(self, authenticated_client, mock_user):
-        """Verifies that deleting GitHub data triggers combined vector recalculation."""
+    def test_get_github_shows_processing_status(self, authenticated_client, mock_user):
+        """Verifies GET endpoint can show in-progress status."""
         with patch(
-            "src.api.routes.profile_github.delete_github",
+            "src.api.routes.profile_github.get_github_data",
             new_callable=AsyncMock,
-        ) as mock_delete:
-            # delete_github internally recalculates combined vector
-            mock_delete.return_value = True
+        ) as mock_get:
+            mock_get.return_value = {
+                "status": "ready",
+                "username": "octocat",
+                "starred_count": 0,
+                "contributed_repos": 0,
+                "languages": [],
+                "topics": [],
+                "vector_status": None,
+                "fetched_at": None,
+            }
             
-            response = authenticated_client.delete("/profile/github")
+            response = authenticated_client.get("/profile/github")
             
             assert response.status_code == 200
-            mock_delete.assert_called_once()
+            data = response.json()
+            assert data["vector_status"] is None
 
 
 class TestErrorMessages:
@@ -323,28 +276,27 @@ class TestErrorMessages:
     
     def test_oauth_revoked_message(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.fetch_github_profile",
+            "src.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
-        ) as mock_fetch:
-            from src.services.github_profile_service import GitHubNotConnectedError
-            mock_fetch.side_effect = GitHubNotConnectedError("Please reconnect your GitHub account")
+        ) as mock_initiate:
+            from src.core.errors import GitHubNotConnectedError
+            mock_initiate.side_effect = GitHubNotConnectedError("Please reconnect your GitHub account")
             
             response = authenticated_client.post("/profile/github")
         
         assert response.status_code == 400
         assert "connect github" in response.json()["detail"].lower()
     
-    def test_github_rate_limit_message(self, authenticated_client, mock_user):
+    def test_refresh_rate_limit_shows_minutes(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.fetch_github_profile",
+            "src.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
-        ) as mock_fetch:
-            from src.ingestion.github_client import GitHubRateLimitError
-            mock_fetch.side_effect = GitHubRateLimitError()
+        ) as mock_initiate:
+            from src.core.errors import RefreshRateLimitError
+            mock_initiate.side_effect = RefreshRateLimitError(1800)
             
-            response = authenticated_client.post("/profile/github")
+            response = authenticated_client.post("/profile/github/refresh")
         
-        assert response.status_code == 503
+        assert response.status_code == 429
         detail = response.json()["detail"].lower()
-        assert "busy" in detail or "hour" in detail
-
+        assert "minute" in detail

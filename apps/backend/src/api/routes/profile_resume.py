@@ -2,13 +2,14 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.api.dependencies import get_db
 from src.middleware.auth import require_auth
 from src.services.resume_parsing_service import (
-    process_resume,
+    initiate_resume_processing,
     get_resume_data,
     delete_resume,
     MAX_FILE_SIZE,
@@ -25,14 +26,11 @@ from models.identity import User, Session
 router = APIRouter()
 
 
-class ResumeUploadResponse(BaseModel):
-    """Response after uploading and parsing a resume."""
+class ResumeUploadAcceptedResponse(BaseModel):
+    """Response after initiating async resume processing."""
+    job_id: str
     status: str
-    skills: list[str]
-    job_titles: list[str]
-    vector_status: Optional[str]
-    uploaded_at: str
-    minimal_data_warning: Optional[str] = None
+    message: str
 
 
 class ResumeDataResponse(BaseModel):
@@ -59,29 +57,30 @@ def _handle_resume_error(e: Exception) -> HTTPException:
     return handle_profile_error(e)
 
 
-@router.post("/resume", response_model=ResumeUploadResponse)
+@router.post("/resume", status_code=202)
 async def upload_resume(
     file: UploadFile = File(...),
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> ResumeUploadResponse:
+) -> ResumeUploadAcceptedResponse:
     """
-    Uploads and parses a resume file.
+    Uploads a resume file and initiates async processing.
     
     Accepts PDF or DOCX files up to 5MB.
-    Extracts skills and job titles via Docling and GLiNER.
-    Generates resume_vector and recalculates combined_vector.
+    File is validated immediately; parsing happens in background via Cloud Tasks.
     
     The original file is processed in memory and never stored.
     Only the extracted metadata and vector are persisted.
     
+    Poll GET /profile or GET /profile/resume for processing status.
+    Check is_calculating=false and vector_status='ready' for completion.
+    
     Returns:
-        ResumeUploadResponse with extracted skills and vector status.
+        202 Accepted with job_id and status 'processing'.
     
     Errors:
         400: Unsupported file format (not PDF or DOCX)
         413: File too large (exceeds 5MB)
-        422: Unable to parse file content
     """
     user, _ = auth
     
@@ -91,23 +90,20 @@ async def upload_resume(
         raise HTTPException(status_code=413, detail="Resume must be under 5MB")
     
     try:
-        result = await process_resume(
+        result = await initiate_resume_processing(
             db,
             user.id,
             file_bytes,
             file.filename or "resume",
             file.content_type,
         )
-    except (UnsupportedFormatError, FileTooLargeError, ResumeParseError) as e:
+    except (UnsupportedFormatError, FileTooLargeError) as e:
         raise _handle_resume_error(e)
     
-    return ResumeUploadResponse(
+    return ResumeUploadAcceptedResponse(
+        job_id=result["job_id"],
         status=result["status"],
-        skills=result["skills"],
-        job_titles=result["job_titles"],
-        vector_status=result["vector_status"],
-        uploaded_at=result["uploaded_at"],
-        minimal_data_warning=result.get("minimal_data_warning"),
+        message=result["message"],
     )
 
 
@@ -118,6 +114,9 @@ async def get_resume(
 ) -> ResumeDataResponse:
     """
     Returns stored resume data.
+    
+    If is_calculating is true, resume is still being processed.
+    Check vector_status for embedding completion status.
     
     Returns:
         ResumeDataResponse with extracted skills and job titles.

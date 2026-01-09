@@ -8,7 +8,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.api.dependencies import get_db
 from src.middleware.auth import require_auth
 from src.services.github_profile_service import (
-    fetch_github_profile,
+    initiate_github_fetch,
     get_github_data,
     delete_github,
 )
@@ -28,17 +28,11 @@ from models.identity import User, Session
 router = APIRouter()
 
 
-class GitHubInitiateResponse(BaseModel):
-    """Response after initiating GitHub profile fetch."""
+class GitHubAcceptedResponse(BaseModel):
+    """Response after initiating async GitHub profile fetch."""
+    job_id: str
     status: str
-    username: str
-    starred_count: int
-    contributed_repos: int
-    languages: list[str]
-    topics: list[str]
-    vector_status: Optional[str]
-    fetched_at: str
-    minimal_data_warning: Optional[str] = None
+    message: str
 
 
 class GitHubDataResponse(BaseModel):
@@ -73,48 +67,41 @@ def _handle_github_error(e: Exception) -> HTTPException:
     return handle_profile_error(e)
 
 
-@router.post("/github", response_model=GitHubInitiateResponse)
-async def initiate_github_fetch(
+@router.post("/github", status_code=202)
+async def initiate_github_fetch_route(
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> GitHubInitiateResponse:
+) -> GitHubAcceptedResponse:
     """
-    Initiates GitHub profile data fetch.
+    Initiates async GitHub profile data fetch.
     
     Requires a connected GitHub account via /auth/connect/github.
-    Extracts languages, topics, and starred/contributed repos.
-    Generates github_vector and recalculates combined_vector.
+    Validates connection immediately; fetching happens in background via Cloud Tasks.
+    
+    Poll GET /profile or GET /profile/github for processing status.
+    Check is_calculating=false and vector_status='ready' for completion.
     
     Returns:
-        GitHubInitiateResponse with extracted profile data and vector status.
+        202 Accepted with job_id and status 'processing'.
     
     Errors:
         400: GitHub not connected or authentication failed
-        503: GitHub API unavailable or rate limited
+        429: Refresh rate limit exceeded
     """
     user, _ = auth
     
     try:
-        result = await fetch_github_profile(db, user.id, is_refresh=False)
+        result = await initiate_github_fetch(db, user.id, is_refresh=False)
     except (
         GitHubNotConnectedError,
         RefreshRateLimitError,
-        ClientAuthError,
-        ClientRateLimitError,
-        GitHubAPIError,
     ) as e:
         raise _handle_github_error(e)
     
-    return GitHubInitiateResponse(
+    return GitHubAcceptedResponse(
+        job_id=result["job_id"],
         status=result["status"],
-        username=result["username"],
-        starred_count=result["starred_count"],
-        contributed_repos=result["contributed_repos"],
-        languages=result["languages"],
-        topics=result["topics"],
-        vector_status=result["vector_status"],
-        fetched_at=result["fetched_at"],
-        minimal_data_warning=result.get("minimal_data_warning"),
+        message=result["message"],
     )
 
 
@@ -125,6 +112,9 @@ async def get_github(
 ) -> GitHubDataResponse:
     """
     Returns stored GitHub profile data.
+    
+    If is_calculating is true, GitHub fetch is still in progress.
+    Check vector_status for embedding completion status.
     
     Returns:
         GitHubDataResponse with extracted languages, topics, and repo counts.
@@ -154,47 +144,40 @@ async def get_github(
     )
 
 
-@router.post("/github/refresh", response_model=GitHubInitiateResponse)
+@router.post("/github/refresh", status_code=202)
 async def refresh_github(
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> GitHubInitiateResponse:
+) -> GitHubAcceptedResponse:
     """
-    Re-fetches GitHub profile data.
+    Re-fetches GitHub profile data asynchronously.
     
     Rate limited to 1 request per hour to avoid GitHub API limits.
+    Validates rate limit immediately; fetching happens in background.
+    
+    Poll GET /profile or GET /profile/github for processing status.
     
     Returns:
-        GitHubInitiateResponse with updated profile data.
+        202 Accepted with job_id and status 'processing'.
     
     Errors:
         400: GitHub not connected or authentication failed
         429: Refresh rate limit exceeded; try again later
-        503: GitHub API unavailable
     """
     user, _ = auth
     
     try:
-        result = await fetch_github_profile(db, user.id, is_refresh=True)
+        result = await initiate_github_fetch(db, user.id, is_refresh=True)
     except (
         GitHubNotConnectedError,
         RefreshRateLimitError,
-        ClientAuthError,
-        ClientRateLimitError,
-        GitHubAPIError,
     ) as e:
         raise _handle_github_error(e)
     
-    return GitHubInitiateResponse(
+    return GitHubAcceptedResponse(
+        job_id=result["job_id"],
         status=result["status"],
-        username=result["username"],
-        starred_count=result["starred_count"],
-        contributed_repos=result["contributed_repos"],
-        languages=result["languages"],
-        topics=result["topics"],
-        vector_status=result["vector_status"],
-        fetched_at=result["fetched_at"],
-        minimal_data_warning=result.get("minimal_data_warning"),
+        message=result["message"],
     )
 
 
