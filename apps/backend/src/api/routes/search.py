@@ -4,6 +4,7 @@ Unknown users: 10 req/min
 Authenticated users: 60 req/min
 """
 
+import json
 from typing import Optional
 from uuid import UUID
 
@@ -26,6 +27,8 @@ from src.services.search_service import (
 from src.services.search_cache import (
     get_cached_search,
     cache_search_response,
+    cache_search_context,
+    get_cached_search_context,
 )
 
 router = APIRouter()
@@ -212,6 +215,18 @@ async def search(
         )
         for r in response.results
     ]
+
+    # Store validated search context for interaction logging.
+    # This enables /search/interact to persist query_text, filters_json, and result_count
+    # without trusting client-provided context fields.
+    await cache_search_context(
+        search_id=response.search_id,
+        query_text=body.query,
+        filters_json=body.filters.model_dump(),
+        result_count=response.total,
+        page=body.page,
+        page_size=body.page_size,
+    )
     
     return SearchResponseOutput(
         search_id=str(response.search_id),
@@ -247,23 +262,77 @@ async def log_interaction(
         search_uuid = UUID(body.search_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid search_id format")
+
+    context = await get_cached_search_context(search_uuid)
+    if context is None:
+        raise HTTPException(status_code=404, detail="Unknown or expired search_id")
+
+    query_text = context.get("query_text")
+    filters_json = context.get("filters_json")
+    result_count = context.get("result_count")
+    page = context.get("page")
+    page_size = context.get("page_size")
+
+    if not isinstance(query_text, str) or not query_text.strip():
+        raise HTTPException(status_code=400, detail="Invalid search context query_text")
+    if not isinstance(filters_json, dict):
+        raise HTTPException(status_code=400, detail="Invalid search context filters_json")
+    if not isinstance(result_count, int) or result_count < 0:
+        raise HTTPException(status_code=400, detail="Invalid search context result_count")
+    if not isinstance(page, int) or page < 1:
+        raise HTTPException(status_code=400, detail="Invalid search context page")
+    if not isinstance(page_size, int) or page_size < 1:
+        raise HTTPException(status_code=400, detail="Invalid search context page_size")
+
+    if result_count == 0:
+        raise HTTPException(status_code=400, detail="Invalid interaction position for empty result set")
+
+    min_pos = (page - 1) * page_size + 1
+    max_pos = min(page * page_size, result_count)
+
+    if body.position < min_pos or body.position > max_pos:
+        raise HTTPException(status_code=400, detail="Invalid interaction position")
     
     # Insert interaction record into analytics.search_interactions
     sql = text("""
         INSERT INTO analytics.search_interactions 
-        (search_id, user_id, query_text, filters_json, selected_node_id, position)
-        VALUES (:search_id, :user_id, :query_text, :filters_json, :selected_node_id, :position)
+        (search_id, user_id, query_text, filters_json, result_count, selected_node_id, position)
+        VALUES (
+            :search_id,
+            :user_id,
+            :query_text,
+            CAST(:filters_json AS jsonb),
+            :result_count,
+            :selected_node_id,
+            :position
+        )
     """)
     
-    await db.execute(sql, {
-        "search_id": search_uuid,
-        "user_id": user_id,
-        "query_text": "",  # Would need to lookup from cache or pass in request
-        "filters_json": None,
-        "selected_node_id": body.selected_node_id,
-        "position": body.position,
-    })
-    await db.commit()
+    try:
+        await db.execute(sql, {
+            "search_id": search_uuid,
+            "user_id": user_id,
+            "query_text": query_text,
+            "filters_json": json.dumps(filters_json),
+            "result_count": result_count,
+            "selected_node_id": body.selected_node_id,
+            "position": body.position,
+        })
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        log_audit_event(
+            AuditEvent.SEARCH_INTERACTION,
+            user_id=user_id,
+            ip_address=ctx.ip_address,
+            metadata={
+                "search_id": body.search_id,
+                "selected_node_id": body.selected_node_id,
+                "position": body.position,
+                "error": str(e),
+            },
+        )
+        return Response(status_code=204)
     
     log_audit_event(
         AuditEvent.SEARCH_INTERACTION,
