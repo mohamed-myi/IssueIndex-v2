@@ -19,6 +19,8 @@ from src.services.bookmark_service import (
     update_note as update_note_service,
     delete_note as delete_note_service,
     get_notes_count_for_bookmark,
+    check_bookmark as check_bookmark_service,
+    check_bookmarks_batch as check_bookmarks_batch_service,
     DEFAULT_PAGE_SIZE,
 )
 from src.core.errors import (
@@ -77,6 +79,22 @@ class NoteOutput(BaseModel):
 
 class NoteListOutput(BaseModel):
     results: list[NoteOutput]
+
+
+class BookmarkCheckOutput(BaseModel):
+    """Single bookmark check response."""
+    bookmarked: bool
+    bookmark_id: str | None
+
+
+class BookmarkBatchCheckInput(BaseModel):
+    """Batch bookmark check request."""
+    issue_node_ids: list[str] = Field(..., min_length=1, max_length=50)
+
+
+class BookmarkBatchCheckOutput(BaseModel):
+    """Batch bookmark check response."""
+    bookmarks: dict[str, str | None]  # issue_node_id -> bookmark_id or null
 
 
 @router.post("", response_model=BookmarkOutput, status_code=201)
@@ -230,6 +248,58 @@ async def delete_bookmark(
         raise HTTPException(status_code=404, detail="Bookmark not found")
 
     return {"deleted": True, "message": "Bookmark and notes deleted"}
+
+
+# Bookmark Check Endpoints
+
+@router.get("/check/{issue_node_id}", response_model=BookmarkCheckOutput)
+async def check_bookmark(
+    issue_node_id: str,
+    auth: tuple[User, Session] = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> BookmarkCheckOutput:
+    """Quick check if user has bookmarked a specific issue."""
+    user, _ = auth
+
+    bookmarked, bookmark_id = await check_bookmark_service(
+        db=db,
+        user_id=user.id,
+        issue_node_id=issue_node_id,
+    )
+
+    return BookmarkCheckOutput(
+        bookmarked=bookmarked,
+        bookmark_id=str(bookmark_id) if bookmark_id else None,
+    )
+
+
+@router.post("/check", response_model=BookmarkBatchCheckOutput)
+async def check_bookmarks_batch(
+    body: BookmarkBatchCheckInput,
+    auth: tuple[User, Session] = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> BookmarkBatchCheckOutput:
+    """
+    Batch check if user has bookmarked multiple issues.
+    
+    Efficiently checks up to 50 issues in a single request.
+    Duplicates in input are automatically deduped.
+    """
+    user, _ = auth
+
+    result_map = await check_bookmarks_batch_service(
+        db=db,
+        user_id=user.id,
+        issue_node_ids=body.issue_node_ids,
+    )
+
+    # Convert UUIDs to strings for JSON response
+    bookmarks = {
+        node_id: str(bookmark_id) if bookmark_id else None
+        for node_id, bookmark_id in result_map.items()
+    }
+
+    return BookmarkBatchCheckOutput(bookmarks=bookmarks)
 
 
 @router.post("/{bookmark_id}/notes", response_model=NoteOutput, status_code=201)

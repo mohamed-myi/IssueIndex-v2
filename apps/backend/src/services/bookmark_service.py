@@ -271,6 +271,68 @@ async def get_notes_count_for_bookmark(
     return result.one()
 
 
+async def check_bookmark(
+    db: AsyncSession,
+    user_id: UUID,
+    issue_node_id: str,
+) -> tuple[bool, UUID | None]:
+    """
+    Checks if user has bookmarked a specific issue.
+    
+    Returns:
+        (bookmarked: bool, bookmark_id: UUID | None)
+    """
+    stmt = select(BookmarkedIssue.id).where(
+        BookmarkedIssue.user_id == user_id,
+        BookmarkedIssue.issue_node_id == issue_node_id,
+    )
+    result = await db.exec(stmt)
+    bookmark_id = result.first()
+    
+    if bookmark_id is not None:
+        return True, bookmark_id
+    return False, None
+
+
+async def check_bookmarks_batch(
+    db: AsyncSession,
+    user_id: UUID,
+    issue_node_ids: list[str],
+) -> dict[str, UUID | None]:
+    """
+    Batch check if user has bookmarked multiple issues.
+    Handles duplicates by deduping input.
+    
+    Args:
+        issue_node_ids: List of issue node IDs (duplicates allowed, will be deduped)
+    
+    Returns:
+        Dict mapping issue_node_id -> bookmark_id (or None if not bookmarked)
+    """
+    if not issue_node_ids:
+        return {}
+    
+    # Dedupe input
+    unique_ids = list(set(issue_node_ids))
+    
+    # Initialize result with None for all requested IDs
+    result_map: dict[str, UUID | None] = {node_id: None for node_id in unique_ids}
+    
+    # Fetch all matching bookmarks in single query
+    stmt = select(BookmarkedIssue.issue_node_id, BookmarkedIssue.id).where(
+        BookmarkedIssue.user_id == user_id,
+        BookmarkedIssue.issue_node_id.in_(unique_ids),
+    )
+    result = await db.exec(stmt)
+    rows = result.all()
+    
+    # Update result map with found bookmarks
+    for row in rows:
+        result_map[row.issue_node_id] = row.id
+    
+    return result_map
+
+
 __all__ = [
     "create_bookmark",
     "list_bookmarks",
@@ -283,6 +345,8 @@ __all__ = [
     "update_note",
     "delete_note",
     "get_notes_count_for_bookmark",
+    "check_bookmark",
+    "check_bookmarks_batch",
     "DEFAULT_PAGE_SIZE",
     "MAX_PAGE_SIZE",
 ]
