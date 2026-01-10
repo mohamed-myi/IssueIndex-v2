@@ -38,13 +38,17 @@ from src.services.session_service import (
     invalidate_session,
     invalidate_all_sessions,
     get_session_by_id,
+    count_sessions,
+    delete_user_cascade,
     ExistingAccountError,
     ProviderConflictError,
+    UserNotFoundError,
 )
 from src.services.linked_account_service import (
     store_linked_account,
     get_active_linked_account,
     mark_revoked,
+    list_linked_accounts,
     LinkedAccountNotFoundError,
 )
 
@@ -807,3 +811,117 @@ async def get_connect_status(
             "connected_at": github_account.created_at.isoformat() if github_account else None,
         }
     }
+
+
+@router.get("/me")
+async def get_current_user_info(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Returns current user info for navbar and settings pages"""
+    ctx = await get_request_context(request)
+    
+    try:
+        session = await get_current_session(request, ctx, db)
+        user = await get_current_user(session, db)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "github_username": user.github_username,
+        "google_id": user.google_id,
+        "created_at": user.created_at.isoformat(),
+        "created_via": user.created_via,
+    }
+
+
+@router.get("/linked-accounts")
+async def get_linked_accounts_list(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Lists all connected OAuth providers for settings page"""
+    ctx = await get_request_context(request)
+    
+    try:
+        session = await get_current_session(request, ctx, db)
+        user = await get_current_user(session, db)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    accounts = await list_linked_accounts(db, user.id)
+    
+    return {
+        "accounts": [
+            {
+                "provider": account.provider,
+                "connected": True,
+                "username": account.provider_user_id,
+                "connected_at": account.created_at.isoformat(),
+                "scopes": account.scopes or [],
+            }
+            for account in accounts
+        ]
+    }
+
+
+@router.get("/sessions/count")
+async def get_sessions_count(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Returns count of active sessions for user"""
+    ctx = await get_request_context(request)
+    
+    try:
+        session = await get_current_session(request, ctx, db)
+        user = await get_current_user(session, db)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    count = await count_sessions(db, user.id)
+    
+    return {"count": count}
+
+
+@router.delete("/account")
+async def delete_account(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """GDPR-compliant full account deletion with cascade"""
+    ctx = await get_request_context(request)
+    
+    try:
+        session = await get_current_session(request, ctx, db)
+        user = await get_current_user(session, db)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user_id = user.id
+    
+    try:
+        result = await delete_user_cascade(db, user_id)
+    except UserNotFoundError:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    log_audit_event(
+        AuditEvent.LOGOUT_ALL,
+        user_id=user_id,
+        session_id=session.id,
+        ip_address=ctx.ip_address,
+        metadata={
+            "action": "account_deleted",
+            "tables_affected": result.tables_affected,
+            "total_rows": result.total_rows,
+        },
+    )
+    
+    response = JSONResponse(content={
+        "deleted": True,
+        "message": "Account and all data permanently deleted",
+    })
+    clear_session_cookie(response)
+    return response

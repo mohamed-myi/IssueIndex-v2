@@ -9,7 +9,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from src.core.config import get_settings
 from src.core.oauth import UserProfile, OAuthProvider
 from src.core.security import generate_session_id
-from models.identity import User, Session
+from models.identity import User, Session, LinkedAccount
+from models.profiles import UserProfile as UserProfileModel
+from models.persistence import BookmarkedIssue, PersonalNote
 
 
 USER_AGENT_MAX_LENGTH = 512
@@ -303,3 +305,93 @@ async def count_sessions(
     result = await db.exec(statement)
     return result.one()
 
+
+class UserNotFoundError(Exception):
+    pass
+
+
+@dataclass
+class CascadeDeletionResult:
+    tables_affected: list[str]
+    total_rows: int
+
+
+async def delete_user_cascade(
+    db: AsyncSession,
+    user_id: UUID,
+) -> CascadeDeletionResult:
+    """
+    GDPR-compliant cascade deletion of user and all related data.
+    Uses manual transaction to ensure atomicity; rolls back on any failure.
+    Deletion order: personal_notes -> bookmarked_issues -> linked_accounts -> 
+                    user_profiles -> sessions -> users
+    """
+    user_stmt = select(User).where(User.id == user_id)
+    user_result = await db.exec(user_stmt)
+    user = user_result.first()
+    
+    if user is None:
+        raise UserNotFoundError(f"User {user_id} not found")
+    
+    tables_affected = []
+    total_rows = 0
+    
+    async with db.begin():
+        # Delete personal_notes via bookmark subquery
+        bookmark_ids_subq = select(BookmarkedIssue.id).where(
+            BookmarkedIssue.user_id == user_id
+        ).scalar_subquery()
+        
+        notes_stmt = delete(PersonalNote).where(
+            PersonalNote.bookmark_id.in_(bookmark_ids_subq)
+        )
+        notes_result = await db.exec(notes_stmt)
+        if notes_result.rowcount > 0:
+            tables_affected.append("personal_notes")
+            total_rows += notes_result.rowcount
+        
+        # Delete bookmarked_issues
+        bookmarks_stmt = delete(BookmarkedIssue).where(
+            BookmarkedIssue.user_id == user_id
+        )
+        bookmarks_result = await db.exec(bookmarks_stmt)
+        if bookmarks_result.rowcount > 0:
+            tables_affected.append("bookmarked_issues")
+            total_rows += bookmarks_result.rowcount
+        
+        # Delete linked_accounts
+        accounts_stmt = delete(LinkedAccount).where(
+            LinkedAccount.user_id == user_id
+        )
+        accounts_result = await db.exec(accounts_stmt)
+        if accounts_result.rowcount > 0:
+            tables_affected.append("linked_accounts")
+            total_rows += accounts_result.rowcount
+        
+        # Delete user_profiles
+        profiles_stmt = delete(UserProfileModel).where(
+            UserProfileModel.user_id == user_id
+        )
+        profiles_result = await db.exec(profiles_stmt)
+        if profiles_result.rowcount > 0:
+            tables_affected.append("user_profiles")
+            total_rows += profiles_result.rowcount
+        
+        # Delete sessions
+        sessions_stmt = delete(Session).where(Session.user_id == user_id)
+        sessions_result = await db.exec(sessions_stmt)
+        if sessions_result.rowcount > 0:
+            tables_affected.append("sessions")
+            total_rows += sessions_result.rowcount
+        
+        # Delete user
+        user_stmt = delete(User).where(User.id == user_id)
+        user_result = await db.exec(user_stmt)
+        if user_result.rowcount > 0:
+            tables_affected.append("users")
+            total_rows += user_result.rowcount
+    
+    return CascadeDeletionResult(
+        tables_affected=tables_affected,
+        total_rows=total_rows,
+    )
