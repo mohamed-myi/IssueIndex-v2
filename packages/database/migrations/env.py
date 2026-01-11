@@ -23,7 +23,8 @@ load_dotenv(os.path.join(project_root, '.env'))
 config = context.config
 
 # Override sqlalchemy.url with DIRECT_DATABASE_URL for migrations
-database_url = os.getenv("DIRECT_DATABASE_URL", "")
+# Falls back to DATABASE_URL if DIRECT_DATABASE_URL is not set
+database_url = os.getenv("DIRECT_DATABASE_URL") or os.getenv("DATABASE_URL", "")
 if database_url.startswith("postgresql://"):
     database_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
 # Escape percent signs to prevent parsing issues
