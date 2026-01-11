@@ -14,6 +14,9 @@ COPY apps/backend/pyproject.toml apps/backend/README.md apps/backend/
 COPY packages/database/pyproject.toml packages/database/README.md packages/database/
 COPY packages/shared/pyproject.toml packages/shared/README.md packages/shared/
 
+# Install CPU-only PyTorch first to avoid 4GB+ CUDA packages
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
 # Install dependencies
 RUN pip install --no-cache-dir \
     -e packages/shared \
