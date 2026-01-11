@@ -35,7 +35,7 @@ COPY packages/database/src packages/database/src
 COPY apps/backend/src apps/backend/src
 COPY apps/workers/src apps/workers/src
 
-ENV PYTHONPATH=/app/apps/workers:/app/apps/backend:/app/packages/database:/app/packages/shared
+ENV PYTHONPATH=/app/apps/workers:/app/apps/backend:/app/packages/database/src:/app/packages/shared/src
 
 # Entry point set by JOB_TYPE environment variable
 CMD ["python", "-m", "src"]

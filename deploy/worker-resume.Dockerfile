@@ -30,7 +30,7 @@ COPY packages/shared/src packages/shared/src
 COPY packages/database/src packages/database/src
 COPY apps/backend/src apps/backend/src
 
-ENV PYTHONPATH=/app/apps/backend:/app/packages/database:/app/packages/shared
+ENV PYTHONPATH=/app/apps/backend:/app/packages/database/src:/app/packages/shared/src
 ENV PORT=8080
 ENV EMBEDDING_MODE=vertex
 

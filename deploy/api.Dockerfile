@@ -25,7 +25,10 @@ COPY packages/database/src packages/database/src
 COPY apps/backend/src apps/backend/src
 
 # Set environment
-ENV PYTHONPATH=/app/apps/backend:/app/packages/database:/app/packages/shared
+# - /app/apps/backend: for "from src.x" imports in backend code
+# - /app/packages/database/src: for "from models.x" direct imports
+# - /app/packages/shared/src: for "from constants" direct imports
+ENV PYTHONPATH=/app/apps/backend:/app/packages/database/src:/app/packages/shared/src
 ENV PORT=8080
 ENV EMBEDDING_MODE=vertex
 
