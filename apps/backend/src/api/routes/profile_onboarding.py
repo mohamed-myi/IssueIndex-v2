@@ -1,8 +1,8 @@
 """Onboarding API routes for tracking onboarding progress."""
-from typing import Optional
+from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.api.dependencies import get_db
@@ -13,7 +13,13 @@ from src.services.onboarding_service import (
     skip_onboarding,
     CannotCompleteOnboardingError,
     OnboardingAlreadyCompletedError,
+    start_onboarding,
 )
+from src.services.profile_service import (
+    put_intent as put_intent_service,
+    update_preferences as update_preferences_service,
+)
+from src.core.errors import InvalidTaxonomyValueError
 from src.services.recommendation_preview_service import (
     get_preview_recommendations,
     InvalidSourceError,
@@ -29,6 +35,28 @@ class OnboardingStatusResponse(BaseModel):
     completed_steps: list[str]
     available_steps: list[str]
     can_complete: bool
+
+
+class OnboardingStartResponse(OnboardingStatusResponse):
+    action: str
+
+
+class OnboardingStepIntentInput(BaseModel):
+    languages: list[str] = Field(..., min_length=1, max_length=10)
+    stack_areas: list[str] = Field(..., min_length=1)
+    text: str = Field(..., min_length=10, max_length=2000)
+    experience_level: Optional[str] = Field(default=None)
+
+
+class OnboardingStepPreferencesInput(BaseModel):
+    preferred_languages: Optional[list[str]] = Field(default=None)
+    preferred_topics: Optional[list[str]] = Field(default=None)
+    min_heat_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
+
+class OnboardingStepResponse(OnboardingStatusResponse):
+    step: str
+    payload: dict[str, Any]
 
 
 class PreviewIssueResponse(BaseModel):
@@ -57,6 +85,124 @@ async def get_onboarding(
         completed_steps=state.completed_steps,
         available_steps=state.available_steps,
         can_complete=state.can_complete,
+    )
+
+
+@router.post("/onboarding/start", response_model=OnboardingStartResponse)
+async def start_onboarding_route(
+    auth: tuple[User, Session] = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> OnboardingStartResponse:
+    user, _ = auth
+
+    try:
+        result = await start_onboarding(db, user.id)
+    except OnboardingAlreadyCompletedError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    state = result.state
+    return OnboardingStartResponse(
+        status=state.status,
+        completed_steps=state.completed_steps,
+        available_steps=state.available_steps,
+        can_complete=state.can_complete,
+        action=result.action,
+    )
+
+
+@router.patch("/onboarding/step/{step}", response_model=OnboardingStepResponse)
+async def save_onboarding_step(
+    step: str,
+    request: Request,
+    auth: tuple[User, Session] = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> OnboardingStepResponse:
+    user, _ = auth
+
+    if step not in ("welcome", "intent", "preferences"):
+        raise HTTPException(status_code=400, detail="Invalid onboarding step")
+
+    payload: dict[str, Any] = {}
+
+    if step == "welcome":
+        try:
+            result = await start_onboarding(db, user.id)
+        except OnboardingAlreadyCompletedError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        payload = {"action": result.action}
+
+    if step == "intent":
+        try:
+            raw = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        try:
+            intent = OnboardingStepIntentInput.model_validate(raw)
+        except Exception:
+            raise HTTPException(status_code=422, detail="Invalid intent payload")
+        try:
+            profile, created = await put_intent_service(
+                db=db,
+                user_id=user.id,
+                languages=intent.languages,
+                stack_areas=intent.stack_areas,
+                text=intent.text,
+                experience_level=intent.experience_level,
+            )
+        except InvalidTaxonomyValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        payload = {
+            "created": created,
+            "intent": {
+                "languages": profile.preferred_languages or [],
+                "stack_areas": profile.intent_stack_areas or [],
+                "text": profile.intent_text or "",
+                "experience_level": profile.intent_experience,
+                "vector_status": "ready" if profile.intent_vector else None,
+                "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
+            },
+        }
+
+    if step == "preferences":
+        try:
+            raw = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+        try:
+            preferences = OnboardingStepPreferencesInput.model_validate(raw)
+        except Exception:
+            raise HTTPException(status_code=422, detail="Invalid preferences payload")
+        raw_body = preferences.model_dump(exclude_unset=True)
+        if not raw_body:
+            raise HTTPException(status_code=400, detail="No preferences fields provided")
+        try:
+            profile = await update_preferences_service(
+                db=db,
+                user_id=user.id,
+                preferred_languages=preferences.preferred_languages,
+                preferred_topics=preferences.preferred_topics,
+                min_heat_threshold=preferences.min_heat_threshold,
+            )
+        except InvalidTaxonomyValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        payload = {
+            "preferences": {
+                "preferred_languages": profile.preferred_languages or [],
+                "preferred_topics": profile.preferred_topics or [],
+                "min_heat_threshold": profile.min_heat_threshold,
+            }
+        }
+
+    state = await get_onboarding_status(db, user.id)
+    return OnboardingStepResponse(
+        status=state.status,
+        completed_steps=state.completed_steps,
+        available_steps=state.available_steps,
+        can_complete=state.can_complete,
+        step=step,
+        payload=payload,
     )
 
 

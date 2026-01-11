@@ -1,16 +1,18 @@
 """Profile API routes. All endpoints require authentication."""
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.api.dependencies import get_db
 from src.middleware.auth import require_auth
 from src.services.profile_service import (
+    get_or_create_profile,
     get_full_profile,
     delete_profile as delete_profile_service,
     create_intent as create_intent_service,
+    put_intent as put_intent_service,
     get_intent as get_intent_service,
     update_intent as update_intent_service,
     delete_intent as delete_intent_service,
@@ -119,6 +121,17 @@ class IntentOutput(BaseModel):
     updated_at: Optional[str]
 
 
+class ProcessingStatusOutput(BaseModel):
+    is_calculating: bool
+    intent_status: str
+    resume_status: str
+    github_status: str
+    intent_vector_status: Optional[str]
+    resume_vector_status: Optional[str]
+    github_vector_status: Optional[str]
+    combined_vector_status: Optional[str]
+
+
 @router.get("", response_model=ProfileOutput)
 async def get_profile(
     auth: tuple[User, Session] = Depends(require_auth),
@@ -222,6 +235,41 @@ async def get_intent(
     return IntentOutput(**intent_data)
 
 
+@router.put("/intent", response_model=IntentOutput)
+async def replace_intent(
+    body: IntentCreateInput,
+    response: Response,
+    auth: tuple[User, Session] = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> IntentOutput:
+    user, _ = auth
+
+    try:
+        profile, created = await put_intent_service(
+            db=db,
+            user_id=user.id,
+            languages=body.languages,
+            stack_areas=body.stack_areas,
+            text=body.text,
+            experience_level=body.experience_level,
+        )
+    except InvalidTaxonomyValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    response.status_code = 201 if created else 200
+
+    vector_status = "ready" if profile.intent_vector else None
+
+    return IntentOutput(
+        languages=profile.preferred_languages or [],
+        stack_areas=profile.intent_stack_areas or [],
+        text=profile.intent_text or "",
+        experience_level=profile.intent_experience,
+        vector_status=vector_status,
+        updated_at=profile.updated_at.isoformat() if profile.updated_at else None,
+    )
+
+
 @router.patch("/intent", response_model=IntentOutput)
 async def update_intent(
     body: IntentUpdateInput,
@@ -272,6 +320,44 @@ async def delete_intent(
         raise HTTPException(status_code=404, detail="No intent data to delete")
     
     return {"deleted": True, "message": "Intent cleared"}
+
+
+@router.get("/processing-status", response_model=ProcessingStatusOutput)
+async def get_processing_status(
+    auth: tuple[User, Session] = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> ProcessingStatusOutput:
+    user, _ = auth
+    profile = await get_or_create_profile(db, user.id)
+
+    def _status(data_present: bool, vector_present: bool) -> str:
+        if vector_present:
+            return "ready"
+        if profile.is_calculating and data_present:
+            return "processing"
+        if data_present and not profile.is_calculating:
+            return "failed"
+        return "not_started"
+
+    intent_data_present = profile.intent_text is not None
+    resume_data_present = profile.resume_skills is not None
+    github_data_present = profile.github_username is not None
+
+    intent_vector_present = profile.intent_vector is not None
+    resume_vector_present = profile.resume_vector is not None
+    github_vector_present = profile.github_vector is not None
+    combined_vector_present = profile.combined_vector is not None
+
+    return ProcessingStatusOutput(
+        is_calculating=profile.is_calculating,
+        intent_status=_status(intent_data_present, intent_vector_present),
+        resume_status=_status(resume_data_present, resume_vector_present),
+        github_status=_status(github_data_present, github_vector_present),
+        intent_vector_status="ready" if intent_vector_present else None,
+        resume_vector_status="ready" if resume_vector_present else None,
+        github_vector_status="ready" if github_vector_present else None,
+        combined_vector_status="ready" if combined_vector_present else None,
+    )
 
 
 @router.get("/preferences", response_model=PreferencesOutput)

@@ -55,12 +55,25 @@ class TestAuthRequired:
     
     @pytest.mark.parametrize("method,path", [
         ("get", "/profile/onboarding"),
+        ("post", "/profile/onboarding/start"),
+        ("patch", "/profile/onboarding/step/welcome"),
+        ("patch", "/profile/onboarding/step/intent"),
+        ("patch", "/profile/onboarding/step/preferences"),
         ("post", "/profile/onboarding/complete"),
         ("post", "/profile/onboarding/skip"),
         ("get", "/profile/preview-recommendations"),
     ])
     def test_returns_401_without_auth(self, client, method, path):
-        response = getattr(client, method)(path)
+        if method == "patch" and path.endswith("/intent"):
+            response = getattr(client, method)(path, json={
+                "languages": ["Python"],
+                "stack_areas": ["backend"],
+                "text": "I want to contribute to open source Python projects",
+            })
+        elif method == "patch" and path.endswith("/preferences"):
+            response = getattr(client, method)(path, json={"min_heat_threshold": 0.7})
+        else:
+            response = getattr(client, method)(path)
         assert response.status_code == 401
 
 
@@ -401,4 +414,186 @@ class TestOnboardingAfterIntentCreate:
         data = onboarding_response.json()
         assert data["status"] == "in_progress"
         assert "intent" in data["completed_steps"]
+
+
+class TestStartOnboarding:
+    """Tests for POST /profile/onboarding/start endpoint."""
+    
+    def test_start_returns_action_and_state(self, authenticated_client):
+        from src.services.onboarding_service import OnboardingState, OnboardingStartResult
+        
+        mock_state = OnboardingState(
+            status="in_progress",
+            completed_steps=["welcome"],
+            available_steps=["intent", "github", "resume", "preferences"],
+            can_complete=False,
+        )
+        mock_result = OnboardingStartResult(state=mock_state, action="started")
+        
+        with patch(
+            "src.api.routes.profile_onboarding.start_onboarding",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ):
+            response = authenticated_client.post("/profile/onboarding/start")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["action"] == "started"
+        assert data["status"] == "in_progress"
+    
+    def test_start_returns_409_when_completed(self, authenticated_client):
+        from src.services.onboarding_service import OnboardingAlreadyCompletedError
+        
+        with patch(
+            "src.api.routes.profile_onboarding.start_onboarding",
+            new_callable=AsyncMock,
+            side_effect=OnboardingAlreadyCompletedError("Onboarding already completed"),
+        ):
+            response = authenticated_client.post("/profile/onboarding/start")
+        
+        assert response.status_code == 409
+    
+    def test_start_can_restart_from_skipped(self, authenticated_client):
+        from src.services.onboarding_service import OnboardingState, OnboardingStartResult
+        
+        mock_state = OnboardingState(
+            status="in_progress",
+            completed_steps=["welcome"],
+            available_steps=["intent", "github", "resume", "preferences"],
+            can_complete=False,
+        )
+        mock_result = OnboardingStartResult(state=mock_state, action="restarted")
+        
+        with patch(
+            "src.api.routes.profile_onboarding.start_onboarding",
+            new_callable=AsyncMock,
+            return_value=mock_result,
+        ):
+            response = authenticated_client.post("/profile/onboarding/start")
+        
+        assert response.status_code == 200
+        assert response.json()["action"] == "restarted"
+
+
+class TestOnboardingStep:
+    """Tests for PATCH /profile/onboarding/step/{step} endpoint."""
+    
+    def test_invalid_step_returns_400(self, authenticated_client):
+        response = authenticated_client.patch("/profile/onboarding/step/invalid", json={})
+        assert response.status_code == 400
+    
+    def test_welcome_step_behaves_like_start(self, authenticated_client):
+        from src.services.onboarding_service import OnboardingState, OnboardingStartResult
+        
+        mock_state = OnboardingState(
+            status="in_progress",
+            completed_steps=["welcome"],
+            available_steps=["intent", "github", "resume", "preferences"],
+            can_complete=False,
+        )
+        
+        with patch(
+            "src.api.routes.profile_onboarding.start_onboarding",
+            new_callable=AsyncMock,
+            return_value=OnboardingStartResult(state=mock_state, action="noop"),
+        ), patch(
+            "src.api.routes.profile_onboarding.get_onboarding_status",
+            new_callable=AsyncMock,
+            return_value=mock_state,
+        ):
+            response = authenticated_client.patch("/profile/onboarding/step/welcome")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["step"] == "welcome"
+        assert data["payload"]["action"] == "noop"
+        assert data["status"] == "in_progress"
+    
+    def test_intent_step_saves_intent_and_returns_payload(self, authenticated_client):
+        from models.profiles import UserProfile
+        from src.services.onboarding_service import OnboardingState
+        from datetime import datetime, timezone
+        
+        mock_state = OnboardingState(
+            status="in_progress",
+            completed_steps=["welcome", "intent"],
+            available_steps=["github", "resume", "preferences"],
+            can_complete=True,
+        )
+        
+        mock_profile = MagicMock(spec=UserProfile)
+        mock_profile.preferred_languages = ["Python"]
+        mock_profile.intent_stack_areas = ["backend"]
+        mock_profile.intent_text = "I want to contribute"
+        mock_profile.intent_experience = None
+        mock_profile.intent_vector = [0.1] * 768
+        mock_profile.updated_at = datetime.now(timezone.utc)
+        
+        with patch(
+            "src.api.routes.profile_onboarding.put_intent_service",
+            new_callable=AsyncMock,
+            return_value=(mock_profile, True),
+        ), patch(
+            "src.api.routes.profile_onboarding.get_onboarding_status",
+            new_callable=AsyncMock,
+            return_value=mock_state,
+        ):
+            response = authenticated_client.patch(
+                "/profile/onboarding/step/intent",
+                json={
+                    "languages": ["Python"],
+                    "stack_areas": ["backend"],
+                    "text": "I want to contribute",
+                    "experience_level": None,
+                },
+            )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["step"] == "intent"
+        assert data["payload"]["created"] is True
+        assert data["payload"]["intent"]["languages"] == ["Python"]
+    
+    def test_preferences_step_rejects_empty_payload(self, authenticated_client):
+        response = authenticated_client.patch("/profile/onboarding/step/preferences", json={})
+        assert response.status_code == 400
+    
+    def test_preferences_step_saves_and_returns_payload(self, authenticated_client):
+        from src.services.onboarding_service import OnboardingState
+        
+        mock_state = OnboardingState(
+            status="in_progress",
+            completed_steps=["welcome", "preferences"],
+            available_steps=["intent", "github", "resume"],
+            can_complete=False,
+        )
+        
+        mock_profile = MagicMock()
+        mock_profile.preferred_languages = ["Python"]
+        mock_profile.preferred_topics = ["async"]
+        mock_profile.min_heat_threshold = 0.7
+        
+        with patch(
+            "src.api.routes.profile_onboarding.update_preferences_service",
+            new_callable=AsyncMock,
+            return_value=mock_profile,
+        ), patch(
+            "src.api.routes.profile_onboarding.get_onboarding_status",
+            new_callable=AsyncMock,
+            return_value=mock_state,
+        ):
+            response = authenticated_client.patch(
+                "/profile/onboarding/step/preferences",
+                json={
+                    "preferred_languages": ["Python"],
+                    "preferred_topics": ["async"],
+                    "min_heat_threshold": 0.7,
+                },
+            )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["step"] == "preferences"
+        assert data["payload"]["preferences"]["min_heat_threshold"] == 0.7
 

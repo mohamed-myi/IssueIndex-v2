@@ -2,7 +2,7 @@
 import pytest
 from datetime import datetime, timezone
 from uuid import uuid4
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 from fastapi.testclient import TestClient
 
@@ -57,9 +57,11 @@ class TestAuthRequired:
         ("get", "/profile", None),
         ("delete", "/profile", None),
         ("post", "/profile/intent", {"languages": ["Python"], "stack_areas": ["backend"], "text": "Some intent text"}),
+        ("put", "/profile/intent", {"languages": ["Python"], "stack_areas": ["backend"], "text": "Some intent text"}),
         ("get", "/profile/intent", None),
         ("patch", "/profile/intent", {"text": "Updated text"}),
         ("delete", "/profile/intent", None),
+        ("get", "/profile/processing-status", None),
         ("get", "/profile/preferences", None),
         ("patch", "/profile/preferences", {"min_heat_threshold": 0.7}),
     ])
@@ -286,6 +288,153 @@ class TestResponseStructure:
             })
             
             assert response.status_code == 201
+
+
+class TestPutIntent:
+    """Integration tests for PUT /profile/intent."""
+    
+    def test_returns_201_when_created(self, authenticated_client):
+        from models.profiles import UserProfile
+        
+        mock_profile = MagicMock(spec=UserProfile)
+        mock_profile.preferred_languages = ["Python"]
+        mock_profile.intent_stack_areas = ["backend"]
+        mock_profile.intent_text = "Test intent"
+        mock_profile.intent_experience = None
+        mock_profile.intent_vector = [0.1] * 768
+        mock_profile.updated_at = datetime.now(timezone.utc)
+        
+        with patch(
+            "src.api.routes.profile.put_intent_service",
+            return_value=(mock_profile, True),
+        ):
+            response = authenticated_client.put("/profile/intent", json={
+                "languages": ["Python"],
+                "stack_areas": ["backend"],
+                "text": "Test intent text here",
+                "experience_level": None,
+            })
+        
+        assert response.status_code == 201
+        assert response.json()["languages"] == ["Python"]
+    
+    def test_returns_200_when_replaced(self, authenticated_client):
+        from models.profiles import UserProfile
+        
+        mock_profile = MagicMock(spec=UserProfile)
+        mock_profile.preferred_languages = ["Python"]
+        mock_profile.intent_stack_areas = ["backend"]
+        mock_profile.intent_text = "Test intent"
+        mock_profile.intent_experience = "intermediate"
+        mock_profile.intent_vector = [0.1] * 768
+        mock_profile.updated_at = datetime.now(timezone.utc)
+        
+        with patch(
+            "src.api.routes.profile.put_intent_service",
+            return_value=(mock_profile, False),
+        ):
+            response = authenticated_client.put("/profile/intent", json={
+                "languages": ["Python"],
+                "stack_areas": ["backend"],
+                "text": "Test intent text here",
+                "experience_level": "intermediate",
+            })
+        
+        assert response.status_code == 200
+
+
+class TestProcessingStatus:
+    """Integration tests for GET /profile/processing-status."""
+    
+    def test_returns_not_started(self, authenticated_client):
+        mock_profile = MagicMock()
+        mock_profile.is_calculating = False
+        mock_profile.intent_text = None
+        mock_profile.resume_skills = None
+        mock_profile.github_username = None
+        mock_profile.intent_vector = None
+        mock_profile.resume_vector = None
+        mock_profile.github_vector = None
+        mock_profile.combined_vector = None
+        
+        with patch(
+            "src.api.routes.profile.get_or_create_profile",
+            new_callable=AsyncMock,
+            return_value=mock_profile,
+        ):
+            response = authenticated_client.get("/profile/processing-status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intent_status"] == "not_started"
+        assert data["resume_status"] == "not_started"
+        assert data["github_status"] == "not_started"
+    
+    def test_returns_processing_for_intent(self, authenticated_client):
+        mock_profile = MagicMock()
+        mock_profile.is_calculating = True
+        mock_profile.intent_text = "Some intent"
+        mock_profile.resume_skills = None
+        mock_profile.github_username = None
+        mock_profile.intent_vector = None
+        mock_profile.resume_vector = None
+        mock_profile.github_vector = None
+        mock_profile.combined_vector = None
+        
+        with patch(
+            "src.api.routes.profile.get_or_create_profile",
+            new_callable=AsyncMock,
+            return_value=mock_profile,
+        ):
+            response = authenticated_client.get("/profile/processing-status")
+        
+        assert response.status_code == 200
+        assert response.json()["intent_status"] == "processing"
+    
+    def test_returns_failed_for_intent(self, authenticated_client):
+        mock_profile = MagicMock()
+        mock_profile.is_calculating = False
+        mock_profile.intent_text = "Some intent"
+        mock_profile.resume_skills = None
+        mock_profile.github_username = None
+        mock_profile.intent_vector = None
+        mock_profile.resume_vector = None
+        mock_profile.github_vector = None
+        mock_profile.combined_vector = None
+        
+        with patch(
+            "src.api.routes.profile.get_or_create_profile",
+            new_callable=AsyncMock,
+            return_value=mock_profile,
+        ):
+            response = authenticated_client.get("/profile/processing-status")
+        
+        assert response.status_code == 200
+        assert response.json()["intent_status"] == "failed"
+    
+    def test_returns_ready_for_intent_and_combined(self, authenticated_client):
+        mock_profile = MagicMock()
+        mock_profile.is_calculating = False
+        mock_profile.intent_text = "Some intent"
+        mock_profile.resume_skills = None
+        mock_profile.github_username = None
+        mock_profile.intent_vector = [0.1] * 768
+        mock_profile.resume_vector = None
+        mock_profile.github_vector = None
+        mock_profile.combined_vector = [0.2] * 768
+        
+        with patch(
+            "src.api.routes.profile.get_or_create_profile",
+            new_callable=AsyncMock,
+            return_value=mock_profile,
+        ):
+            response = authenticated_client.get("/profile/processing-status")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["intent_status"] == "ready"
+        assert data["intent_vector_status"] == "ready"
+        assert data["combined_vector_status"] == "ready"
 
 
 class TestPatchSemantics:
