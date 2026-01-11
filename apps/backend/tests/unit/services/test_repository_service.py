@@ -81,10 +81,10 @@ class TestListRepositories:
 
         await list_repositories(mock_db, language="Python")
 
-        # Verify SQL was called with language parameter
-        call_args = mock_db.execute.call_args
-        assert "language" in call_args[1]
-        assert call_args[1]["language"] == "Python"
+        # Verify SQL was called with language parameter (params is 2nd positional arg)
+        params = mock_db.execute.call_args[0][1]
+        assert "language" in params
+        assert params["language"] == "Python"
 
     @pytest.mark.asyncio
     async def test_language_case_insensitive(self):
@@ -113,9 +113,9 @@ class TestListRepositories:
 
         await list_repositories(mock_db, search_query="react")
 
-        call_args = mock_db.execute.call_args
-        assert "search_pattern" in call_args[1]
-        assert "%react%" in call_args[1]["search_pattern"]
+        params = mock_db.execute.call_args[0][1]
+        assert "search_pattern" in params
+        assert "%react%" in params["search_pattern"]
 
     @pytest.mark.asyncio
     async def test_escapes_wildcard_in_search(self):
@@ -128,9 +128,9 @@ class TestListRepositories:
 
         await list_repositories(mock_db, search_query="%")
 
-        call_args = mock_db.execute.call_args
+        params = mock_db.execute.call_args[0][1]
         # The % should be escaped
-        assert "%\\%%" in call_args[1]["search_pattern"]
+        assert "%\\%%" in params["search_pattern"]
 
     @pytest.mark.asyncio
     async def test_respects_limit_parameter(self):
@@ -143,8 +143,8 @@ class TestListRepositories:
 
         await list_repositories(mock_db, limit=25)
 
-        call_args = mock_db.execute.call_args
-        assert call_args[1]["limit"] == 25
+        params = mock_db.execute.call_args[0][1]
+        assert params["limit"] == 25
 
     @pytest.mark.asyncio
     async def test_clamps_limit_to_max(self):
@@ -157,8 +157,8 @@ class TestListRepositories:
 
         await list_repositories(mock_db, limit=500)
 
-        call_args = mock_db.execute.call_args
-        assert call_args[1]["limit"] == MAX_LIMIT
+        params = mock_db.execute.call_args[0][1]
+        assert params["limit"] == MAX_LIMIT
 
     @pytest.mark.asyncio
     async def test_handles_negative_limit(self):
@@ -171,8 +171,8 @@ class TestListRepositories:
 
         await list_repositories(mock_db, limit=-5)
 
-        call_args = mock_db.execute.call_args
-        assert call_args[1]["limit"] == DEFAULT_LIMIT
+        params = mock_db.execute.call_args[0][1]
+        assert params["limit"] == DEFAULT_LIMIT
 
     @pytest.mark.asyncio
     async def test_returns_empty_list_when_no_repos(self):
@@ -217,9 +217,9 @@ class TestListRepositories:
 
         await list_repositories(mock_db, language="JavaScript", search_query="react")
 
-        call_args = mock_db.execute.call_args
-        assert "language" in call_args[1]
-        assert "search_pattern" in call_args[1]
+        params = mock_db.execute.call_args[0][1]
+        assert "language" in params
+        assert "search_pattern" in params
 
 
 class TestConstants:

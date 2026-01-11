@@ -255,9 +255,9 @@ class TestGetSimilarIssues:
 
         await get_similar_issues(mock_db, "I_source", limit=3)
 
-        # Verify the limit was passed in the query
-        call_args = mock_db.execute.call_args_list[1][1]
-        assert call_args["limit"] == 3
+        # Verify the limit was passed in the query (params is 2nd positional arg)
+        params = mock_db.execute.call_args_list[1][0][1]
+        assert params["limit"] == 3
 
     @pytest.mark.asyncio
     async def test_clamps_limit_to_max(self):
@@ -278,8 +278,8 @@ class TestGetSimilarIssues:
 
         await get_similar_issues(mock_db, "I_source", limit=100)
 
-        call_args = mock_db.execute.call_args_list[1][1]
-        assert call_args["limit"] == MAX_SIMILAR_LIMIT
+        params = mock_db.execute.call_args_list[1][0][1]
+        assert params["limit"] == MAX_SIMILAR_LIMIT
 
     @pytest.mark.asyncio
     async def test_uses_min_similarity_threshold(self):
@@ -300,8 +300,8 @@ class TestGetSimilarIssues:
 
         await get_similar_issues(mock_db, "I_source")
 
-        call_args = mock_db.execute.call_args_list[1][1]
-        assert call_args["min_threshold"] == MIN_SIMILARITY_THRESHOLD
+        params = mock_db.execute.call_args_list[1][0][1]
+        assert params["min_threshold"] == MIN_SIMILARITY_THRESHOLD
 
     @pytest.mark.asyncio
     async def test_source_closed_finds_open_similar(self):
