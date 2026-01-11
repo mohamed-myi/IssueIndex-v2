@@ -61,6 +61,7 @@ CREATE TABLE ingestion.issue (
     labels TEXT[],
     embedding vector(768),
     github_created_at TIMESTAMPTZ NOT NULL,
+    state VARCHAR NOT NULL DEFAULT 'open',
     ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     search_vector tsvector GENERATED ALWAYS AS (
         to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(body_text, ''))
