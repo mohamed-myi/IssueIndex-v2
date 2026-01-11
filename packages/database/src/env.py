@@ -1,7 +1,12 @@
 import os
 from logging.config import fileConfig
 
+from alembic import context
+from sqlalchemy import engine_from_config, pool
+from sqlmodel import SQLModel
 
+# Import models to ensure they are registered with SQLModel.metadata
+from .models import identity, profiles, persistence  # noqa: F401
 
 config = context.config
 
@@ -10,7 +15,7 @@ section = config.get_section(config.config_ini_section)
 section["sqlalchemy.url"] = os.getenv("DIRECT_DATABASE_URL")
 
 fileConfig(config.config_file_name)
-target_metadata = Base.metadata
+target_metadata = SQLModel.metadata
 
 def run_migrations_online():
     # Use NullPool for migrations to prevent hanging connections

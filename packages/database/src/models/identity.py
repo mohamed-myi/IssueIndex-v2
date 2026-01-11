@@ -1,9 +1,14 @@
-from uuid import UUID, uuid4
 from datetime import datetime
-from typing import Optional, List
+from typing import TYPE_CHECKING, List, Optional
+from uuid import UUID, uuid4
+
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import INET, ARRAY
-from sqlmodel import SQLModel, Field, Relationship, Column
+from sqlalchemy.dialects.postgresql import ARRAY, INET
+from sqlmodel import Column, Field, Relationship, SQLModel
+
+if TYPE_CHECKING:
+    from .persistence import BookmarkedIssue
+    from .profiles import UserProfile
 
 
 class User(SQLModel, table=True):
