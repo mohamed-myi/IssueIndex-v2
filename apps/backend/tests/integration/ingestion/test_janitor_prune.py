@@ -53,18 +53,33 @@ async def db_session():
 
 @pytest.fixture
 async def clean_issues_table(db_session):
-    """Ensures issues table is empty before and after test"""
+    """Ensures issues table is empty before and after test.
+
+    Handles case where table doesn't exist (e.g., migrations not run).
+    """
     from sqlalchemy import text
+    from sqlalchemy.exc import ProgrammingError
+
+    async def safe_delete():
+        try:
+            await db_session.execute(text("DELETE FROM ingestion.issue"))
+            await db_session.commit()
+        except ProgrammingError:
+            # Table doesn't exist? skip the test
+            await db_session.rollback()
+            pytest.skip("ingestion.issue table does not exist - run migrations first")
 
     # Clear before test
-    await db_session.execute(text("DELETE FROM ingestion.issue"))
-    await db_session.commit()
+    await safe_delete()
 
     yield
 
     # Clear after test
-    await db_session.execute(text("DELETE FROM ingestion.issue"))
-    await db_session.commit()
+    try:
+        await db_session.execute(text("DELETE FROM ingestion.issue"))
+        await db_session.commit()
+    except ProgrammingError:
+        await db_session.rollback()
 
 
 @pytest.fixture

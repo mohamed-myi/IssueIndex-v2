@@ -46,6 +46,7 @@ dev = [
     "testcontainers[postgres]>=4.9.0",
     "fakeredis>=2.26.0",
     "greenlet>=3.0.0",
+    "psycopg2-binary>=2.9.9",
 ]
 cpu = [
     # CPU-only PyTorch for memory efficiency
