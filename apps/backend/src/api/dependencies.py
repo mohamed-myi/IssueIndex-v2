@@ -3,8 +3,8 @@ from collections.abc import AsyncGenerator
 import httpx
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-# Database package exports via src namespace when installed editably
-from src.session import async_session_factory
+# Database package - session.py is in packages/database/src on PYTHONPATH
+from session import async_session_factory
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
