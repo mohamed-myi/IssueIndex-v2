@@ -14,14 +14,6 @@ dependencies = [
     "uvicorn[standard]>=0.34.0",
     "python-multipart>=0.0.9",
     
-    # ML & Embeddings
-    "sentence-transformers>=3.3.1",
-    "numpy>=2.2.1",
-    
-    # Resume Parsing
-    "docling>=2.0.0",
-    "gliner>=0.2.0",
-    
     # Auth & Security
     "ua-parser>=1.0.0",
     "cryptography>=43.0.0",
@@ -51,6 +43,16 @@ dev = [
 cpu = [
     # CPU-only PyTorch for memory efficiency
     "torch>=2.5.1",
+]
+ml = [
+    # Local ML embeddings (alternative to Vertex AI)
+    "sentence-transformers>=3.3.1",
+    "numpy>=2.2.1",
+]
+resume = [
+    # Resume parsing dependencies
+    "docling>=2.0.0",
+    "gliner>=0.2.0",
 ]
 
 [tool.hatch.build.targets.wheel]

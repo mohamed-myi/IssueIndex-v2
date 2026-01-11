@@ -19,9 +19,7 @@ COPY packages/shared/pyproject.toml packages/shared/README.md packages/shared/
 RUN pip install --no-cache-dir \
     -e packages/shared \
     -e packages/database \
-    -e apps/backend \
-    docling \
-    gliner \
+    -e "apps/backend[resume]" \
     google-cloud-aiplatform
 
 # Pre-download GLiNER model
