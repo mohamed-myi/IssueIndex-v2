@@ -7,7 +7,6 @@ class Settings(BaseSettings):
     database_url: str = ""
     direct_database_url: str = ""
 
-    jwt_secret_key: str = ""
     fingerprint_secret: str = ""
     fernet_key: str = ""  # Token encryption key for linked_accounts
 
