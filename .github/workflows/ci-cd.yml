@@ -15,11 +15,6 @@ on:
         required: false
         default: 'false'
         type: boolean
-      run_migrations:
-        description: 'Run database migrations'
-        required: false
-        default: 'true'
-        type: boolean
 
 env:
   PROJECT_ID: issueindex
@@ -137,30 +132,6 @@ jobs:
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
-
-      - name: Set up Python for migrations
-        if: ${{ github.event.inputs.run_migrations != 'false' }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install migration dependencies
-        if: ${{ github.event.inputs.run_migrations != 'false' }}
-        run: |
-          pip install --upgrade pip
-          pip install -e packages/shared
-          pip install -e packages/database
-          pip install cloud-sql-python-connector[asyncpg] google-cloud-alloydb-connector[asyncpg]
-
-      - name: Run database migrations
-        if: ${{ github.event.inputs.run_migrations != 'false' }}
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: |
-          echo "Running Alembic migrations..."
-          cd packages/database
-          alembic upgrade head
-          echo "Migrations completed successfully"
 
       - name: Build API image
         run: |
