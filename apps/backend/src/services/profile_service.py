@@ -280,6 +280,72 @@ async def create_intent(
     return profile
 
 
+async def put_intent(
+    db: AsyncSession,
+    user_id: UUID,
+    languages: list[str],
+    stack_areas: list[str],
+    text: str,
+    experience_level: str | None = None,
+) -> tuple[UserProfile, bool]:
+    validate_languages(languages)
+    validate_stack_areas(stack_areas)
+    validate_experience_level(experience_level)
+
+    profile = await get_or_create_profile(db, user_id)
+
+    created = profile.intent_text is None
+    if created:
+        created_profile = await create_intent(
+            db=db,
+            user_id=user_id,
+            languages=languages,
+            stack_areas=stack_areas,
+            text=text,
+            experience_level=experience_level,
+        )
+        return created_profile, True
+
+    await mark_onboarding_in_progress(db, profile)
+
+    current_stack_areas = profile.intent_stack_areas or []
+    current_text = profile.intent_text or ""
+
+    needs_reembed = current_stack_areas != stack_areas or current_text != text
+
+    profile.preferred_languages = languages
+    profile.intent_stack_areas = stack_areas
+    profile.intent_text = text
+    profile.intent_experience = experience_level
+
+    if needs_reembed:
+        profile.is_calculating = True
+        await db.commit()
+
+        try:
+            logger.info(f"Regenerating intent vector for user {user_id}")
+            intent_vector = await generate_intent_vector_with_retry(stack_areas, text)
+            profile.intent_vector = intent_vector
+
+            combined = await calculate_combined_vector(
+                intent_vector=intent_vector,
+                resume_vector=profile.resume_vector,
+                github_vector=profile.github_vector,
+            )
+            profile.combined_vector = combined
+
+            if intent_vector is not None:
+                logger.info(f"Intent vector regenerated for user {user_id}")
+            else:
+                logger.warning(f"Intent vector regeneration failed for user {user_id}")
+        finally:
+            profile.is_calculating = False
+
+    await db.commit()
+    await db.refresh(profile)
+    return profile, False
+
+
 async def get_intent(
     db: AsyncSession,
     user_id: UUID,

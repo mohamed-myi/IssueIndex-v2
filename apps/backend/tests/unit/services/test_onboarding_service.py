@@ -438,7 +438,79 @@ class TestMarkOnboardingInProgress:
         
         await mark_onboarding_in_progress(mock_db, mock_profile)
         
-        assert mock_profile.onboarding_status == "skipped"
+        assert mock_profile.onboarding_status == "in_progress"
+        assert mock_profile.onboarding_completed_at is None
+
+
+class TestStartOnboarding:
+    """Tests for the start_onboarding function."""
+    
+    @pytest.mark.asyncio
+    async def test_start_transitions_not_started_to_in_progress(self, mock_db, mock_profile):
+        from src.services.onboarding_service import start_onboarding
+        
+        mock_profile.onboarding_status = "not_started"
+        mock_profile.onboarding_completed_at = None
+        
+        with patch(
+            "src.services.onboarding_service._get_or_create_profile",
+            new_callable=AsyncMock,
+            return_value=mock_profile,
+        ):
+            result = await start_onboarding(mock_db, mock_profile.user_id)
+        
+        assert mock_profile.onboarding_status == "in_progress"
+        assert result.action == "started"
+        assert result.state.status == "in_progress"
+    
+    @pytest.mark.asyncio
+    async def test_start_restarts_from_skipped(self, mock_db, mock_profile):
+        from src.services.onboarding_service import start_onboarding
+        
+        mock_profile.onboarding_status = "skipped"
+        mock_profile.onboarding_completed_at = "2026-01-01T00:00:00Z"
+        
+        with patch(
+            "src.services.onboarding_service._get_or_create_profile",
+            new_callable=AsyncMock,
+            return_value=mock_profile,
+        ):
+            result = await start_onboarding(mock_db, mock_profile.user_id)
+        
+        assert mock_profile.onboarding_status == "in_progress"
+        assert mock_profile.onboarding_completed_at is None
+        assert result.action == "restarted"
+        assert result.state.status == "in_progress"
+    
+    @pytest.mark.asyncio
+    async def test_start_noop_when_already_in_progress(self, mock_db, mock_profile):
+        from src.services.onboarding_service import start_onboarding
+        
+        mock_profile.onboarding_status = "in_progress"
+        
+        with patch(
+            "src.services.onboarding_service._get_or_create_profile",
+            new_callable=AsyncMock,
+            return_value=mock_profile,
+        ):
+            result = await start_onboarding(mock_db, mock_profile.user_id)
+        
+        assert result.action == "noop"
+        assert result.state.status == "in_progress"
+    
+    @pytest.mark.asyncio
+    async def test_start_raises_when_completed(self, mock_db, mock_profile):
+        from src.services.onboarding_service import start_onboarding, OnboardingAlreadyCompletedError
+        
+        mock_profile.onboarding_status = "completed"
+        
+        with patch(
+            "src.services.onboarding_service._get_or_create_profile",
+            new_callable=AsyncMock,
+            return_value=mock_profile,
+        ):
+            with pytest.raises(OnboardingAlreadyCompletedError):
+                await start_onboarding(mock_db, mock_profile.user_id)
 
 
 class TestAnyOrderCompletion:

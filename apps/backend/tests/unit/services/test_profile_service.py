@@ -2,7 +2,7 @@
 import pytest
 from datetime import datetime, timezone
 from uuid import uuid4
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 import sys
 from pathlib import Path
 
@@ -329,6 +329,117 @@ class TestIntentCrud:
         
         result = await delete_intent(mock_db, mock_profile.user_id)
         assert result is False
+
+
+class TestPutIntent:
+    """PUT intent semantics and embedding trigger rules."""
+    
+    @pytest.mark.asyncio
+    async def test_put_creates_when_missing(self, mock_db, mock_profile):
+        from src.services.profile_service import put_intent
+        
+        mock_profile.intent_text = None
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        with patch(
+            "src.services.profile_service.mark_onboarding_in_progress",
+            new_callable=AsyncMock,
+        ), patch(
+            "src.services.profile_service.generate_intent_vector_with_retry",
+            new_callable=AsyncMock,
+            return_value=[0.1] * 768,
+        ), patch(
+            "src.services.profile_service.calculate_combined_vector",
+            new_callable=AsyncMock,
+            return_value=[0.2] * 768,
+        ):
+            profile, created = await put_intent(
+                db=mock_db,
+                user_id=mock_profile.user_id,
+                languages=["Python"],
+                stack_areas=["backend"],
+                text="I want to contribute to open source Python projects",
+                experience_level=None,
+            )
+        
+        assert created is True
+        assert profile.preferred_languages == ["Python"]
+        assert profile.intent_text is not None
+    
+    @pytest.mark.asyncio
+    async def test_put_replaces_without_reembed_when_only_languages_change(self, mock_db, mock_profile):
+        from src.services.profile_service import put_intent
+        
+        mock_profile.intent_text = "Same text"
+        mock_profile.intent_stack_areas = ["backend"]
+        mock_profile.intent_experience = "beginner"
+        mock_profile.intent_vector = [0.1] * 768
+        mock_profile.combined_vector = [0.2] * 768
+        
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        with patch(
+            "src.services.profile_service.generate_intent_vector_with_retry",
+            new_callable=AsyncMock,
+        ) as mock_embed, patch(
+            "src.services.profile_service.calculate_combined_vector",
+            new_callable=AsyncMock,
+        ) as mock_combined:
+            profile, created = await put_intent(
+                db=mock_db,
+                user_id=mock_profile.user_id,
+                languages=["Python", "TypeScript"],
+                stack_areas=["backend"],
+                text="Same text",
+                experience_level=None,
+            )
+        
+        assert created is False
+        assert profile.preferred_languages == ["Python", "TypeScript"]
+        assert profile.intent_experience is None
+        mock_embed.assert_not_called()
+        mock_combined.assert_not_called()
+    
+    @pytest.mark.asyncio
+    async def test_put_replaces_and_reembeds_when_text_changes(self, mock_db, mock_profile):
+        from src.services.profile_service import put_intent
+        
+        mock_profile.intent_text = "Old text"
+        mock_profile.intent_stack_areas = ["backend"]
+        mock_profile.intent_vector = [0.1] * 768
+        mock_profile.combined_vector = [0.2] * 768
+        
+        mock_result = MagicMock()
+        mock_result.first.return_value = mock_profile
+        mock_db.exec.return_value = mock_result
+        
+        with patch(
+            "src.services.profile_service.generate_intent_vector_with_retry",
+            new_callable=AsyncMock,
+            return_value=[0.3] * 768,
+        ) as mock_embed, patch(
+            "src.services.profile_service.calculate_combined_vector",
+            new_callable=AsyncMock,
+            return_value=[0.4] * 768,
+        ) as mock_combined:
+            profile, created = await put_intent(
+                db=mock_db,
+                user_id=mock_profile.user_id,
+                languages=["Python"],
+                stack_areas=["backend"],
+                text="New text",
+                experience_level="intermediate",
+            )
+        
+        assert created is False
+        assert profile.intent_text == "New text"
+        assert profile.intent_experience == "intermediate"
+        mock_embed.assert_called_once()
+        mock_combined.assert_called_once()
 
 
 class TestPreferences:

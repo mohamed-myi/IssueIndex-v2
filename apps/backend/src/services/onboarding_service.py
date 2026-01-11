@@ -25,6 +25,12 @@ class OnboardingState:
     can_complete: bool
 
 
+@dataclass
+class OnboardingStartResult:
+    state: OnboardingState
+    action: str
+
+
 async def _get_or_create_profile(
     db: AsyncSession,
     user_id: UUID,
@@ -152,21 +158,62 @@ async def skip_onboarding(
     return compute_onboarding_state(profile)
 
 
+async def start_onboarding(
+    db: AsyncSession,
+    user_id: UUID,
+) -> OnboardingStartResult:
+    profile = await _get_or_create_profile(db, user_id)
+    current = profile.onboarding_status
+
+    if current == "completed":
+        raise OnboardingAlreadyCompletedError("Onboarding already completed")
+
+    if current == "in_progress":
+        return OnboardingStartResult(
+            state=compute_onboarding_state(profile),
+            action="noop",
+        )
+
+    if current == "skipped":
+        profile.onboarding_status = "in_progress"
+        profile.onboarding_completed_at = None
+        await db.commit()
+        await db.refresh(profile)
+        return OnboardingStartResult(
+            state=compute_onboarding_state(profile),
+            action="restarted",
+        )
+
+    profile.onboarding_status = "in_progress"
+    await db.commit()
+    await db.refresh(profile)
+    return OnboardingStartResult(
+        state=compute_onboarding_state(profile),
+        action="started",
+    )
+
+
 async def mark_onboarding_in_progress(
     db: AsyncSession,
     profile: UserProfile,
 ) -> None:
-    """Called by profile_service when first source is added; only transitions from not_started."""
     if profile.onboarding_status == "not_started":
         profile.onboarding_status = "in_progress"
+        return
+
+    if profile.onboarding_status == "skipped":
+        profile.onboarding_status = "in_progress"
+        profile.onboarding_completed_at = None
 
 
 __all__ = [
     "OnboardingState",
+    "OnboardingStartResult",
     "ALL_STEPS",
     "compute_onboarding_state",
     "get_onboarding_status",
     "complete_onboarding",
     "skip_onboarding",
+    "start_onboarding",
     "mark_onboarding_in_progress",
 ]
