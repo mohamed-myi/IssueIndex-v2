@@ -40,6 +40,10 @@ async def main() -> None:
             case "janitor":
                 from jobs.janitor_job import run_janitor_job
                 result = await run_janitor_job()
+
+            case "reco_flush":
+                from jobs.reco_flush_job import run_reco_flush_job
+                result = await run_reco_flush_job()
             
             case _:
                 raise ValueError(f"Unknown job type: {job_type}")
