@@ -1,0 +1,283 @@
+# CI/CD Pipeline for IssueIndex
+# Runs tests on PRs and feature branches, deploys to GCP on main
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.antigravity/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.antigravity/**'
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip tests and deploy directly'
+        required: false
+        default: 'false'
+        type: boolean
+      run_migrations:
+        description: 'Run database migrations'
+        required: false
+        default: 'true'
+        type: boolean
+
+env:
+  PROJECT_ID: issueindex
+  REGION: us-central1
+  REGISTRY: us-central1-docker.pkg.dev/issueindex/issueindex
+
+jobs:
+  # ============================================================================
+  # CI: Run tests on all pushes and PRs
+  # ============================================================================
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.skip_tests != 'true' }}
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e packages/shared
+          pip install -e packages/database
+          pip install -e "apps/backend[test]"
+
+      - name: Run unit tests
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          REDIS_URL: redis://localhost:6379
+          SESSION_SECRET: test-secret-key-for-ci
+          FERNET_KEY: 8nR5zGr8j_h_dI7BvR_VzCLk5fQg9Km3Y1xE2wM4oAA=
+          GITHUB_CLIENT_ID: test
+          GITHUB_CLIENT_SECRET: test
+          GOOGLE_CLIENT_ID: test
+          GOOGLE_CLIENT_SECRET: test
+        run: |
+          cd apps/backend
+          pytest tests/unit -v --tb=short
+
+      - name: Run integration tests
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          REDIS_URL: redis://localhost:6379
+          SESSION_SECRET: test-secret-key-for-ci
+          FERNET_KEY: 8nR5zGr8j_h_dI7BvR_VzCLk5fQg9Km3Y1xE2wM4oAA=
+          GITHUB_CLIENT_ID: test
+          GITHUB_CLIENT_SECRET: test
+          GOOGLE_CLIENT_ID: test
+          GOOGLE_CLIENT_SECRET: test
+        run: |
+          cd apps/backend
+          pytest tests/integration -v --tb=short
+
+  # ============================================================================
+  # CD: Deploy to GCP (only on main branch after tests pass)
+  # ============================================================================
+  deploy:
+    name: Deploy to GCP
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    
+    permissions:
+      contents: read
+      id-token: write  # Required for Workload Identity Federation
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      # ----------------------------------------------------------------------
+      # Run database migrations
+      # ----------------------------------------------------------------------
+      - name: Set up Python for migrations
+        if: ${{ github.event.inputs.run_migrations != 'false' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install migration dependencies
+        if: ${{ github.event.inputs.run_migrations != 'false' }}
+        run: |
+          pip install --upgrade pip
+          pip install -e packages/shared
+          pip install -e packages/database
+          pip install cloud-sql-python-connector[asyncpg] google-cloud-alloydb-connector[asyncpg]
+
+      - name: Run database migrations
+        if: ${{ github.event.inputs.run_migrations != 'false' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          echo "Running Alembic migrations..."
+          cd packages/database
+          alembic upgrade head
+          echo "Migrations completed successfully"
+
+      # ----------------------------------------------------------------------
+      # Build and push Docker images
+      # ----------------------------------------------------------------------
+      - name: Build API image
+        run: |
+          docker build -f deploy/api.Dockerfile \
+            -t ${{ env.REGISTRY }}/api:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/api:latest \
+            .
+
+      - name: Build embed worker image
+        run: |
+          docker build -f deploy/worker-embed.Dockerfile \
+            -t ${{ env.REGISTRY }}/worker-embed:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/worker-embed:latest \
+            .
+
+      - name: Build resume worker image
+        run: |
+          docker build -f deploy/worker-resume.Dockerfile \
+            -t ${{ env.REGISTRY }}/worker-resume:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/worker-resume:latest \
+            .
+
+      - name: Build scheduled workers image
+        run: |
+          docker build -f deploy/workers.Dockerfile \
+            -t ${{ env.REGISTRY }}/workers:${{ github.sha }} \
+            -t ${{ env.REGISTRY }}/workers:latest \
+            .
+
+      - name: Push all images
+        run: |
+          docker push ${{ env.REGISTRY }}/api:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/api:latest
+          docker push ${{ env.REGISTRY }}/worker-embed:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/worker-embed:latest
+          docker push ${{ env.REGISTRY }}/worker-resume:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/worker-resume:latest
+          docker push ${{ env.REGISTRY }}/workers:${{ github.sha }}
+          docker push ${{ env.REGISTRY }}/workers:latest
+
+      # ----------------------------------------------------------------------
+      # Deploy Cloud Run services
+      # ----------------------------------------------------------------------
+      - name: Deploy API service
+        run: |
+          gcloud run services update issueindex-api \
+            --image=${{ env.REGISTRY }}/api:${{ github.sha }} \
+            --region=${{ env.REGION }}
+
+      - name: Deploy embed worker service
+        run: |
+          gcloud run services update issueindex-worker-embed \
+            --image=${{ env.REGISTRY }}/worker-embed:${{ github.sha }} \
+            --region=${{ env.REGION }}
+
+      - name: Deploy resume worker service
+        run: |
+          gcloud run services update issueindex-worker-resume \
+            --image=${{ env.REGISTRY }}/worker-resume:${{ github.sha }} \
+            --region=${{ env.REGION }}
+
+      # ----------------------------------------------------------------------
+      # Update Cloud Run jobs
+      # ----------------------------------------------------------------------
+      - name: Update gatherer job
+        run: |
+          gcloud run jobs update issueindex-gatherer \
+            --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
+            --region=${{ env.REGION }}
+
+      - name: Update janitor job
+        run: |
+          gcloud run jobs update issueindex-janitor \
+            --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
+            --region=${{ env.REGION }}
+
+      # ----------------------------------------------------------------------
+      # Post-deployment verification
+      # ----------------------------------------------------------------------
+      - name: Verify API deployment
+        run: |
+          API_URL=$(gcloud run services describe issueindex-api --region=${{ env.REGION }} --format='value(status.url)')
+          echo "API URL: $API_URL"
+          
+          # Wait for service to be ready
+          sleep 10
+          
+          # Health check
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/health" || echo "000")
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "✅ API health check passed"
+          else
+            echo "⚠️ API health check returned status: $HTTP_STATUS"
+            exit 1
+          fi
+
+      - name: Deployment summary
+        run: |
+          echo "## Deployment Complete 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Services Updated:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ issueindex-api" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ issueindex-worker-embed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ issueindex-worker-resume" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Jobs Updated:" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ issueindex-gatherer" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ issueindex-janitor" >> $GITHUB_STEP_SUMMARY
