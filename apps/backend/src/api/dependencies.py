@@ -1,10 +1,10 @@
 from collections.abc import AsyncGenerator
 
 import httpx
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 # Database package - session.py is in packages/database/src on PYTHONPATH
 from session import async_session_factory
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
