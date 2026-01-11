@@ -10,7 +10,7 @@ shared_src = Path(__file__).resolve().parent.parent.parent.parent.parent / "pack
 if str(shared_src) not in sys.path:
     sys.path.insert(0, str(shared_src))
 
-from constants import PROFILE_LANGUAGES, STACK_AREAS
+from constants import PROFILE_LANGUAGES, STACK_AREAS  # noqa: E402
 
 
 @dataclass

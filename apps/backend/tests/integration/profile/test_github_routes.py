@@ -1,9 +1,8 @@
 """Integration tests for GitHub profile API routes."""
-import pytest
-from datetime import datetime, timezone, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
-from unittest.mock import patch, MagicMock, AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
@@ -44,7 +43,7 @@ def mock_session(mock_user):
 def authenticated_client(client, mock_user, mock_session):
     def mock_require_auth():
         return (mock_user, mock_session)
-    
+
     app.dependency_overrides[require_auth] = mock_require_auth
     yield client
     app.dependency_overrides.clear()
@@ -52,7 +51,7 @@ def authenticated_client(client, mock_user, mock_session):
 
 class TestAuthRequired:
     """Verifies authentication middleware is applied to all GitHub routes."""
-    
+
     @pytest.mark.parametrize("method,path", [
         ("post", "/profile/github"),
         ("get", "/profile/github"),
@@ -66,7 +65,7 @@ class TestAuthRequired:
 
 class TestPostGitHub:
     """Tests for POST /profile/github endpoint (async processing)."""
-    
+
     def test_returns_400_when_no_github_connected(self, authenticated_client, mock_user):
         with patch(
             "src.api.routes.profile_github.initiate_github_fetch",
@@ -76,12 +75,12 @@ class TestPostGitHub:
             mock_initiate.side_effect = GitHubNotConnectedError(
                 "No GitHub account connected. Please connect GitHub first at /auth/connect/github"
             )
-            
+
             response = authenticated_client.post("/profile/github")
-        
+
         assert response.status_code == 400
         assert "connect" in response.json()["detail"].lower()
-    
+
     def test_returns_400_when_token_revoked(self, authenticated_client, mock_user):
         with patch(
             "src.api.routes.profile_github.initiate_github_fetch",
@@ -91,12 +90,12 @@ class TestPostGitHub:
             mock_initiate.side_effect = GitHubNotConnectedError(
                 "Please reconnect your GitHub account"
             )
-            
+
             response = authenticated_client.post("/profile/github")
-        
+
         assert response.status_code == 400
         assert "connect github" in response.json()["detail"].lower()
-    
+
     def test_successful_initiate_returns_202_accepted(self, authenticated_client, mock_user):
         with patch(
             "src.api.routes.profile_github.initiate_github_fetch",
@@ -107,9 +106,9 @@ class TestPostGitHub:
                 "status": "processing",
                 "message": "GitHub profile fetch started. Processing in background.",
             }
-            
+
             response = authenticated_client.post("/profile/github")
-        
+
         assert response.status_code == 202
         data = response.json()
         assert data["status"] == "processing"
@@ -119,19 +118,19 @@ class TestPostGitHub:
 
 class TestGetGitHub:
     """Tests for GET /profile/github endpoint."""
-    
+
     def test_returns_404_when_not_populated(self, authenticated_client, mock_user):
         with patch(
             "src.api.routes.profile_github.get_github_data",
             new_callable=AsyncMock,
         ) as mock_get:
             mock_get.return_value = None
-            
+
             response = authenticated_client.get("/profile/github")
-        
+
         assert response.status_code == 404
         assert "no github data" in response.json()["detail"].lower()
-    
+
     def test_returns_data_when_populated(self, authenticated_client, mock_user):
         with patch(
             "src.api.routes.profile_github.get_github_data",
@@ -147,9 +146,9 @@ class TestGetGitHub:
                 "vector_status": "ready",
                 "fetched_at": "2026-01-04T12:00:00+00:00",
             }
-            
+
             response = authenticated_client.get("/profile/github")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["username"] == "octocat"
@@ -162,7 +161,7 @@ class TestGetGitHub:
 
 class TestRefreshGitHub:
     """Tests for POST /profile/github/refresh endpoint."""
-    
+
     def test_returns_429_when_too_soon(self, authenticated_client, mock_user):
         with patch(
             "src.api.routes.profile_github.initiate_github_fetch",
@@ -170,12 +169,12 @@ class TestRefreshGitHub:
         ) as mock_initiate:
             from src.core.errors import RefreshRateLimitError
             mock_initiate.side_effect = RefreshRateLimitError(1800)
-            
+
             response = authenticated_client.post("/profile/github/refresh")
-        
+
         assert response.status_code == 429
         assert "minute" in response.json()["detail"].lower()
-    
+
     def test_allows_refresh_after_cooldown_returns_202(self, authenticated_client, mock_user):
         with patch(
             "src.api.routes.profile_github.initiate_github_fetch",
@@ -186,9 +185,9 @@ class TestRefreshGitHub:
                 "status": "processing",
                 "message": "GitHub profile fetch started. Processing in background.",
             }
-            
+
             response = authenticated_client.post("/profile/github/refresh")
-        
+
         assert response.status_code == 202
         data = response.json()
         assert data["status"] == "processing"
@@ -197,28 +196,28 @@ class TestRefreshGitHub:
 
 class TestDeleteGitHub:
     """Tests for DELETE /profile/github endpoint."""
-    
+
     def test_returns_404_when_no_data(self, authenticated_client, mock_user):
         with patch(
             "src.api.routes.profile_github.delete_github",
             new_callable=AsyncMock,
         ) as mock_delete:
             mock_delete.return_value = False
-            
+
             response = authenticated_client.delete("/profile/github")
-        
+
         assert response.status_code == 404
         assert "no github data" in response.json()["detail"].lower()
-    
+
     def test_successfully_deletes_data(self, authenticated_client, mock_user):
         with patch(
             "src.api.routes.profile_github.delete_github",
             new_callable=AsyncMock,
         ) as mock_delete:
             mock_delete.return_value = True
-            
+
             response = authenticated_client.delete("/profile/github")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["deleted"] is True
@@ -227,7 +226,7 @@ class TestDeleteGitHub:
 
 class TestAsyncProcessingFlow:
     """Tests verifying async processing via Cloud Tasks."""
-    
+
     def test_initiate_returns_job_id_for_polling(self, authenticated_client, mock_user):
         """Verifies that initiate returns job_id for status polling."""
         with patch(
@@ -239,14 +238,14 @@ class TestAsyncProcessingFlow:
                 "status": "processing",
                 "message": "GitHub profile fetch started. Processing in background.",
             }
-            
+
             response = authenticated_client.post("/profile/github")
-            
+
             assert response.status_code == 202
             data = response.json()
             assert "job_id" in data
             assert data["job_id"] == "test-github-job-789"
-    
+
     def test_get_github_shows_processing_status(self, authenticated_client, mock_user):
         """Verifies GET endpoint can show in-progress status."""
         with patch(
@@ -263,9 +262,9 @@ class TestAsyncProcessingFlow:
                 "vector_status": None,
                 "fetched_at": None,
             }
-            
+
             response = authenticated_client.get("/profile/github")
-            
+
             assert response.status_code == 200
             data = response.json()
             assert data["vector_status"] is None
@@ -273,7 +272,7 @@ class TestAsyncProcessingFlow:
 
 class TestErrorMessages:
     """Tests for error message formatting per PROFILE.md."""
-    
+
     def test_oauth_revoked_message(self, authenticated_client, mock_user):
         with patch(
             "src.api.routes.profile_github.initiate_github_fetch",
@@ -281,12 +280,12 @@ class TestErrorMessages:
         ) as mock_initiate:
             from src.core.errors import GitHubNotConnectedError
             mock_initiate.side_effect = GitHubNotConnectedError("Please reconnect your GitHub account")
-            
+
             response = authenticated_client.post("/profile/github")
-        
+
         assert response.status_code == 400
         assert "connect github" in response.json()["detail"].lower()
-    
+
     def test_refresh_rate_limit_shows_minutes(self, authenticated_client, mock_user):
         with patch(
             "src.api.routes.profile_github.initiate_github_fetch",
@@ -294,9 +293,9 @@ class TestErrorMessages:
         ) as mock_initiate:
             from src.core.errors import RefreshRateLimitError
             mock_initiate.side_effect = RefreshRateLimitError(1800)
-            
+
             response = authenticated_client.post("/profile/github/refresh")
-        
+
         assert response.status_code == 429
         detail = response.json()["detail"].lower()
         assert "minute" in detail

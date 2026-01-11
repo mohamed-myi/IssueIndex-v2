@@ -6,15 +6,15 @@ Time to Live: 5 min
 import json
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from src.core.redis import get_redis
 from src.services.search_service import (
+    SearchFilters,
     SearchRequest,
     SearchResponse,
     SearchResultItem,
-    SearchFilters,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ def _serialize_response(response: SearchResponse) -> str:
 def _deserialize_response(data: str) -> SearchResponse:
     """Deserialize JSON string to SearchResponse."""
     parsed = json.loads(data)
-    
+
     results = [
         SearchResultItem(
             node_id=r["node_id"],
@@ -74,13 +74,13 @@ def _deserialize_response(data: str) -> SearchResponse:
         )
         for r in parsed["results"]
     ]
-    
+
     filters = SearchFilters(
         languages=parsed["filters"]["languages"],
         labels=parsed["filters"]["labels"],
         repos=parsed["filters"]["repos"],
     )
-    
+
     return SearchResponse(
         search_id=UUID(parsed["search_id"]),
         results=results,
@@ -128,7 +128,7 @@ async def cache_search_context(
         logger.warning(f"Search context cache write error: {e}")
 
 
-async def get_cached_search_context(search_id: UUID) -> Optional[dict[str, Any]]:
+async def get_cached_search_context(search_id: UUID) -> dict[str, Any] | None:
     """
     Retrieve cached search context for interaction validation.
     Returns None if missing or Redis unavailable.
@@ -150,7 +150,7 @@ async def get_cached_search_context(search_id: UUID) -> Optional[dict[str, Any]]
         return None
 
 
-async def get_cached_search(request: SearchRequest) -> Optional[SearchResponse]:
+async def get_cached_search(request: SearchRequest) -> SearchResponse | None:
     """
     Retrieve cached search response if available.
     Returns None if cache miss or Redis unavailable.
@@ -158,9 +158,9 @@ async def get_cached_search(request: SearchRequest) -> Optional[SearchResponse]:
     redis = await get_redis()
     if redis is None:
         return None
-    
+
     cache_key = f"{CACHE_PREFIX}{request.cache_key()}"
-    
+
     try:
         cached = await redis.get(cache_key)
         if cached:
@@ -184,9 +184,9 @@ async def cache_search_response(
     redis = await get_redis()
     if redis is None:
         return
-    
+
     cache_key = f"{CACHE_PREFIX}{request.cache_key()}"
-    
+
     try:
         serialized = _serialize_response(response)
         await redis.setex(cache_key, CACHE_TTL_SECONDS, serialized)
@@ -204,22 +204,22 @@ async def invalidate_search_cache(pattern: str = "*") -> int:
     redis = await get_redis()
     if redis is None:
         return 0
-    
+
     try:
         full_pattern = f"{CACHE_PREFIX}{pattern}"
-        
+
         # Collect all matching keys first
         keys = [key async for key in redis.scan_iter(full_pattern)]
-        
+
         if not keys:
             return 0
-        
+
         # Use pipeline to delete all keys in one network round trip
         async with redis.pipeline(transaction=True) as pipe:
             for key in keys:
                 pipe.delete(key)
             await pipe.execute()
-        
+
         logger.debug(f"Invalidated {len(keys)} cache keys matching {full_pattern}")
         return len(keys)
     except Exception as e:

@@ -2,20 +2,19 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 shared_src = Path(__file__).resolve().parent.parent.parent.parent.parent / "packages" / "shared" / "src"
 if str(shared_src) not in sys.path:
     sys.path.insert(0, str(shared_src))
 
-from constants import (
+from constants import (  # noqa: E402
+    DEFAULT_TECH_KEYWORDS,
     PROFILE_LANGUAGES,
     STACK_AREAS,
     TECH_KEYWORDS_BY_LANGUAGE,
-    DEFAULT_TECH_KEYWORDS,
     normalize_skill,
 )
-
 
 _TOKEN_RE = re.compile(r"[a-z0-9\+\#\.]+")
 
@@ -71,7 +70,7 @@ def compute_why_this(
     issue_title: str,
     issue_body_preview: str,
     issue_labels: list[str],
-    repo_primary_language: Optional[str],
+    repo_primary_language: str | None,
     repo_topics: list[str],
     top_k: int = 3,
 ) -> list[WhyThisItem]:

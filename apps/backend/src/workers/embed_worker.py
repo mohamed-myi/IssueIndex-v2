@@ -4,18 +4,17 @@ Handles embedding requests from Cloud Tasks for profile vectors.
 """
 import logging
 from contextlib import asynccontextmanager
-from typing import Optional
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Request, Header
+from fastapi import FastAPI, Header, HTTPException
+from models.profiles import UserProfile
 from pydantic import BaseModel
+from session import async_session_factory
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from session import async_session_factory
-from models.profiles import UserProfile
 from src.core.config import get_settings
-from src.services.embedding_service import embed_query, close_embedder
+from src.services.embedding_service import close_embedder, embed_query
 from src.services.profile_embedding_service import (
     calculate_combined_vector,
     format_intent_text,
@@ -76,7 +75,7 @@ class GitHubFetchRequest(BaseModel):
 
 
 def _verify_cloud_tasks_token(
-    x_cloudtasks_taskname: Optional[str] = Header(None),
+    x_cloudtasks_taskname: str | None = Header(None),
 ) -> bool:
     """
     Verifies request is from Cloud Tasks.
@@ -85,14 +84,14 @@ def _verify_cloud_tasks_token(
     """
     if settings.environment == "development":
         return True
-    
+
     if x_cloudtasks_taskname:
         return True
-    
+
     return False
 
 
-async def _get_profile(db: AsyncSession, user_id: UUID) -> Optional[UserProfile]:
+async def _get_profile(db: AsyncSession, user_id: UUID) -> UserProfile | None:
     """Fetches profile by user ID."""
     statement = select(UserProfile).where(UserProfile.user_id == user_id)
     result = await db.exec(statement)
@@ -108,7 +107,7 @@ async def health_check():
 @app.post("/tasks/embed/resume")
 async def embed_resume(
     request: EmbedResumeRequest,
-    x_cloudtasks_taskname: Optional[str] = Header(None),
+    x_cloudtasks_taskname: str | None = Header(None),
 ):
     """
     Generates resume vector from markdown text.
@@ -117,26 +116,26 @@ async def embed_resume(
     """
     if not _verify_cloud_tasks_token(x_cloudtasks_taskname):
         raise HTTPException(status_code=403, detail="Forbidden")
-    
+
     user_id = UUID(request.user_id)
     logger.info(f"Processing resume embedding for job {request.job_id}, user {user_id}")
-    
+
     try:
         vector = await embed_query(request.markdown_text)
-        
+
         if vector is None:
             logger.error(f"Resume embedding failed for job {request.job_id}")
             raise HTTPException(status_code=500, detail="Embedding generation failed")
-        
+
         async with async_session_factory() as db:
             profile = await _get_profile(db, user_id)
-            
+
             if profile is None:
                 logger.warning(f"Profile not found for user {user_id}; job {request.job_id} abandoned")
                 return {"status": "abandoned", "reason": "profile_not_found"}
-            
+
             profile.resume_vector = vector
-            
+
             combined = await calculate_combined_vector(
                 intent_vector=profile.intent_vector,
                 resume_vector=vector,
@@ -144,12 +143,12 @@ async def embed_resume(
             )
             profile.combined_vector = combined
             profile.is_calculating = False
-            
+
             await db.commit()
-        
+
         logger.info(f"Resume embedding completed for job {request.job_id}")
         return {"status": "completed", "job_id": request.job_id}
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -160,7 +159,7 @@ async def embed_resume(
 @app.post("/tasks/embed/github")
 async def embed_github(
     request: EmbedGitHubRequest,
-    x_cloudtasks_taskname: Optional[str] = Header(None),
+    x_cloudtasks_taskname: str | None = Header(None),
 ):
     """
     Generates GitHub vector from formatted text.
@@ -168,26 +167,26 @@ async def embed_github(
     """
     if not _verify_cloud_tasks_token(x_cloudtasks_taskname):
         raise HTTPException(status_code=403, detail="Forbidden")
-    
+
     user_id = UUID(request.user_id)
     logger.info(f"Processing GitHub embedding for job {request.job_id}, user {user_id}")
-    
+
     try:
         vector = await embed_query(request.formatted_text)
-        
+
         if vector is None:
             logger.error(f"GitHub embedding failed for job {request.job_id}")
             raise HTTPException(status_code=500, detail="Embedding generation failed")
-        
+
         async with async_session_factory() as db:
             profile = await _get_profile(db, user_id)
-            
+
             if profile is None:
                 logger.warning(f"Profile not found for user {user_id}; job {request.job_id} abandoned")
                 return {"status": "abandoned", "reason": "profile_not_found"}
-            
+
             profile.github_vector = vector
-            
+
             combined = await calculate_combined_vector(
                 intent_vector=profile.intent_vector,
                 resume_vector=profile.resume_vector,
@@ -195,12 +194,12 @@ async def embed_github(
             )
             profile.combined_vector = combined
             profile.is_calculating = False
-            
+
             await db.commit()
-        
+
         logger.info(f"GitHub embedding completed for job {request.job_id}")
         return {"status": "completed", "job_id": request.job_id}
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -211,7 +210,7 @@ async def embed_github(
 @app.post("/tasks/embed/intent")
 async def embed_intent(
     request: EmbedIntentRequest,
-    x_cloudtasks_taskname: Optional[str] = Header(None),
+    x_cloudtasks_taskname: str | None = Header(None),
 ):
     """
     Generates intent vector from stack areas and text.
@@ -221,27 +220,27 @@ async def embed_intent(
     """
     if not _verify_cloud_tasks_token(x_cloudtasks_taskname):
         raise HTTPException(status_code=403, detail="Forbidden")
-    
+
     user_id = UUID(request.user_id)
     logger.info(f"Processing intent embedding for job {request.job_id}, user {user_id}")
-    
+
     try:
         formatted_text = format_intent_text(request.stack_areas, request.text)
         vector = await embed_query(formatted_text)
-        
+
         if vector is None:
             logger.error(f"Intent embedding failed for job {request.job_id}")
             raise HTTPException(status_code=500, detail="Embedding generation failed")
-        
+
         async with async_session_factory() as db:
             profile = await _get_profile(db, user_id)
-            
+
             if profile is None:
                 logger.warning(f"Profile not found for user {user_id}; job {request.job_id} abandoned")
                 return {"status": "abandoned", "reason": "profile_not_found"}
-            
+
             profile.intent_vector = vector
-            
+
             combined = await calculate_combined_vector(
                 intent_vector=vector,
                 resume_vector=profile.resume_vector,
@@ -249,12 +248,12 @@ async def embed_intent(
             )
             profile.combined_vector = combined
             profile.is_calculating = False
-            
+
             await db.commit()
-        
+
         logger.info(f"Intent embedding completed for job {request.job_id}")
         return {"status": "completed", "job_id": request.job_id}
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -265,7 +264,7 @@ async def embed_intent(
 @app.post("/tasks/github/fetch")
 async def fetch_github(
     request: GitHubFetchRequest,
-    x_cloudtasks_taskname: Optional[str] = Header(None),
+    x_cloudtasks_taskname: str | None = Header(None),
 ):
     """
     Executes full GitHub profile fetch and embedding.
@@ -273,27 +272,27 @@ async def fetch_github(
     """
     if not _verify_cloud_tasks_token(x_cloudtasks_taskname):
         raise HTTPException(status_code=403, detail="Forbidden")
-    
+
     user_id = UUID(request.user_id)
     logger.info(f"Processing GitHub fetch for job {request.job_id}, user {user_id}")
-    
+
     try:
         from src.services.github_profile_service import execute_github_fetch
-        
+
         async with async_session_factory() as db:
             result = await execute_github_fetch(db, user_id)
-        
+
         logger.info(f"GitHub fetch completed for job {request.job_id}")
         return {"status": "completed", "job_id": request.job_id, "result": result}
-        
+
     except Exception as e:
         logger.exception(f"GitHub fetch failed for job {request.job_id}: {e}")
-        
+
         async with async_session_factory() as db:
             profile = await _get_profile(db, user_id)
             if profile:
                 profile.is_calculating = False
                 await db.commit()
-        
+
         raise HTTPException(status_code=500, detail=str(e))
 

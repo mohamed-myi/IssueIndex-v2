@@ -5,7 +5,6 @@ Authenticated users: 60 req/min
 """
 
 import json
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -14,21 +13,21 @@ from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.api.dependencies import get_db
+from src.core.audit import AuditEvent, log_audit_event
 from src.middleware.context import RequestContext, get_request_context
 from src.middleware.rate_limit import get_rate_limiter
-from src.core.audit import log_audit_event, AuditEvent
+from src.services.search_cache import (
+    cache_search_context,
+    cache_search_response,
+    get_cached_search,
+    get_cached_search_context,
+)
 from src.services.search_service import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_SIZE,
     SearchFilters,
     SearchRequest,
     hybrid_search,
-    DEFAULT_PAGE_SIZE,
-    MAX_PAGE_SIZE,
-)
-from src.services.search_cache import (
-    get_cached_search,
-    cache_search_response,
-    cache_search_context,
-    get_cached_search_context,
 )
 
 router = APIRouter()
@@ -63,7 +62,7 @@ class SearchResultOutput(BaseModel):
     labels: list[str]
     q_score: float
     repo_name: str
-    primary_language: Optional[str]
+    primary_language: str | None
     github_created_at: str
     rrf_score: float
 
@@ -78,18 +77,18 @@ class SearchResponseOutput(BaseModel):
     has_more: bool
 
 
-async def _get_optional_user_id(request: Request, db: AsyncSession) -> Optional[UUID]:
+async def _get_optional_user_id(request: Request, db: AsyncSession) -> UUID | None:
     """
     Attempts to extract user_id from session cookie.
     Returns None if not authenticated, no error raised.
     """
     from src.core.cookies import SESSION_COOKIE_NAME
     from src.services.session_service import get_session_by_id
-    
+
     session_id_str = request.cookies.get(SESSION_COOKIE_NAME)
     if not session_id_str:
         return None
-    
+
     try:
         session_uuid = UUID(session_id_str)
         session = await get_session_by_id(db, session_uuid)
@@ -97,7 +96,7 @@ async def _get_optional_user_id(request: Request, db: AsyncSession) -> Optional[
             return session.user_id
     except (ValueError, Exception):
         pass
-    
+
     return None
 
 
@@ -105,30 +104,30 @@ async def check_search_rate_limit(
     request: Request,
     ctx: RequestContext = Depends(get_request_context),
     db: AsyncSession = Depends(get_db),
-) -> Optional[UUID]:
+) -> UUID | None:
     """
     Tiered rate limiting for search:
     - Unknown: 10 req/min (keyed by IP)
     - Authenticated: 60 req/min (keyed by user_id)
-    
+
     Returns user_id if authenticated, None otherwise.
     """
     limiter = await get_rate_limiter()
     user_id = await _get_optional_user_id(request, db)
-    
+
     if user_id:
         key = f"search:user:{user_id}"
         max_requests = AUTH_SEARCH_LIMIT
     else:
         key = f"search:ip:{ctx.ip_address}"
         max_requests = ANON_SEARCH_LIMIT
-    
+
     is_limited, retry_after = await limiter.is_rate_limited(
         key=key,
         max_requests=max_requests,
         window_seconds=RATE_LIMIT_WINDOW,
     )
-    
+
     if is_limited:
         log_audit_event(
             AuditEvent.RATE_LIMITED,
@@ -145,14 +144,14 @@ async def check_search_rate_limit(
             detail="Too many search requests",
             headers={"Retry-After": str(retry_after)},
         )
-    
+
     return user_id
 
 
 @router.post("", response_model=SearchResponseOutput)
 async def search(
     body: SearchRequestInput,
-    user_id: Optional[UUID] = Depends(check_search_rate_limit),
+    user_id: UUID | None = Depends(check_search_rate_limit),
     db: AsyncSession = Depends(get_db),
     ctx: RequestContext = Depends(get_request_context),
 ) -> SearchResponseOutput:
@@ -166,14 +165,14 @@ async def search(
         labels=body.filters.labels,
         repos=body.filters.repos,
     )
-    
+
     request = SearchRequest(
         query=body.query,
         filters=filters,
         page=body.page,
         page_size=body.page_size,
     )
-    
+
     # Check cache first
     cached_response = await get_cached_search(request)
     if cached_response:
@@ -185,7 +184,7 @@ async def search(
         # Cache the response
         await cache_search_response(request, response)
         cache_hit = False
-    
+
     # Log search for analytics (interaction logging is separate)
     log_audit_event(
         AuditEvent.SEARCH,
@@ -199,7 +198,7 @@ async def search(
             "cache_hit": cache_hit,
         },
     )
-    
+
     # Convert to output model
     results = [
         SearchResultOutput(
@@ -227,7 +226,7 @@ async def search(
         page=body.page,
         page_size=body.page_size,
     )
-    
+
     return SearchResponseOutput(
         search_id=str(response.search_id),
         results=results,
@@ -248,14 +247,14 @@ class InteractionInput(BaseModel):
 @router.post("/interact", status_code=204)
 async def log_interaction(
     body: InteractionInput,
-    user_id: Optional[UUID] = Depends(check_search_rate_limit),
+    user_id: UUID | None = Depends(check_search_rate_limit),
     db: AsyncSession = Depends(get_db),
     ctx: RequestContext = Depends(get_request_context),
 ) -> Response:
     """
     Log a search result interaction for the golden dataset.
     Used to train and evaluate future ranking models.
-    
+
     The search_id must be from a recent search (within cache TTL).
     """
     try:
@@ -292,10 +291,10 @@ async def log_interaction(
 
     if body.position < min_pos or body.position > max_pos:
         raise HTTPException(status_code=400, detail="Invalid interaction position")
-    
+
     # Insert interaction record into analytics.search_interactions
     sql = text("""
-        INSERT INTO analytics.search_interactions 
+        INSERT INTO analytics.search_interactions
         (search_id, user_id, query_text, filters_json, result_count, selected_node_id, position)
         VALUES (
             :search_id,
@@ -307,7 +306,7 @@ async def log_interaction(
             :position
         )
     """)
-    
+
     try:
         await db.execute(sql, {
             "search_id": search_uuid,
@@ -333,7 +332,7 @@ async def log_interaction(
             },
         )
         return Response(status_code=204)
-    
+
     log_audit_event(
         AuditEvent.SEARCH_INTERACTION,
         user_id=user_id,
@@ -344,6 +343,6 @@ async def log_interaction(
             "position": body.position,
         },
     )
-    
+
     return Response(status_code=204)
 

@@ -1,14 +1,14 @@
 """Unit tests for Q score quality gate"""
 
+
 import pytest
-from unittest.mock import patch
 
 from src.ingestion.quality_gate import (
     QScoreComponents,
     compute_q_score,
+    evaluate_issue,
     extract_components,
     passes_quality_gate,
-    evaluate_issue,
 )
 
 

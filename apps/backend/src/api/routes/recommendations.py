@@ -1,18 +1,17 @@
-from datetime import datetime, timezone
-from typing import Literal, Optional
+from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from models.identity import Session, User
 from pydantic import BaseModel, Field
 
 from src.middleware.auth import require_auth
-from models.identity import User, Session
 from src.services.recommendation_event_service import (
     RecommendationEvent,
-    get_recommendation_batch_context,
     enqueue_recommendation_events,
+    get_recommendation_batch_context,
 )
-
 
 router = APIRouter()
 
@@ -23,8 +22,8 @@ class RecommendationEventInput(BaseModel):
     issue_node_id: str = Field(..., min_length=1, max_length=200)
     position: int = Field(..., ge=1)
     surface: str = Field(default="feed", min_length=1, max_length=50)
-    occurred_at: Optional[datetime] = None
-    metadata: Optional[dict] = None
+    occurred_at: datetime | None = None
+    metadata: dict | None = None
 
 
 class RecommendationEventsRequest(BaseModel):
@@ -43,13 +42,13 @@ async def log_recommendation_events(
     if context is None:
         raise HTTPException(status_code=404, detail="Unknown or expired recommendation_batch_id")
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     events: list[RecommendationEvent] = []
 
     for ev in body.events:
         created_at = ev.occurred_at or now
         if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
+            created_at = created_at.replace(tzinfo=UTC)
 
         events.append(
             RecommendationEvent(

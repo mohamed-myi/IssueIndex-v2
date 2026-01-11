@@ -1,15 +1,14 @@
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.core.redis import get_redis
-
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,7 @@ class RecommendationEvent:
     position: int
     surface: str
     created_at: datetime
-    metadata: Optional[dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 def generate_recommendation_batch_id() -> UUID:
@@ -83,7 +82,7 @@ async def store_recommendation_batch_context(
 
 async def get_recommendation_batch_context(
     recommendation_batch_id: UUID,
-) -> Optional[RecommendationBatchContext]:
+) -> RecommendationBatchContext | None:
     redis = await get_redis()
     if redis is None:
         return None
@@ -115,7 +114,7 @@ async def get_recommendation_batch_context(
 
         served_at = datetime.fromisoformat(served_at_raw)
         if served_at.tzinfo is None:
-            served_at = served_at.replace(tzinfo=timezone.utc)
+            served_at = served_at.replace(tzinfo=UTC)
 
         return RecommendationBatchContext(
             recommendation_batch_id=recommendation_batch_id,

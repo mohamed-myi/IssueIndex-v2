@@ -1,14 +1,13 @@
 """Unit tests for survival score calculation"""
 
-import pytest
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
 from src.ingestion.survival_score import (
+    BASE_QUALITY,
+    GRACE_PERIOD,
+    GRAVITY,
     calculate_survival_score,
     days_since,
-    GRACE_PERIOD,
-    BASE_QUALITY,
-    GRAVITY,
 )
 
 
@@ -78,13 +77,13 @@ class TestCalculateSurvivalScore:
 class TestDaysSince:
     def test_returns_zero_for_now(self):
         """Current timestamp returns approximately 0 days"""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         days = days_since(now)
         assert abs(days) < 0.01  # Within ~15 minutes
 
     def test_returns_positive_for_past(self):
         """Past timestamps return positive days"""
-        past = datetime.now(timezone.utc) - timedelta(days=5)
+        past = datetime.now(UTC) - timedelta(days=5)
         days = days_since(past)
         assert 4.9 < days < 5.1
 
@@ -97,13 +96,13 @@ class TestDaysSince:
 
     def test_handles_fractional_days(self):
         """12 hours ago returns 0.5 days"""
-        half_day_ago = datetime.now(timezone.utc) - timedelta(hours=12)
+        half_day_ago = datetime.now(UTC) - timedelta(hours=12)
         days = days_since(half_day_ago)
         assert 0.4 < days < 0.6
 
     def test_handles_future_datetime(self):
         """Future timestamps return negative days"""
-        future = datetime.now(timezone.utc) + timedelta(days=2)
+        future = datetime.now(UTC) + timedelta(days=2)
         days = days_since(future)
         assert days < 0
 
@@ -128,10 +127,10 @@ class TestSurvivalScoreIntegration:
             ("old_good", calculate_survival_score(0.9, 30.0)),
             ("old_bad", calculate_survival_score(0.3, 30.0)),
         ]
-        
+
         sorted_issues = sorted(issues, key=lambda x: x[1], reverse=True)
         order = [i[0] for i in sorted_issues]
-        
+
         # New good should be first, old bad should be last
         assert order[0] == "new_good"
         assert order[-1] == "old_bad"

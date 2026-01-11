@@ -1,11 +1,12 @@
-import pytest
-from unittest.mock import patch, MagicMock
+from datetime import UTC
+from unittest.mock import MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
 from src.api.routes.auth import STATE_COOKIE_NAME
-from src.core.oauth import UserProfile, OAuthToken
+from src.core.oauth import OAuthToken, UserProfile
+from src.main import app
 from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
@@ -30,7 +31,7 @@ class TestLoginEndpoint:
     def test_github_login_redirects_to_github(self, client):
         """Verify /auth/login/github redirects to GitHub authorize URL."""
         response = client.get("/auth/login/github")
-        
+
         assert response.status_code == 302
         location = response.headers["location"]
         assert "github.com/login/oauth/authorize" in location
@@ -40,7 +41,7 @@ class TestLoginEndpoint:
     def test_google_login_redirects_to_google(self, client):
         """Verify /auth/login/google redirects to Google authorize URL."""
         response = client.get("/auth/login/google")
-        
+
         assert response.status_code == 302
         location = response.headers["location"]
         assert "accounts.google.com/o/oauth2/v2/auth" in location
@@ -50,7 +51,7 @@ class TestLoginEndpoint:
     def test_login_sets_state_cookie(self, client):
         """Verify state cookie is set with HttpOnly flag."""
         response = client.get("/auth/login/github")
-        
+
         assert STATE_COOKIE_NAME in response.cookies
         cookie = response.cookies[STATE_COOKIE_NAME]
         assert len(cookie) > 32  # state:remember_me format
@@ -58,21 +59,21 @@ class TestLoginEndpoint:
     def test_login_with_remember_me(self, client):
         """Verify remember_me flag is encoded in state cookie."""
         response = client.get("/auth/login/github?remember_me=true")
-        
+
         cookie_value = response.cookies[STATE_COOKIE_NAME]
         assert cookie_value.endswith(":1")
 
     def test_login_without_remember_me(self, client):
         """Verify remember_me=false is encoded in state cookie."""
         response = client.get("/auth/login/github?remember_me=false")
-        
+
         cookie_value = response.cookies[STATE_COOKIE_NAME]
         assert cookie_value.endswith(":0")
 
     def test_invalid_provider_redirects_with_error(self, client):
         """Verify invalid provider redirects to login with error."""
         response = client.get("/auth/login/invalid_provider")
-        
+
         assert response.status_code == 302
         location = response.headers["location"]
         assert "error=invalid_provider" in location
@@ -85,12 +86,12 @@ class TestCallbackEndpoint:
         """Verify 400 when X-Device-Fingerprint header missing."""
         # Set required cookies
         client.cookies.set(STATE_COOKIE_NAME, "validstate123456789012345678901234:0")
-        
+
         response = client.get(
             "/auth/callback/github",
             params={"code": "test_code", "state": "validstate123456789012345678901234"}
         )
-        
+
         assert response.status_code == 400
         assert "JavaScript" in response.json().get("detail", "")
 
@@ -101,7 +102,7 @@ class TestCallbackEndpoint:
             params={"code": "test_code"},
             headers={"X-Device-Fingerprint": "test_fingerprint"},
         )
-        
+
         assert response.status_code == 302
         location = response.headers["location"]
         assert "error=csrf_failed" in location
@@ -109,13 +110,13 @@ class TestCallbackEndpoint:
     def test_callback_rejects_mismatched_state(self, client):
         """Verify redirect with csrf_failed when state mismatches cookie."""
         client.cookies.set(STATE_COOKIE_NAME, "stored_state_123456789012345678:0")
-        
+
         response = client.get(
             "/auth/callback/github",
             params={"code": "test_code", "state": "different_state_901234567890123"},
             headers={"X-Device-Fingerprint": "test_fingerprint"},
         )
-        
+
         assert response.status_code == 302
         location = response.headers["location"]
         assert "error=csrf_failed" in location
@@ -127,7 +128,7 @@ class TestCallbackEndpoint:
             params={"error": "access_denied"},
             headers={"X-Device-Fingerprint": "test_fingerprint"},
         )
-        
+
         assert response.status_code == 302
         location = response.headers["location"]
         assert "error=consent_denied" in location
@@ -139,7 +140,7 @@ class TestCallbackEndpoint:
             params={"code": "test_code", "state": "test_state"},
             headers={"X-Device-Fingerprint": "test_fingerprint"},
         )
-        
+
         assert response.status_code == 302
         location = response.headers["location"]
         assert "error=invalid_provider" in location
@@ -157,7 +158,7 @@ class TestCallbackSuccessFlow:
              patch("src.api.routes.auth.create_session") as mock_session, \
              patch("src.api.routes.auth.get_db") as mock_db, \
              patch("src.api.routes.auth.get_http_client") as mock_client:
-            
+
             # Configure mock returns
             mock_exchange.return_value = OAuthToken(
                 access_token="test_token",
@@ -170,26 +171,26 @@ class TestCallbackSuccessFlow:
                 is_verified=True,
                 username="testuser",
             )
-            
+
             mock_user = MagicMock()
             mock_user.id = "00000000-0000-0000-0000-000000000001"
             mock_upsert.return_value = mock_user
-            
+
             mock_session_obj = MagicMock()
             mock_session_obj.id = "00000000-0000-0000-0000-000000000002"
-            from datetime import datetime, timezone, timedelta
-            mock_expires = datetime.now(timezone.utc) + timedelta(days=7)
+            from datetime import datetime, timedelta
+            mock_expires = datetime.now(UTC) + timedelta(days=7)
             mock_session.return_value = (mock_session_obj, mock_expires)
-            
+
             # Mock async generators
             async def mock_db_gen():
                 yield MagicMock()
             async def mock_client_gen():
                 yield MagicMock()
-            
+
             mock_db.return_value = mock_db_gen()
             mock_client.return_value = mock_client_gen()
-            
+
             yield {
                 "exchange": mock_exchange,
                 "profile": mock_profile,
@@ -201,13 +202,13 @@ class TestCallbackSuccessFlow:
         """Verify successful callback redirects to /dashboard."""
         state = "validstate123456789012345678901234"
         client.cookies.set(STATE_COOKIE_NAME, f"{state}:0")
-        
+
         response = client.get(
             "/auth/callback/github",
             params={"code": "valid_code", "state": state},
             headers={"X-Device-Fingerprint": "test_fingerprint"},
         )
-        
+
         assert response.status_code == 302
         location = response.headers["location"]
         assert "/dashboard" in location
@@ -216,31 +217,31 @@ class TestCallbackSuccessFlow:
         """Verify session cookie is set after successful auth."""
         state = "validstate123456789012345678901234"
         client.cookies.set(STATE_COOKIE_NAME, f"{state}:1")
-        
+
         response = client.get(
             "/auth/callback/github",
             params={"code": "valid_code", "state": state},
             headers={"X-Device-Fingerprint": "test_fingerprint"},
         )
-        
+
         assert "session_id" in response.cookies
-        
+
         # Verify session_id is a valid UUID format (not empty/malformed)
         from uuid import UUID
         session_value = response.cookies.get("session_id")
         UUID(session_value)  # Raises ValueError if invalid
-    
+
     def test_callback_success_clears_state_cookie(self, client, mock_oauth_flow):
         """State cookie must be cleared to prevent replay attacks."""
         state = "validstate123456789012345678901234"
         client.cookies.set(STATE_COOKIE_NAME, f"{state}:0")
-        
+
         response = client.get(
             "/auth/callback/github",
             params={"code": "valid_code", "state": state},
             headers={"X-Device-Fingerprint": "test_fingerprint"},
         )
-        
+
         # State cookie should be deleted (empty or max-age=0)
         state_cookie = response.cookies.get(STATE_COOKIE_NAME)
         assert state_cookie == "" or state_cookie is None, \

@@ -1,5 +1,5 @@
-import hmac
 import hashlib
+import hmac
 import secrets
 from uuid import uuid4
 
@@ -23,15 +23,15 @@ def hash_fingerprint(raw_value: str) -> str:
     """HMAC SHA256; raises InsecureSecretError if secret empty or weak in production"""
     settings = get_settings()
     secret = settings.fingerprint_secret
-    
+
     if not secret:
         raise InsecureSecretError("FINGERPRINT_SECRET must be set")
-    
+
     if settings.environment == "production" and secret in WEAK_SECRETS:
         raise InsecureSecretError(
             "Production environment detected with weak FINGERPRINT_SECRET"
         )
-    
+
     return hmac.new(
         key=secret.encode("utf-8"),
         msg=raw_value.encode("utf-8"),

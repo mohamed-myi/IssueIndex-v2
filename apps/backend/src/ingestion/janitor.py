@@ -18,7 +18,7 @@ class Janitor:
     Prunes the bottom 20% of issues by survival_score using a single
     indexed DELETE query. The survival_score is pre-calculated during
     ingestion (Phase 5), so no refresh step is needed.
-    
+
     The DELETE leverages the ix_issue_survival_vacuum(survival_score, ingested_at)
     composite index for efficient execution.
     """
@@ -31,11 +31,11 @@ class Janitor:
     async def execute_pruning(self) -> dict:
         """
         Deletes the bottom 20% of issues by survival_score.
-        
+
         Returns dict with deleted_count and remaining_count for logging.
         """
         stats_before = await self._get_table_stats()
-        
+
         if stats_before["row_count"] == 0:
             logger.info("Janitor: No issues to prune (table empty)")
             return {
@@ -44,7 +44,7 @@ class Janitor:
             }
 
         deleted_count = await self._delete_bottom_percentile()
-        
+
         stats_after = await self._get_table_stats()
 
         logger.info(
@@ -60,7 +60,7 @@ class Janitor:
     async def _delete_bottom_percentile(self) -> int:
         """
         Single indexed DELETE using PERCENTILE_CONT.
-        
+
         The subquery calculates the 20th percentile threshold;
         all issues with survival_score below this threshold are deleted.
         """

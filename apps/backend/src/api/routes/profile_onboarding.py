@@ -1,31 +1,32 @@
 """Onboarding API routes for tracking onboarding progress."""
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from models.identity import Session, User
 from pydantic import BaseModel, Field
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.api.dependencies import get_db
+from src.core.errors import InvalidTaxonomyValueError
 from src.middleware.auth import require_auth
 from src.services.onboarding_service import (
-    get_onboarding_status,
-    complete_onboarding,
-    skip_onboarding,
     CannotCompleteOnboardingError,
     OnboardingAlreadyCompletedError,
+    complete_onboarding,
+    get_onboarding_status,
+    skip_onboarding,
     start_onboarding,
 )
 from src.services.profile_service import (
     put_intent as put_intent_service,
+)
+from src.services.profile_service import (
     update_preferences as update_preferences_service,
 )
-from src.core.errors import InvalidTaxonomyValueError
 from src.services.recommendation_preview_service import (
-    get_preview_recommendations,
     InvalidSourceError,
+    get_preview_recommendations,
 )
-from models.identity import User, Session
-
 
 router = APIRouter()
 
@@ -45,13 +46,13 @@ class OnboardingStepIntentInput(BaseModel):
     languages: list[str] = Field(..., min_length=1, max_length=10)
     stack_areas: list[str] = Field(..., min_length=1)
     text: str = Field(..., min_length=10, max_length=2000)
-    experience_level: Optional[str] = Field(default=None)
+    experience_level: str | None = Field(default=None)
 
 
 class OnboardingStepPreferencesInput(BaseModel):
-    preferred_languages: Optional[list[str]] = Field(default=None)
-    preferred_topics: Optional[list[str]] = Field(default=None)
-    min_heat_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    preferred_languages: list[str] | None = Field(default=None)
+    preferred_topics: list[str] | None = Field(default=None)
+    min_heat_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class OnboardingStepResponse(OnboardingStatusResponse):
@@ -63,12 +64,12 @@ class PreviewIssueResponse(BaseModel):
     node_id: str
     title: str
     repo_name: str
-    primary_language: Optional[str]
+    primary_language: str | None
     q_score: float
 
 
 class PreviewRecommendationsResponse(BaseModel):
-    source: Optional[str]
+    source: str | None
     issues: list[PreviewIssueResponse]
 
 
@@ -79,7 +80,7 @@ async def get_onboarding(
 ) -> OnboardingStatusResponse:
     user, _ = auth
     state = await get_onboarding_status(db, user.id)
-    
+
     return OnboardingStatusResponse(
         status=state.status,
         completed_steps=state.completed_steps,
@@ -212,14 +213,14 @@ async def complete_onboarding_route(
     db: AsyncSession = Depends(get_db),
 ) -> OnboardingStatusResponse:
     user, _ = auth
-    
+
     try:
         state = await complete_onboarding(db, user.id)
     except CannotCompleteOnboardingError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except OnboardingAlreadyCompletedError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    
+
     return OnboardingStatusResponse(
         status=state.status,
         completed_steps=state.completed_steps,
@@ -234,12 +235,12 @@ async def skip_onboarding_route(
     db: AsyncSession = Depends(get_db),
 ) -> OnboardingStatusResponse:
     user, _ = auth
-    
+
     try:
         state = await skip_onboarding(db, user.id)
     except OnboardingAlreadyCompletedError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    
+
     return OnboardingStatusResponse(
         status=state.status,
         completed_steps=state.completed_steps,
@@ -250,7 +251,7 @@ async def skip_onboarding_route(
 
 @router.get("/preview-recommendations", response_model=PreviewRecommendationsResponse)
 async def get_preview_recommendations_route(
-    source: Optional[str] = Query(
+    source: str | None = Query(
         default=None,
         description="Source vector to use: intent, resume, or github. If not provided, returns trending issues.",
     ),
@@ -258,12 +259,12 @@ async def get_preview_recommendations_route(
     db: AsyncSession = Depends(get_db),
 ) -> PreviewRecommendationsResponse:
     user, _ = auth
-    
+
     try:
         issues = await get_preview_recommendations(db, user.id, source)
     except InvalidSourceError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
+
     return PreviewRecommendationsResponse(
         source=source,
         issues=[

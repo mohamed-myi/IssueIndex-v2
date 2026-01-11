@@ -3,10 +3,9 @@ Integration tests for hybrid search end-to-end flow.
 Requires Docker (testcontainers with pgvector).
 """
 
-import os
-import pytest
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 try:
     from testcontainers.postgres import PostgresContainer
@@ -24,7 +23,6 @@ from src.services.search_service import (
     SearchRequest,
     hybrid_search,
 )
-
 
 pytestmark = pytest.mark.skipif(
     not TESTCONTAINERS_AVAILABLE,
@@ -103,7 +101,7 @@ def async_connection_url(postgres_container):
 def async_engine(async_connection_url, postgres_container):
     """Async engine with schema setup."""
     import psycopg2
-    
+
     # Setup schema using sync connection
     # Strip SQLAlchemy dialect prefix for psycopg2 compatibility
     sync_url = postgres_container.get_connection_url()
@@ -114,7 +112,7 @@ def async_engine(async_connection_url, postgres_container):
     cursor.execute(SETUP_SQL)
     cursor.close()
     conn.close()
-    
+
     engine = create_async_engine(
         async_connection_url,
         echo=False,
@@ -135,7 +133,7 @@ async def db_session(async_engine):
         class_=AsyncSession,
         expire_on_commit=False,
     )
-    
+
     async with async_session_factory() as session:
         # Clean any leftover test data before yielding
         try:
@@ -144,9 +142,9 @@ async def db_session(async_engine):
             await session.commit()
         except Exception:
             await session.rollback()
-        
+
         yield session
-        
+
         # Clean up after test
         try:
             await session.rollback()
@@ -163,20 +161,20 @@ async def seeded_db(db_session):
     # Insert test repository
     await db_session.execute(text("""
         INSERT INTO ingestion.repository (node_id, full_name, primary_language, stargazer_count)
-        VALUES 
+        VALUES
             ('repo_1', 'test/python-repo', 'Python', 1000),
             ('repo_2', 'test/rust-repo', 'Rust', 2000)
         ON CONFLICT DO NOTHING
     """))
-    
+
     # Insert test issues with embeddings
     embedding_str = "[" + ",".join(str(x) for x in SAMPLE_EMBEDDING) + "]"
-    
+
     await db_session.execute(text(f"""
-        INSERT INTO ingestion.issue 
+        INSERT INTO ingestion.issue
         (node_id, repo_id, title, body_text, labels, q_score, embedding, github_created_at)
-        VALUES 
-            ('issue_1', 'repo_1', 'Python async error handling', 
+        VALUES
+            ('issue_1', 'repo_1', 'Python async error handling',
              'How to handle exceptions in async Python code with asyncio',
              ARRAY['bug', 'python'], 0.8, '{embedding_str}'::vector, NOW()),
             ('issue_2', 'repo_1', 'Memory leak in Python service',
@@ -187,7 +185,7 @@ async def seeded_db(db_session):
              ARRAY['help wanted'], 0.9, '{embedding_str}'::vector, NOW())
         ON CONFLICT DO NOTHING
     """))
-    
+
     await db_session.commit()
     return db_session
 
@@ -201,10 +199,10 @@ class TestHybridSearchIntegration:
         # Mock embed_query to return consistent embedding
         with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
-            
+
             request = SearchRequest(query="Python error")
             response = await hybrid_search(seeded_db, request)
-        
+
         assert len(response.results) > 0
         assert response.search_id is not None
         assert response.query == "Python error"
@@ -214,13 +212,13 @@ class TestHybridSearchIntegration:
         """Language filter should restrict results."""
         with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
-            
+
             request = SearchRequest(
                 query="error",
                 filters=SearchFilters(languages=["Rust"]),
             )
             response = await hybrid_search(seeded_db, request)
-        
+
         # Should only return Rust issues
         for result in response.results:
             assert result.primary_language == "Rust"
@@ -230,13 +228,13 @@ class TestHybridSearchIntegration:
         """Label filter should restrict results."""
         with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
-            
+
             request = SearchRequest(
                 query="issue",
                 filters=SearchFilters(labels=["bug"]),
             )
             response = await hybrid_search(seeded_db, request)
-        
+
         # All results should have 'bug' label
         for result in response.results:
             assert "bug" in result.labels
@@ -246,13 +244,13 @@ class TestHybridSearchIntegration:
         """Strict filter with no matches should return empty results."""
         with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
-            
+
             request = SearchRequest(
                 query="test",
                 filters=SearchFilters(languages=["Go"]),  # No Go repos in test data
             )
             response = await hybrid_search(seeded_db, request)
-        
+
         assert len(response.results) == 0
         assert response.total == 0
 
@@ -261,18 +259,18 @@ class TestHybridSearchIntegration:
         """Pagination should work correctly."""
         with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
-            
+
             # First page
             request1 = SearchRequest(query="Python", page=1, page_size=1)
             response1 = await hybrid_search(seeded_db, request1)
-            
+
             # Second page
             request2 = SearchRequest(query="Python", page=2, page_size=1)
             response2 = await hybrid_search(seeded_db, request2)
-        
+
         assert response1.page == 1
         assert response2.page == 2
-        
+
         # Results should be different (if there are enough results)
         if response1.results and response2.results:
             assert response1.results[0].node_id != response2.results[0].node_id
@@ -282,10 +280,10 @@ class TestHybridSearchIntegration:
         """RRF scores should be positive for matched results."""
         with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
-            
+
             request = SearchRequest(query="Python async")
             response = await hybrid_search(seeded_db, request)
-        
+
         for result in response.results:
             assert result.rrf_score > 0
 
@@ -294,10 +292,10 @@ class TestHybridSearchIntegration:
         """Results should be ordered by RRF score descending."""
         with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
-            
+
             request = SearchRequest(query="Python error")
             response = await hybrid_search(seeded_db, request)
-        
+
         if len(response.results) >= 2:
             for i in range(len(response.results) - 1):
                 assert response.results[i].rrf_score >= response.results[i + 1].rrf_score
@@ -318,18 +316,18 @@ class TestSearchWithRealEmbeddings:
         """
         # This test uses real embeddings - skip if model not available
         try:
-            from src.services.embedding_service import embed_query, reset_embedder_for_testing
+            from src.services.embedding_service import reset_embedder_for_testing
             reset_embedder_for_testing()
         except ImportError:
             pytest.skip("sentence-transformers not installed")
-        
+
         request = SearchRequest(query="exception handling in Python")
         response = await hybrid_search(seeded_db, request)
-        
+
         # The "Python async error handling" issue should rank highly
         # since it's semantically related to "exception handling"
         assert len(response.results) > 0
-        
+
         # Clean up
         reset_embedder_for_testing()
 

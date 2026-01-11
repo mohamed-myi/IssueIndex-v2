@@ -1,5 +1,5 @@
 """API routes for repository listing and filtering."""
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
@@ -7,9 +7,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.api.dependencies import get_db
 from src.services.repository_service import (
-    list_repositories,
     DEFAULT_LIMIT,
     MAX_LIMIT,
+    list_repositories,
 )
 
 router = APIRouter()
@@ -34,13 +34,13 @@ class RepositoriesResponse(BaseModel):
 @router.get("", response_model=RepositoriesResponse)
 async def list_repositories_endpoint(
     db: AsyncSession = Depends(get_db),
-    language: Annotated[Optional[str], Query(description="Filter by primary language")] = None,
-    q: Annotated[Optional[str], Query(description="Search in repository name")] = None,
+    language: Annotated[str | None, Query(description="Filter by primary language")] = None,
+    q: Annotated[str | None, Query(description="Search in repository name")] = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = DEFAULT_LIMIT,
 ) -> RepositoriesResponse:
     """
     Lists available repositories for filter suggestions.
-    
+
     No authentication required - public endpoint for search dropdowns.
     Supports filtering by language and search query.
     Results ordered by stargazer count (popularity).
@@ -51,7 +51,7 @@ async def list_repositories_endpoint(
         search_query=q,
         limit=limit,
     )
-    
+
     return RepositoriesResponse(
         repositories=[
             RepositoryItemResponse(

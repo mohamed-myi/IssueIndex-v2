@@ -1,25 +1,26 @@
 """Unit tests for bookmark service CRUD operations."""
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
-from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from src.core.errors import BookmarkAlreadyExistsError
 from src.services.bookmark_service import (
-    create_bookmark,
-    list_bookmarks,
-    get_bookmark,
-    get_bookmark_with_notes_count,
-    update_bookmark,
-    delete_bookmark,
-    create_note,
-    list_notes,
-    update_note,
-    delete_note,
-    get_notes_count_for_bookmark,
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
+    create_bookmark,
+    create_note,
+    delete_bookmark,
+    delete_note,
+    get_bookmark,
+    get_bookmark_with_notes_count,
+    get_notes_count_for_bookmark,
+    list_bookmarks,
+    list_notes,
+    update_bookmark,
+    update_note,
 )
-from src.core.errors import BookmarkAlreadyExistsError
 
 
 @pytest.fixture
@@ -58,7 +59,7 @@ def sample_bookmark(user_id, bookmark_id):
     bookmark.title_snapshot = "Bug in feature"
     bookmark.body_snapshot = "Steps to reproduce..."
     bookmark.is_resolved = False
-    bookmark.created_at = datetime.now(timezone.utc)
+    bookmark.created_at = datetime.now(UTC)
     return bookmark
 
 
@@ -68,7 +69,7 @@ def sample_note(bookmark_id, note_id):
     note.id = note_id
     note.bookmark_id = bookmark_id
     note.content = "My notes here"
-    note.updated_at = datetime.now(timezone.utc)
+    note.updated_at = datetime.now(UTC)
     return note
 
 
@@ -81,7 +82,7 @@ class TestCreateBookmark:
 
         async def refresh_side_effect(bookmark):
             bookmark.id = uuid4()
-            bookmark.created_at = datetime.now(timezone.utc)
+            bookmark.created_at = datetime.now(UTC)
 
         mock_db.refresh.side_effect = refresh_side_effect
 
@@ -339,7 +340,7 @@ class TestCreateNote:
 
         async def refresh_side_effect(note):
             note.id = uuid4()
-            note.updated_at = datetime.now(timezone.utc)
+            note.updated_at = datetime.now(UTC)
 
         mock_db.refresh.side_effect = refresh_side_effect
 

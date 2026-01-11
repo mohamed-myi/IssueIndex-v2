@@ -5,15 +5,14 @@ Uses combined_vector for similarity search; falls back to trending when no profi
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.services.profile_service import get_or_create_profile
-from src.services.why_this_service import compute_why_this, WhyThisItem
 from src.core.config import get_settings
+from src.services.profile_service import get_or_create_profile
+from src.services.why_this_service import WhyThisItem, compute_why_this
 
 logger = logging.getLogger(__name__)
 
@@ -32,13 +31,13 @@ class FeedItem:
     labels: list[str]
     q_score: float
     repo_name: str
-    primary_language: Optional[str]
+    primary_language: str | None
     repo_topics: list[str]
     github_created_at: datetime
-    similarity_score: Optional[float]
-    why_this: Optional[list[WhyThisItem]] = None
-    freshness: Optional[float] = None
-    final_score: Optional[float] = None
+    similarity_score: float | None
+    why_this: list[WhyThisItem] | None = None
+    freshness: float | None = None
+    final_score: float | None = None
 
 
 def freshness_decay(
@@ -63,7 +62,7 @@ class FeedResponse:
     page_size: int
     has_more: bool
     is_personalized: bool
-    profile_cta: Optional[str]
+    profile_cta: str | None
 
 
 async def get_feed(
@@ -82,9 +81,9 @@ async def get_feed(
         page_size = DEFAULT_PAGE_SIZE
     if page_size > MAX_PAGE_SIZE:
         page_size = MAX_PAGE_SIZE
-    
+
     profile = await get_or_create_profile(db, user_id)
-    
+
     if profile.combined_vector is not None:
         return await _get_personalized_feed(
             db=db,
@@ -95,7 +94,7 @@ async def get_feed(
             page=page,
             page_size=page_size,
         )
-    
+
     return await _get_trending_feed(
         db=db,
         page=page,
@@ -107,7 +106,7 @@ async def _get_personalized_feed(
     db: AsyncSession,
     profile,
     combined_vector: list[float],
-    preferred_languages: Optional[list[str]],
+    preferred_languages: list[str] | None,
     min_heat_threshold: float,
     page: int,
     page_size: int,
@@ -115,7 +114,7 @@ async def _get_personalized_feed(
     """Vector similarity search against issue embeddings with preference filters."""
     settings = get_settings()
     offset = (page - 1) * page_size
-    
+
     filter_conditions = ["i.embedding IS NOT NULL", "i.state = 'open'"]
     params: dict = {
         "combined_vec": str(combined_vector),
@@ -127,25 +126,25 @@ async def _get_personalized_feed(
         "freshness_floor": float(settings.feed_freshness_floor),
         "freshness_weight": float(settings.feed_freshness_weight),
     }
-    
+
     filter_conditions.append("i.q_score >= :min_q_score")
-    
+
     if preferred_languages:
         filter_conditions.append("r.primary_language = ANY(:langs)")
         params["langs"] = preferred_languages
-    
+
     where_clause = " AND ".join(filter_conditions)
-    
+
     count_sql = f"""
     SELECT COUNT(*) as total
     FROM ingestion.issue i
     JOIN ingestion.repository r ON i.repo_id = r.node_id
     WHERE {where_clause}
     """
-    
+
     count_result = await db.execute(text(count_sql), params)
     total = count_result.scalar() or 0
-    
+
     if total == 0:
         return FeedResponse(
             results=[],
@@ -156,9 +155,9 @@ async def _get_personalized_feed(
             is_personalized=True,
             profile_cta=None,
         )
-    
+
     sql = f"""
-    SELECT 
+    SELECT
         i.node_id,
         i.title,
         i.body_text,
@@ -197,10 +196,10 @@ async def _get_personalized_feed(
     LIMIT :page_size
     OFFSET :offset
     """
-    
+
     result = await db.execute(text(sql), params)
     rows = result.fetchall()
-    
+
     results = [
         FeedItem(
             node_id=row.node_id,
@@ -234,13 +233,13 @@ async def _get_personalized_feed(
         if not settings.feed_debug_freshness:
             item.freshness = None
             item.final_score = None
-    
+
     has_more = (offset + len(results)) < total
-    
+
     logger.info(
         f"Personalized feed: user has combined_vector, returned {len(results)} of {total}"
     )
-    
+
     return FeedResponse(
         results=results,
         total=total,
@@ -260,24 +259,24 @@ async def _get_trending_feed(
     """Trending issues: high q_score, recent, open."""
     offset = (page - 1) * page_size
     min_q_score = 0.6
-    
+
     params = {
         "min_q_score": min_q_score,
         "limit": CANDIDATE_LIMIT,
         "offset": offset,
         "page_size": page_size,
     }
-    
+
     count_sql = """
     SELECT COUNT(*) as total
     FROM ingestion.issue i
     JOIN ingestion.repository r ON i.repo_id = r.node_id
     WHERE i.q_score >= :min_q_score AND i.state = 'open'
     """
-    
+
     count_result = await db.execute(text(count_sql), params)
     total = count_result.scalar() or 0
-    
+
     if total == 0:
         return FeedResponse(
             results=[],
@@ -288,9 +287,9 @@ async def _get_trending_feed(
             is_personalized=False,
             profile_cta=TRENDING_CTA,
         )
-    
+
     sql = """
-    SELECT 
+    SELECT
         i.node_id,
         i.title,
         i.body_text,
@@ -307,10 +306,10 @@ async def _get_trending_feed(
     LIMIT :page_size
     OFFSET :offset
     """
-    
+
     result = await db.execute(text(sql), params)
     rows = result.fetchall()
-    
+
     results = [
         FeedItem(
             node_id=row.node_id,
@@ -327,13 +326,13 @@ async def _get_trending_feed(
         )
         for row in rows
     ]
-    
+
     has_more = (offset + len(results)) < total
-    
+
     logger.info(
         f"Trending feed: no combined_vector, returned {len(results)} of {total}"
     )
-    
+
     return FeedResponse(
         results=results,
         total=total,

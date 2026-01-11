@@ -2,56 +2,54 @@ import secrets
 from urllib.parse import urlencode
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, HTTPException, Response
-from fastapi.responses import RedirectResponse, JSONResponse
 import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.api.dependencies import get_db, get_http_client
-from src.core.audit import log_audit_event, AuditEvent
+from src.core.audit import AuditEvent, log_audit_event
 from src.core.config import get_settings
 from src.core.cookies import (
-    create_session_cookie,
     clear_session_cookie,
     create_login_flow_cookie,
+    create_session_cookie,
 )
 from src.core.oauth import (
+    GITHUB_PROFILE_SCOPES,
+    EmailNotVerifiedError,
+    InvalidCodeError,
+    NoEmailError,
     OAuthProvider,
-    get_authorization_url,
-    get_profile_authorization_url,
+    OAuthStateError,
     exchange_code_for_token,
     fetch_user_profile,
-    InvalidCodeError,
-    EmailNotVerifiedError,
-    NoEmailError,
-    OAuthStateError,
-    GITHUB_PROFILE_SCOPES,
+    get_authorization_url,
+    get_profile_authorization_url,
 )
-from src.middleware.auth import require_fingerprint, get_current_session, get_current_user
+from src.middleware.auth import get_current_session, get_current_user, require_fingerprint
 from src.middleware.context import RequestContext, get_request_context
 from src.middleware.rate_limit import check_auth_rate_limit
+from src.services.linked_account_service import (
+    get_active_linked_account,
+    list_linked_accounts,
+    mark_revoked,
+    store_linked_account,
+)
 from src.services.session_service import (
-    upsert_user,
-    create_session,
-    link_provider,
-    list_sessions,
-    invalidate_session,
-    invalidate_all_sessions,
-    get_session_by_id,
-    count_sessions,
-    delete_user_cascade,
     ExistingAccountError,
     ProviderConflictError,
     UserNotFoundError,
+    count_sessions,
+    create_session,
+    delete_user_cascade,
+    get_session_by_id,
+    invalidate_all_sessions,
+    invalidate_session,
+    link_provider,
+    list_sessions,
+    upsert_user,
 )
-from src.services.linked_account_service import (
-    store_linked_account,
-    get_active_linked_account,
-    mark_revoked,
-    list_linked_accounts,
-    LinkedAccountNotFoundError,
-)
-
 
 router = APIRouter()
 
@@ -102,13 +100,13 @@ async def login(
             url=_build_error_redirect("invalid_provider"),
             status_code=302,
         )
-    
+
     settings = get_settings()
     state = secrets.token_urlsafe(32)
     redirect_uri = str(request.url_for("callback", provider=provider))
     auth_url = get_authorization_url(oauth_provider, redirect_uri, state)
     response = RedirectResponse(url=auth_url, status_code=302)
-    
+
     # Encode remember_me in state cookie for callback to extract
     state_value = f"{state}:{1 if remember_me else 0}"
     response.set_cookie(
@@ -116,7 +114,7 @@ async def login(
         value=state_value,
         **_get_state_cookie_params(settings),
     )
-    
+
     return response
 
 
@@ -134,13 +132,13 @@ async def callback(
     _: None = Depends(check_auth_rate_limit),
 ) -> RedirectResponse:
     settings = get_settings()
-    
+
     if error:
         return RedirectResponse(
             url=_build_error_redirect("consent_denied"),
             status_code=302,
         )
-    
+
     try:
         oauth_provider = OAuthProvider(provider)
     except ValueError:
@@ -148,14 +146,14 @@ async def callback(
             url=_build_error_redirect("invalid_provider"),
             status_code=302,
         )
-    
+
     stored_state = request.cookies.get(STATE_COOKIE_NAME)
     if not stored_state or not state:
         return RedirectResponse(
             url=_build_error_redirect("csrf_failed"),
             status_code=302,
         )
-    
+
     # Validate format to prevent 500 on malformed cookies
     parts = stored_state.rsplit(":", 1)
     if len(parts) != 2:
@@ -163,32 +161,32 @@ async def callback(
             url=_build_error_redirect("csrf_failed"),
             status_code=302,
         )
-    
+
     stored_state_value, remember_me_flag = parts
     remember_me = remember_me_flag == "1"
-    
+
     if state != stored_state_value:
         return RedirectResponse(
             url=_build_error_redirect("csrf_failed"),
             status_code=302,
         )
-    
+
     if not code:
         return RedirectResponse(
             url=_build_error_redirect("missing_code"),
             status_code=302,
         )
-    
+
     # Redirect URI must match login redirect
     redirect_uri = str(request.url_for("callback", provider=provider))
-    
+
     try:
         token = await exchange_code_for_token(
             oauth_provider, code, redirect_uri, client
         )
         profile = await fetch_user_profile(oauth_provider, token, client)
         user = await upsert_user(db, profile, oauth_provider)
-        
+
         session, expires_at = await create_session(
             db=db,
             user_id=user.id,
@@ -201,7 +199,7 @@ async def callback(
             asn=ctx.asn,
             country_code=ctx.country_code,
         )
-        
+
         log_audit_event(
             AuditEvent.LOGIN_SUCCESS,
             user_id=user.id,
@@ -210,7 +208,7 @@ async def callback(
             user_agent=ctx.user_agent,
             provider=provider,
         )
-        
+
         response = RedirectResponse(
             url=f"{settings.frontend_base_url}/dashboard",
             status_code=302,
@@ -220,9 +218,9 @@ async def callback(
             path="/",
         )
         create_session_cookie(response, str(session.id), expires_at)
-        
+
         return response
-        
+
     except InvalidCodeError:
         log_audit_event(
             AuditEvent.LOGIN_FAILED,
@@ -306,29 +304,29 @@ async def link(
             url=_build_settings_redirect("invalid_provider"),
             status_code=302,
         )
-    
+
     ctx = await get_request_context(request)
-    
+
     try:
-        session = await get_current_session(request, ctx, db)
+        _ = await get_current_session(request, ctx, db)
     except Exception:
         return RedirectResponse(
             url=_build_error_redirect("not_authenticated"),
             status_code=302,
         )
-    
+
     settings = get_settings()
     state = secrets.token_urlsafe(32)
     redirect_uri = str(request.url_for("link_callback", provider=provider))
     auth_url = get_authorization_url(oauth_provider, redirect_uri, state)
     response = RedirectResponse(url=auth_url, status_code=302)
-    
+
     response.set_cookie(
         key=LINK_STATE_COOKIE_NAME,
         value=state,
         **_get_state_cookie_params(settings),
     )
-    
+
     return response
 
 
@@ -345,7 +343,7 @@ async def link_callback(
 ) -> RedirectResponse:
     """Handles OAuth callback for account linking; requires existing session"""
     ctx = await get_request_context(request)
-    
+
     try:
         session = await get_current_session(request, ctx, db)
         user = await get_current_user(session, db)
@@ -354,13 +352,13 @@ async def link_callback(
             url=_build_error_redirect("not_authenticated"),
             status_code=302,
         )
-    
+
     if error:
         return RedirectResponse(
             url=_build_settings_redirect("consent_denied"),
             status_code=302,
         )
-    
+
     try:
         oauth_provider = OAuthProvider(provider)
     except ValueError:
@@ -368,29 +366,29 @@ async def link_callback(
             url=_build_settings_redirect("invalid_provider"),
             status_code=302,
         )
-    
+
     stored_state = request.cookies.get(LINK_STATE_COOKIE_NAME)
     if not stored_state or not state or state != stored_state:
         return RedirectResponse(
             url=_build_settings_redirect("csrf_failed"),
             status_code=302,
         )
-    
+
     if not code:
         return RedirectResponse(
             url=_build_settings_redirect("missing_code"),
             status_code=302,
         )
-    
+
     redirect_uri = str(request.url_for("link_callback", provider=provider))
-    
+
     try:
         token = await exchange_code_for_token(
             oauth_provider, code, redirect_uri, client
         )
         profile = await fetch_user_profile(oauth_provider, token, client)
         await link_provider(db, user, profile, oauth_provider)
-        
+
         log_audit_event(
             AuditEvent.ACCOUNT_LINKED,
             user_id=user.id,
@@ -398,15 +396,15 @@ async def link_callback(
             ip_address=request.client.host if request.client else None,
             provider=provider,
         )
-        
+
         response = RedirectResponse(
             url=_build_settings_redirect(),
             status_code=302,
         )
         response.delete_cookie(key=LINK_STATE_COOKIE_NAME, path="/")
-        
+
         return response
-        
+
     except InvalidCodeError:
         return RedirectResponse(
             url=_build_settings_redirect("code_expired"),
@@ -436,15 +434,15 @@ async def get_sessions(
 ) -> dict:
     """Returns all active sessions for authenticated user"""
     ctx = await get_request_context(request)
-    
+
     try:
         session = await get_current_session(request, ctx, db)
         user = await get_current_user(session, db)
     except Exception:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     sessions = await list_sessions(db, user.id, session.id)
-    
+
     return {
         "sessions": [
             {
@@ -470,27 +468,27 @@ async def revoke_session(
 ) -> dict:
     """Revokes a specific session; must belong to authenticated user"""
     ctx = await get_request_context(request)
-    
+
     try:
         current_session = await get_current_session(request, ctx, db)
         user = await get_current_user(current_session, db)
     except Exception:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     try:
         target_session_id = UUID(session_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid session ID format")
-    
+
     target_session = await get_session_by_id(db, target_session_id)
-    
+
     if target_session is None or target_session.user_id != user.id:
         raise HTTPException(status_code=404, detail="Session not found")
-    
+
     is_current = target_session_id == current_session.id
-    
+
     await invalidate_session(db, target_session_id)
-    
+
     log_audit_event(
         AuditEvent.SESSION_REVOKED,
         user_id=user.id,
@@ -498,14 +496,14 @@ async def revoke_session(
         ip_address=request.client.host if request.client else None,
         metadata={"was_current": is_current},
     )
-    
+
     response_data = {"revoked": True, "was_current": is_current}
-    
+
     if is_current:
         response = JSONResponse(content=response_data)
         clear_session_cookie(response)
         return response
-    
+
     return response_data
 
 
@@ -516,17 +514,17 @@ async def revoke_all_sessions(
 ) -> dict:
     """Revokes all sessions except current"""
     ctx = await get_request_context(request)
-    
+
     try:
         current_session = await get_current_session(request, ctx, db)
         user = await get_current_user(current_session, db)
     except Exception:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     revoked_count = await invalidate_all_sessions(
         db, user.id, except_session_id=current_session.id
     )
-    
+
     return {"revoked_count": revoked_count}
 
 
@@ -538,20 +536,20 @@ async def logout(
     """Invalidates current session; always returns success even if session expired"""
     session_id_str = request.cookies.get("session_id")
     session_uuid = None
-    
+
     if session_id_str:
         try:
             session_uuid = UUID(session_id_str)
             await invalidate_session(db, session_uuid)
         except ValueError:
             pass
-    
+
     log_audit_event(
         AuditEvent.LOGOUT,
         session_id=session_uuid,
         ip_address=request.client.host if request.client else None,
     )
-    
+
     response = JSONResponse(content={"logged_out": True})
     clear_session_cookie(response)
     return response
@@ -564,15 +562,15 @@ async def logout_all(
 ) -> Response:
     """Invalidates all sessions including current"""
     ctx = await get_request_context(request)
-    
+
     try:
         current_session = await get_current_session(request, ctx, db)
         user = await get_current_user(current_session, db)
     except Exception:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     revoked_count = await invalidate_all_sessions(db, user.id, except_session_id=None)
-    
+
     log_audit_event(
         AuditEvent.LOGOUT_ALL,
         user_id=user.id,
@@ -580,7 +578,7 @@ async def logout_all(
         ip_address=request.client.host if request.client else None,
         metadata={"revoked_count": revoked_count},
     )
-    
+
     response = JSONResponse(content={"revoked_count": revoked_count, "logged_out": True})
     clear_session_cookie(response)
     return response
@@ -613,28 +611,28 @@ async def connect_github(
     Requires authenticated session.
     """
     ctx = await get_request_context(request)
-    
+
     try:
         session = await get_current_session(request, ctx, db)
-        user = await get_current_user(session, db)
+        _ = await get_current_user(session, db)
     except Exception:
         return RedirectResponse(
             url=_build_error_redirect("not_authenticated"),
             status_code=302,
         )
-    
+
     settings = get_settings()
     state = secrets.token_urlsafe(32)
     redirect_uri = str(request.url_for("connect_github_callback"))
     auth_url = get_profile_authorization_url(OAuthProvider.GITHUB, redirect_uri, state)
     response = RedirectResponse(url=auth_url, status_code=302)
-    
+
     response.set_cookie(
         key=CONNECT_STATE_COOKIE_NAME,
         value=state,
         **_get_state_cookie_params(settings),
     )
-    
+
     return response
 
 
@@ -653,7 +651,7 @@ async def connect_github_callback(
     Stores token in linked_accounts table for background profile data fetching.
     """
     ctx = await get_request_context(request)
-    
+
     try:
         session = await get_current_session(request, ctx, db)
         user = await get_current_user(session, db)
@@ -662,7 +660,7 @@ async def connect_github_callback(
             url=_build_error_redirect("not_authenticated"),
             status_code=302,
         )
-    
+
     if error:
         log_audit_event(
             AuditEvent.ACCOUNT_LINKED,
@@ -675,31 +673,31 @@ async def connect_github_callback(
             url=_build_profile_redirect("consent_denied"),
             status_code=302,
         )
-    
+
     stored_state = request.cookies.get(CONNECT_STATE_COOKIE_NAME)
     if not stored_state or not state or state != stored_state:
         return RedirectResponse(
             url=_build_profile_redirect("csrf_failed"),
             status_code=302,
         )
-    
+
     if not code:
         return RedirectResponse(
             url=_build_profile_redirect("missing_code"),
             status_code=302,
         )
-    
+
     redirect_uri = str(request.url_for("connect_github_callback"))
-    
+
     try:
         token = await exchange_code_for_token(
             OAuthProvider.GITHUB, code, redirect_uri, client
         )
         profile = await fetch_user_profile(OAuthProvider.GITHUB, token, client)
-        
+
         # Parse scopes from token response
         scopes = token.scope.split(",") if token.scope else GITHUB_PROFILE_SCOPES.split(" ")
-        
+
         await store_linked_account(
             db=db,
             user_id=user.id,
@@ -710,7 +708,7 @@ async def connect_github_callback(
             scopes=scopes,
             expires_at=None,  # GitHub tokens dont expire unless revoked
         )
-        
+
         log_audit_event(
             AuditEvent.ACCOUNT_LINKED,
             user_id=user.id,
@@ -719,17 +717,17 @@ async def connect_github_callback(
             provider="github",
             metadata={"action": "connect_profile", "scopes": scopes},
         )
-        
+
         # To-do: Cloud Tasks job trigger
-        
+
         response = RedirectResponse(
             url=_build_profile_redirect(success=True),
             status_code=302,
         )
         response.delete_cookie(key=CONNECT_STATE_COOKIE_NAME, path="/")
-        
+
         return response
-        
+
     except InvalidCodeError:
         log_audit_event(
             AuditEvent.ACCOUNT_LINKED,
@@ -764,18 +762,18 @@ async def disconnect_github(
     Does NOT delete historical profile data; marks it as stale for recommendations.
     """
     ctx = await get_request_context(request)
-    
+
     try:
         session = await get_current_session(request, ctx, db)
         user = await get_current_user(session, db)
     except Exception:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     was_revoked = await mark_revoked(db, user.id, "github")
-    
+
     if not was_revoked:
         raise HTTPException(status_code=404, detail="No connected GitHub account found")
-    
+
     log_audit_event(
         AuditEvent.ACCOUNT_LINKED,
         user_id=user.id,
@@ -784,7 +782,7 @@ async def disconnect_github(
         provider="github",
         metadata={"action": "disconnect_profile"},
     )
-    
+
     return {"disconnected": True, "provider": "github"}
 
 
@@ -795,15 +793,15 @@ async def get_connect_status(
 ) -> dict:
     """Returns status of connected accounts for profile features"""
     ctx = await get_request_context(request)
-    
+
     try:
         session = await get_current_session(request, ctx, db)
         user = await get_current_user(session, db)
     except Exception:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     github_account = await get_active_linked_account(db, user.id, "github")
-    
+
     return {
         "github": {
             "connected": github_account is not None,
@@ -820,13 +818,13 @@ async def get_current_user_info(
 ) -> dict:
     """Returns current user info for navbar and settings pages"""
     ctx = await get_request_context(request)
-    
+
     try:
         session = await get_current_session(request, ctx, db)
         user = await get_current_user(session, db)
     except Exception:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     return {
         "id": str(user.id),
         "email": user.email,
@@ -844,15 +842,15 @@ async def get_linked_accounts_list(
 ) -> dict:
     """Lists all connected OAuth providers for settings page"""
     ctx = await get_request_context(request)
-    
+
     try:
         session = await get_current_session(request, ctx, db)
         user = await get_current_user(session, db)
     except Exception:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     accounts = await list_linked_accounts(db, user.id)
-    
+
     return {
         "accounts": [
             {
@@ -874,15 +872,15 @@ async def get_sessions_count(
 ) -> dict:
     """Returns count of active sessions for user"""
     ctx = await get_request_context(request)
-    
+
     try:
         session = await get_current_session(request, ctx, db)
         user = await get_current_user(session, db)
     except Exception:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     count = await count_sessions(db, user.id)
-    
+
     return {"count": count}
 
 
@@ -893,20 +891,20 @@ async def delete_account(
 ) -> Response:
     """GDPR-compliant full account deletion with cascade"""
     ctx = await get_request_context(request)
-    
+
     try:
         session = await get_current_session(request, ctx, db)
         user = await get_current_user(session, db)
     except Exception:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     user_id = user.id
-    
+
     try:
         result = await delete_user_cascade(db, user_id)
     except UserNotFoundError:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
     log_audit_event(
         AuditEvent.LOGOUT_ALL,
         user_id=user_id,
@@ -918,7 +916,7 @@ async def delete_account(
             "total_rows": result.total_rows,
         },
     )
-    
+
     response = JSONResponse(content={
         "deleted": True,
         "message": "Account and all data permanently deleted",

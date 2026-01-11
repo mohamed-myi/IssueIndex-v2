@@ -1,10 +1,11 @@
 """Unit tests for Scout repository discovery"""
 
-import pytest
-from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
-from src.ingestion.scout import Scout, RepositoryData, SCOUT_LANGUAGES
+import pytest
+
+from src.ingestion.scout import SCOUT_LANGUAGES, RepositoryData, Scout
 
 
 @pytest.fixture
@@ -41,7 +42,7 @@ class TestBuildSearchQuery:
     def test_includes_pushed_date_filter(self, scout):
         query = scout._build_search_query("Python")
         assert "pushed:>" in query
-        expected_cutoff = (datetime.now(timezone.utc) - timedelta(days=14)).strftime("%Y-%m-%d")
+        expected_cutoff = (datetime.now(UTC) - timedelta(days=14)).strftime("%Y-%m-%d")
         assert expected_cutoff in query
 
     def test_includes_sort_by_stars(self, scout):

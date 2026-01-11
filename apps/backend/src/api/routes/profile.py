@@ -1,31 +1,45 @@
 """Profile API routes. All endpoints require authentication."""
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from models.identity import Session, User
 from pydantic import BaseModel, Field
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.api.dependencies import get_db
-from src.middleware.auth import require_auth
-from src.services.profile_service import (
-    get_or_create_profile,
-    get_full_profile,
-    delete_profile as delete_profile_service,
-    create_intent as create_intent_service,
-    put_intent as put_intent_service,
-    get_intent as get_intent_service,
-    update_intent as update_intent_service,
-    delete_intent as delete_intent_service,
-    get_preferences as get_preferences_service,
-    update_preferences as update_preferences_service,
-)
 from src.core.errors import (
-    InvalidTaxonomyValueError,
     IntentAlreadyExistsError,
     IntentNotFoundError,
+    InvalidTaxonomyValueError,
 )
-from models.identity import User, Session
-
+from src.middleware.auth import require_auth
+from src.services.profile_service import (
+    create_intent as create_intent_service,
+)
+from src.services.profile_service import (
+    delete_intent as delete_intent_service,
+)
+from src.services.profile_service import (
+    delete_profile as delete_profile_service,
+)
+from src.services.profile_service import (
+    get_full_profile,
+    get_or_create_profile,
+)
+from src.services.profile_service import (
+    get_intent as get_intent_service,
+)
+from src.services.profile_service import (
+    get_preferences as get_preferences_service,
+)
+from src.services.profile_service import (
+    put_intent as put_intent_service,
+)
+from src.services.profile_service import (
+    update_intent as update_intent_service,
+)
+from src.services.profile_service import (
+    update_preferences as update_preferences_service,
+)
 
 router = APIRouter()
 
@@ -34,59 +48,59 @@ class IntentCreateInput(BaseModel):
     languages: list[str] = Field(..., min_length=1, max_length=10)
     stack_areas: list[str] = Field(..., min_length=1)
     text: str = Field(..., min_length=10, max_length=2000)
-    experience_level: Optional[str] = Field(default=None)
+    experience_level: str | None = Field(default=None)
 
 
 class IntentUpdateInput(BaseModel):
-    languages: Optional[list[str]] = Field(default=None, min_length=1, max_length=10)
-    stack_areas: Optional[list[str]] = Field(default=None, min_length=1)
-    text: Optional[str] = Field(default=None, min_length=10, max_length=2000)
-    experience_level: Optional[str] = Field(default=None)
+    languages: list[str] | None = Field(default=None, min_length=1, max_length=10)
+    stack_areas: list[str] | None = Field(default=None, min_length=1)
+    text: str | None = Field(default=None, min_length=10, max_length=2000)
+    experience_level: str | None = Field(default=None)
 
 
 class PreferencesUpdateInput(BaseModel):
-    preferred_languages: Optional[list[str]] = Field(default=None)
-    preferred_topics: Optional[list[str]] = Field(default=None)
-    min_heat_threshold: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    preferred_languages: list[str] | None = Field(default=None)
+    preferred_topics: list[str] | None = Field(default=None)
+    min_heat_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class IntentDataOutput(BaseModel):
     languages: list[str]
     stack_areas: list[str]
     text: str
-    experience_level: Optional[str]
-    updated_at: Optional[str]
+    experience_level: str | None
+    updated_at: str | None
 
 
 class IntentSourceOutput(BaseModel):
     populated: bool
-    vector_status: Optional[str]
-    data: Optional[IntentDataOutput]
+    vector_status: str | None
+    data: IntentDataOutput | None
 
 
 class ResumeDataOutput(BaseModel):
     skills: list[str]
     job_titles: list[str]
-    uploaded_at: Optional[str]
+    uploaded_at: str | None
 
 
 class ResumeSourceOutput(BaseModel):
     populated: bool
-    vector_status: Optional[str]
-    data: Optional[ResumeDataOutput]
+    vector_status: str | None
+    data: ResumeDataOutput | None
 
 
 class GitHubDataOutput(BaseModel):
     username: str
     languages: list[str]
     topics: list[str]
-    fetched_at: Optional[str]
+    fetched_at: str | None
 
 
 class GitHubSourceOutput(BaseModel):
     populated: bool
-    vector_status: Optional[str]
-    data: Optional[GitHubDataOutput]
+    vector_status: str | None
+    data: GitHubDataOutput | None
 
 
 class SourcesOutput(BaseModel):
@@ -104,10 +118,10 @@ class PreferencesOutput(BaseModel):
 class ProfileOutput(BaseModel):
     user_id: str
     optimization_percent: int
-    combined_vector_status: Optional[str]
+    combined_vector_status: str | None
     is_calculating: bool
     onboarding_status: str
-    updated_at: Optional[str]
+    updated_at: str | None
     sources: SourcesOutput
     preferences: PreferencesOutput
 
@@ -116,9 +130,9 @@ class IntentOutput(BaseModel):
     languages: list[str]
     stack_areas: list[str]
     text: str
-    experience_level: Optional[str]
-    vector_status: Optional[str]
-    updated_at: Optional[str]
+    experience_level: str | None
+    vector_status: str | None
+    updated_at: str | None
 
 
 class ProcessingStatusOutput(BaseModel):
@@ -126,10 +140,10 @@ class ProcessingStatusOutput(BaseModel):
     intent_status: str
     resume_status: str
     github_status: str
-    intent_vector_status: Optional[str]
-    resume_vector_status: Optional[str]
-    github_vector_status: Optional[str]
-    combined_vector_status: Optional[str]
+    intent_vector_status: str | None
+    resume_vector_status: str | None
+    github_vector_status: str | None
+    combined_vector_status: str | None
 
 
 @router.get("", response_model=ProfileOutput)
@@ -139,12 +153,12 @@ async def get_profile(
 ) -> ProfileOutput:
     user, _ = auth
     profile_data = await get_full_profile(db, user.id)
-    
+
     sources = SourcesOutput(
         intent=IntentSourceOutput(
             populated=profile_data["sources"]["intent"]["populated"],
             vector_status=profile_data["sources"]["intent"]["vector_status"],
-            data=IntentDataOutput(**profile_data["sources"]["intent"]["data"]) 
+            data=IntentDataOutput(**profile_data["sources"]["intent"]["data"])
                 if profile_data["sources"]["intent"]["data"] else None,
         ),
         resume=ResumeSourceOutput(
@@ -160,7 +174,7 @@ async def get_profile(
                 if profile_data["sources"]["github"]["data"] else None,
         ),
     )
-    
+
     return ProfileOutput(
         user_id=profile_data["user_id"],
         optimization_percent=profile_data["optimization_percent"],
@@ -180,7 +194,7 @@ async def delete_profile(
 ) -> dict:
     user, _ = auth
     was_deleted = await delete_profile_service(db, user.id)
-    
+
     return {
         "deleted": was_deleted,
         "message": "Profile cleared" if was_deleted else "No profile data to clear",
@@ -194,7 +208,7 @@ async def create_intent(
     db: AsyncSession = Depends(get_db),
 ) -> IntentOutput:
     user, _ = auth
-    
+
     try:
         profile = await create_intent_service(
             db=db,
@@ -208,9 +222,9 @@ async def create_intent(
         raise HTTPException(status_code=400, detail=str(e))
     except IntentAlreadyExistsError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    
+
     vector_status = "ready" if profile.intent_vector else None
-    
+
     return IntentOutput(
         languages=profile.preferred_languages or [],
         stack_areas=profile.intent_stack_areas or [],
@@ -228,10 +242,10 @@ async def get_intent(
 ) -> IntentOutput:
     user, _ = auth
     intent_data = await get_intent_service(db, user.id)
-    
+
     if intent_data is None:
         raise HTTPException(status_code=404, detail="No intent data found")
-    
+
     return IntentOutput(**intent_data)
 
 
@@ -277,10 +291,10 @@ async def update_intent(
     db: AsyncSession = Depends(get_db),
 ) -> IntentOutput:
     user, _ = auth
-    
+
     raw_body = body.model_dump(exclude_unset=True)
     experience_level_provided = "experience_level" in raw_body
-    
+
     try:
         profile = await update_intent_service(
             db=db,
@@ -295,9 +309,9 @@ async def update_intent(
         raise HTTPException(status_code=400, detail=str(e))
     except IntentNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    
+
     vector_status = "ready" if profile.intent_vector else None
-    
+
     return IntentOutput(
         languages=profile.preferred_languages or [],
         stack_areas=profile.intent_stack_areas or [],
@@ -315,10 +329,10 @@ async def delete_intent(
 ) -> dict:
     user, _ = auth
     was_deleted = await delete_intent_service(db, user.id)
-    
+
     if not was_deleted:
         raise HTTPException(status_code=404, detail="No intent data to delete")
-    
+
     return {"deleted": True, "message": "Intent cleared"}
 
 
@@ -367,7 +381,7 @@ async def get_preferences(
 ) -> PreferencesOutput:
     user, _ = auth
     prefs = await get_preferences_service(db, user.id)
-    
+
     return PreferencesOutput(**prefs)
 
 
@@ -378,7 +392,7 @@ async def update_preferences(
     db: AsyncSession = Depends(get_db),
 ) -> PreferencesOutput:
     user, _ = auth
-    
+
     try:
         profile = await update_preferences_service(
             db=db,
@@ -389,7 +403,7 @@ async def update_preferences(
         )
     except InvalidTaxonomyValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
+
     return PreferencesOutput(
         preferred_languages=profile.preferred_languages or [],
         preferred_topics=profile.preferred_topics or [],

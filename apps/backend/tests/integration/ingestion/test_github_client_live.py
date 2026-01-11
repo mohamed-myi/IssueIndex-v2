@@ -2,14 +2,14 @@
 
 import os
 import time
+
 import pytest
 
 from src.ingestion.github_client import (
-    GitHubGraphQLClient,
     GitHubAuthError,
+    GitHubGraphQLClient,
 )
 from src.ingestion.rate_limiter import InMemoryCostLimiter
-
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("GIT_TOKEN"),
@@ -87,13 +87,13 @@ class TestLiveCostTracking:
             data, cost_info = await client.execute_query_with_cost(query)
 
             assert cost_info is not None
-            
+
             assert cost_info.node_count > 10, (
                 f"Expected nested query to visit many nodes, got {cost_info.node_count}"
             )
 
             assert cost_info.cost >= 1
-            
+
             assert cost_info.remaining < cost_info.limit
             assert cost_info.reset_at is not None
 

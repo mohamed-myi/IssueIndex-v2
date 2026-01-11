@@ -5,12 +5,10 @@ All endpoints are public (no authentication required).
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-
 from src.services.taxonomy_service import (
     get_languages,
     get_stack_areas,
 )
-
 
 router = APIRouter()
 
@@ -36,7 +34,7 @@ class StackAreasResponse(BaseModel):
 async def get_languages_route() -> LanguagesResponse:
     """
     Returns valid language values for forms and filters.
-    
+
     No authentication required. Static data.
     Used for intent form, preferences, and search filters.
     """
@@ -48,7 +46,7 @@ async def get_languages_route() -> LanguagesResponse:
 async def get_stack_areas_route() -> StackAreasResponse:
     """
     Returns valid stack area values for intent form.
-    
+
     No authentication required. Static data.
     Used for Quick Start cards in onboarding.
     """

@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING
 
 from .quality_gate import (
     QScoreComponents,
-    extract_components,
     compute_q_score,
+    extract_components,
     passes_quality_gate,
 )
 

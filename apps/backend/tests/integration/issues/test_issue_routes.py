@@ -1,9 +1,9 @@
 """Integration tests for issue routes."""
-import pytest
-from datetime import datetime, timezone
-from uuid import uuid4
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
@@ -72,14 +72,14 @@ class TestGetIssueDetail:
         mock_issue.repo_url = "https://github.com/facebook/react"
         mock_issue.github_url = "https://github.com/facebook/react/issues/123"
         mock_issue.primary_language = "JavaScript"
-        mock_issue.github_created_at = datetime(2026, 1, 5, 10, 0, 0, tzinfo=timezone.utc)
+        mock_issue.github_created_at = datetime(2026, 1, 5, 10, 0, 0, tzinfo=UTC)
         mock_issue.state = "open"
-        
+
         with patch("src.api.routes.issues.get_issue_by_node_id", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_issue
-            
+
             response = authenticated_client.get("/issues/I_abc123")
-            
+
             assert response.status_code == 200
             data = response.json()
             assert data["node_id"] == "I_abc123"
@@ -90,9 +90,9 @@ class TestGetIssueDetail:
         """Should return 404 when issue doesn't exist."""
         with patch("src.api.routes.issues.get_issue_by_node_id", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = None
-            
+
             response = authenticated_client.get("/issues/I_nonexistent")
-            
+
             assert response.status_code == 404
             assert "Issue not found" in response.json()["detail"]
 
@@ -107,12 +107,12 @@ class TestGetSimilarIssues:
         similar1.title = "Related Issue"
         similar1.repo_name = "org/repo"
         similar1.similarity_score = 0.95
-        
+
         with patch("src.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
             mock_similar.return_value = [similar1]
-            
+
             response = authenticated_client.get("/issues/I_source/similar")
-            
+
             assert response.status_code == 200
             data = response.json()
             assert len(data["issues"]) == 1
@@ -123,9 +123,9 @@ class TestGetSimilarIssues:
         """Should return empty list when source has no embedding."""
         with patch("src.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
             mock_similar.return_value = []
-            
+
             response = authenticated_client.get("/issues/I_noembedding/similar")
-            
+
             assert response.status_code == 200
             assert response.json()["issues"] == []
 
@@ -133,18 +133,18 @@ class TestGetSimilarIssues:
         """Should return 404 when source issue doesn't exist."""
         with patch("src.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
             mock_similar.return_value = None
-            
+
             response = authenticated_client.get("/issues/I_nonexistent/similar")
-            
+
             assert response.status_code == 404
 
     def test_respects_limit_parameter(self, authenticated_client):
         """Should pass limit parameter to service."""
         with patch("src.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
             mock_similar.return_value = []
-            
+
             authenticated_client.get("/issues/I_source/similar?limit=3")
-            
+
             mock_similar.assert_called_once()
             call_kwargs = mock_similar.call_args[1]
             assert call_kwargs["limit"] == 3
@@ -153,7 +153,7 @@ class TestGetSimilarIssues:
         """Should reject limit above max."""
         with patch("src.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
             mock_similar.return_value = []
-            
+
             response = authenticated_client.get("/issues/I_source/similar?limit=100")
-            
+
             assert response.status_code == 422

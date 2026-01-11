@@ -2,16 +2,16 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.api.dependencies import get_db
 from src.middleware.auth import require_auth
 from src.services.issue_service import (
-    get_issue_by_node_id,
-    get_similar_issues,
     DEFAULT_SIMILAR_LIMIT,
     MAX_SIMILAR_LIMIT,
+    get_issue_by_node_id,
+    get_similar_issues,
 )
 
 router = APIRouter()
@@ -57,14 +57,14 @@ async def get_issue_detail(
 ) -> IssueDetailResponse:
     """
     Returns full issue detail by node_id.
-    
+
     Used for issue detail views, deep-linking, and bookmark cards.
     """
     issue = await get_issue_by_node_id(db, node_id)
-    
+
     if issue is None:
         raise HTTPException(status_code=404, detail="Issue not found")
-    
+
     return IssueDetailResponse(
         node_id=issue.node_id,
         title=issue.title,
@@ -89,18 +89,18 @@ async def get_similar_issues_endpoint(
 ) -> SimilarIssuesResponse:
     """
     Returns similar open issues based on vector similarity.
-    
+
     Returns empty list if:
     - Source issue has no embedding yet
     - No similar issues above similarity threshold
     - All similar issues are closed
     """
     similar = await get_similar_issues(db, node_id, limit=limit)
-    
+
     if similar is None:
         # Source issue not found
         raise HTTPException(status_code=404, detail="Issue not found")
-    
+
     return SimilarIssuesResponse(
         issues=[
             SimilarIssueResponse(

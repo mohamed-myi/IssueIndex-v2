@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, AsyncIterator
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -34,7 +35,7 @@ class StreamingPersistence:
         if not repos:
             return 0
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         values_list = []
         params = {}
 
@@ -54,8 +55,8 @@ class StreamingPersistence:
         values_sql = ", ".join(values_list)
 
         query = text(f"""
-            INSERT INTO ingestion.repository 
-                (node_id, full_name, primary_language, issue_velocity_week, 
+            INSERT INTO ingestion.repository
+                (node_id, full_name, primary_language, issue_velocity_week,
                  stargazer_count, topics, last_scraped_at)
             VALUES {values_sql}
             ON CONFLICT (node_id) DO UPDATE SET

@@ -3,7 +3,6 @@ Centralized error definitions and user-friendly message mapping.
 All profile-related errors should be caught and converted to appropriate HTTP responses.
 """
 import logging
-from typing import Optional
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -15,9 +14,9 @@ class ProfileError(Exception):
     """Base class for profile-related errors with user message and status code."""
     status_code: int = 500
     user_message: str = "Something went wrong. Please try again."
-    log_message: Optional[str] = None
-    
-    def __init__(self, detail: Optional[str] = None):
+    log_message: str | None = None
+
+    def __init__(self, detail: str | None = None):
         self.detail = detail
         super().__init__(detail or self.user_message)
 
@@ -45,7 +44,7 @@ class GitHubNotConnectedError(ProfileError):
 class RefreshRateLimitError(ProfileError):
     status_code = 429
     user_message = "GitHub refresh available in a few minutes"
-    
+
     def __init__(self, seconds_remaining: int):
         self.seconds_remaining = seconds_remaining
         minutes = max(1, seconds_remaining // 60)
@@ -55,7 +54,7 @@ class RefreshRateLimitError(ProfileError):
 
 class InvalidTaxonomyValueError(ProfileError):
     status_code = 400
-    
+
     def __init__(self, field: str, invalid_value: str, valid_options: list[str]):
         self.field = field
         self.invalid_value = invalid_value
@@ -148,7 +147,7 @@ def handle_profile_error(exc: Exception) -> HTTPException:
     Logs detailed error info server-side.
     """
     error_name = type(exc).__name__
-    
+
     if isinstance(exc, ProfileError):
         logger.warning(
             f"Profile error: {error_name}, detail={exc.detail}, user_message={exc.user_message}"
@@ -157,13 +156,13 @@ def handle_profile_error(exc: Exception) -> HTTPException:
             status_code=exc.status_code,
             detail=exc.user_message,
         )
-    
+
     if error_name in ERROR_MAP:
         status_code, user_message = ERROR_MAP[error_name]
         message = user_message or str(exc)
         logger.warning(f"Mapped error: {error_name}, message={message}")
         return HTTPException(status_code=status_code, detail=message)
-    
+
     logger.error(f"Unhandled profile error: {error_name}, detail={exc}")
     return HTTPException(
         status_code=500,

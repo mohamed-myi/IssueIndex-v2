@@ -1,33 +1,51 @@
 """Bookmarks and Notes API routes."""
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from models.identity import Session, User
 from pydantic import BaseModel, Field
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.api.dependencies import get_db
-from src.middleware.auth import require_auth
-from src.services.bookmark_service import (
-    create_bookmark as create_bookmark_service,
-    list_bookmarks as list_bookmarks_service,
-    get_bookmark_with_notes_count,
-    update_bookmark as update_bookmark_service,
-    delete_bookmark as delete_bookmark_service,
-    create_note as create_note_service,
-    list_notes as list_notes_service,
-    update_note as update_note_service,
-    delete_note as delete_note_service,
-    get_notes_count_for_bookmark,
-    check_bookmark as check_bookmark_service,
-    check_bookmarks_batch as check_bookmarks_batch_service,
-    DEFAULT_PAGE_SIZE,
-)
 from src.core.errors import (
     BookmarkAlreadyExistsError,
 )
-from models.identity import User, Session
-
+from src.middleware.auth import require_auth
+from src.services.bookmark_service import (
+    DEFAULT_PAGE_SIZE,
+    get_bookmark_with_notes_count,
+    get_notes_count_for_bookmark,
+)
+from src.services.bookmark_service import (
+    check_bookmark as check_bookmark_service,
+)
+from src.services.bookmark_service import (
+    check_bookmarks_batch as check_bookmarks_batch_service,
+)
+from src.services.bookmark_service import (
+    create_bookmark as create_bookmark_service,
+)
+from src.services.bookmark_service import (
+    create_note as create_note_service,
+)
+from src.services.bookmark_service import (
+    delete_bookmark as delete_bookmark_service,
+)
+from src.services.bookmark_service import (
+    delete_note as delete_note_service,
+)
+from src.services.bookmark_service import (
+    list_bookmarks as list_bookmarks_service,
+)
+from src.services.bookmark_service import (
+    list_notes as list_notes_service,
+)
+from src.services.bookmark_service import (
+    update_bookmark as update_bookmark_service,
+)
+from src.services.bookmark_service import (
+    update_note as update_note_service,
+)
 
 router = APIRouter()
 
@@ -281,7 +299,7 @@ async def check_bookmarks_batch(
 ) -> BookmarkBatchCheckOutput:
     """
     Batch check if user has bookmarked multiple issues.
-    
+
     Efficiently checks up to 50 issues in a single request.
     Duplicates in input are automatically deduped.
     """

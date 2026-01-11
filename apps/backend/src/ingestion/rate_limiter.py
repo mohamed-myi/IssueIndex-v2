@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from abc import ABC, abstractmethod
+from abc import ABC
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class InMemoryCostLimiter(CostAwareLimiter):
                         logger.info(
                             f"Rate limit exhausted, waiting {wait_seconds:.0f}s until reset"
                         )
-            
+
             await asyncio.sleep(min(wait_seconds + 1, 60) if self._reset_at > 0 else 1.0)
 
     async def get_remaining_points(self) -> int:

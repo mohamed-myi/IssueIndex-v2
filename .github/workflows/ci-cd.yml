@@ -6,14 +6,8 @@ name: CI/CD
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '.antigravity/**'
   pull_request:
     branches: [main]
-    paths-ignore:
-      - '**.md'
-      - '.antigravity/**'
   workflow_dispatch:
     inputs:
       skip_tests:
@@ -256,7 +250,7 @@ jobs:
 
       - name: Deployment summary
         run: |
-          echo "## Deployment Complete 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

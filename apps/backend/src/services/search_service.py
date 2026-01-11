@@ -17,23 +17,22 @@ Edge Case Decisions:
     Stage 2 missing IDs: Log discrepancy; return partial results
 """
 
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Optional
-from uuid import UUID, uuid4
 import hashlib
 import json
 import logging
+from dataclasses import dataclass, field
+from datetime import datetime
+from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.services.embedding_service import embed_query
 from src.core.config import get_settings
+from src.services.embedding_service import embed_query
 
 logger = logging.getLogger(__name__)
 
-# RRF constant, standard value 
+# RRF constant, standard value
 RRF_K: int = 60
 
 # Maximum candidates from each retrieval path, increased for better recall
@@ -53,10 +52,10 @@ class SearchFilters:
     languages: list[str] = field(default_factory=list)
     labels: list[str] = field(default_factory=list)
     repos: list[str] = field(default_factory=list)
-    
+
     def is_empty(self) -> bool:
         return not self.languages and not self.labels and not self.repos
-    
+
     def to_cache_key(self) -> str:
         """Deterministic string for cache key generation"""
         return json.dumps({
@@ -73,8 +72,8 @@ class SearchRequest:
     filters: SearchFilters = field(default_factory=SearchFilters)
     page: int = 1
     page_size: int = DEFAULT_PAGE_SIZE
-    user_id: Optional[UUID] = None  # For personalization cache key
-    
+    user_id: UUID | None = None  # For personalization cache key
+
     def __post_init__(self):
         if self.page < 1:
             self.page = 1
@@ -82,11 +81,11 @@ class SearchRequest:
             self.page_size = DEFAULT_PAGE_SIZE
         if self.page_size > MAX_PAGE_SIZE:
             self.page_size = MAX_PAGE_SIZE
-    
+
     @property
     def offset(self) -> int:
         return (self.page - 1) * self.page_size
-    
+
     def cache_key(self, include_user: bool = False) -> str:
         """SHA256 hash for Redis cache key"""
         key_data = f"{self.query}|{self.filters.to_cache_key()}|{self.page}|{self.page_size}"
@@ -104,7 +103,7 @@ class SearchResultItem:
     labels: list[str]
     q_score: float
     repo_name: str
-    primary_language: Optional[str]
+    primary_language: str | None
     github_created_at: datetime
     rrf_score: float
 
@@ -136,31 +135,31 @@ async def hybrid_search(
 ) -> SearchResponse:
     """
     Executes two-stage hybrid search using RRF to combine vector and BM25 results.
-    
+
     1: Get ordered candidate IDs and total count
     2: Hydrate current page with full metadata
-    
+
     Args:
         db: Database session
         request: Search request with query, filters, pagination
-        
+
     Returns:
         SearchResponse with paginated results and accurate total
     """
     search_id = uuid4()
-    
+
     logger.info(
         f"Search request: search_id={search_id}, query={request.query!r}, "
         f"filters={request.filters}, page={request.page}"
     )
-    
+
     # Embed the query, may return None on failure
     query_embedding = await embed_query(request.query)
     use_vector_path = query_embedding is not None
-    
+
     if not use_vector_path:
         logger.warning(f"Embedding failed for search_id={search_id}; using BM25-only")
-    
+
     # Stage 1
     stage1_result = await _execute_stage1(
         db=db,
@@ -169,7 +168,7 @@ async def hybrid_search(
         filters=request.filters,
         use_vector_path=use_vector_path,
     )
-    
+
     # Handle empty results or deep pagination
     if stage1_result.total == 0:
         logger.info(f"Search completed: search_id={search_id}, results=0, total=0")
@@ -183,12 +182,12 @@ async def hybrid_search(
             query=request.query,
             filters=request.filters,
         )
-    
+
     # Get current page IDs
     start_idx = request.offset
     end_idx = start_idx + request.page_size
     page_ids = stage1_result.node_ids[start_idx:end_idx]
-    
+
     # Deep pagination (no IDs for this page)
     if not page_ids:
         logger.info(
@@ -205,14 +204,14 @@ async def hybrid_search(
             query=request.query,
             filters=request.filters,
         )
-    
+
     # Stage 2
     results = await _execute_stage2(
         db=db,
         page_ids=page_ids,
         rrf_scores=stage1_result.rrf_scores,
     )
-    
+
     # Log discrepancy if Stage 2 returned fewer rows than expected
     if len(results) < len(page_ids):
         missing_count = len(page_ids) - len(results)
@@ -220,14 +219,14 @@ async def hybrid_search(
             f"Stage 2 returned {len(results)} of {len(page_ids)} expected rows "
             f"for search_id={search_id}; {missing_count} issues may have been deleted"
         )
-    
+
     has_more = (request.offset + len(results)) < stage1_result.total
-    
+
     logger.info(
         f"Search completed: search_id={search_id}, "
         f"results={len(results)}, total={stage1_result.total}"
     )
-    
+
     return SearchResponse(
         search_id=search_id,
         results=results,
@@ -243,19 +242,19 @@ async def hybrid_search(
 async def _execute_stage1(
     db: AsyncSession,
     query_text: str,
-    query_embedding: Optional[list[float]],
+    query_embedding: list[float] | None,
     filters: SearchFilters,
     use_vector_path: bool,
 ) -> Stage1Result:
     """
     Stage 1: Fetch candidate IDs from vector and BM25 paths without filters,
     perform RRF fusion, apply filters post-fusion, return ordered IDs with COUNT.
-    
+
     Filters are applied AFTER RRF fusion to prevent recall gaps.
     """
     sql = _build_stage1_sql(filters, use_vector_path)
     settings = get_settings()
-    
+
     params = {
         "query_text": query_text,
         "langs": filters.languages or None,
@@ -266,26 +265,26 @@ async def _execute_stage1(
         "freshness_floor": float(settings.search_freshness_floor),
         "freshness_weight": float(settings.search_freshness_weight),
     }
-    
+
     if use_vector_path and query_embedding:
         params["query_vec"] = str(query_embedding)
-    
+
     result = await db.execute(text(sql), params)
     rows = result.fetchall()
-    
+
     if not rows:
         return Stage1Result(node_ids=[], rrf_scores={}, total=0)
-    
+
     node_ids = []
     rrf_scores = {}
     total = 0
-    
+
     for row in rows:
         node_ids.append(row.node_id)
         rrf_scores[row.node_id] = float(row.rrf_score)
         # All rows have same total_count from window function
         total = row.total_count
-    
+
     return Stage1Result(node_ids=node_ids, rrf_scores=rrf_scores, total=total)
 
 
@@ -300,9 +299,9 @@ async def _execute_stage2(
     """
     if not page_ids:
         return []
-    
+
     sql = """
-    SELECT 
+    SELECT
         i.node_id,
         i.title,
         i.body_text,
@@ -316,10 +315,10 @@ async def _execute_stage2(
     WHERE i.node_id = ANY(:ids) AND i.state = 'open'
     ORDER BY array_position(:ids, i.node_id)
     """
-    
+
     result = await db.execute(text(sql), {"ids": page_ids})
     rows = result.fetchall()
-    
+
     results = []
     for row in rows:
         results.append(SearchResultItem(
@@ -333,7 +332,7 @@ async def _execute_stage2(
             github_created_at=row.github_created_at,
             rrf_score=rrf_scores.get(row.node_id, 0.0),
         ))
-    
+
     return results
 
 
@@ -341,14 +340,14 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
     """
     Builds Stage 1 SQL: candidate retrieval without filters in CTEs,
     RRF fusion, then post-filter application.
-    
+
     Key design decisions:
         No filters in CTEs: Prevents recall gaps with selective filters
         Post-fusion filtering: Applied in final WHERE clause
         Tie-breaking: q_score DESC for deterministic ordering
         COUNT(*) OVER(): Accurate total without separate query
     """
-    
+
     # Post-fusion filter conditions
     filter_conditions = []
     if filters.languages:
@@ -357,16 +356,16 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
         filter_conditions.append("fused.labels && :labels")
     if filters.repos:
         filter_conditions.append("r.full_name = ANY(:repos)")
-    
+
     post_filter_where = ""
     if filter_conditions:
         post_filter_where = "WHERE " + " AND ".join(filter_conditions)
-    
+
     if use_vector_path:
         # Full hybrid: vector + BM25
         sql = f"""
         WITH vector_results AS (
-            SELECT 
+            SELECT
                 i.node_id,
                 i.labels,
                 i.repo_id,
@@ -380,7 +379,7 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
             LIMIT :candidate_limit
         ),
         bm25_results AS (
-            SELECT 
+            SELECT
                 i.node_id,
                 i.labels,
                 i.repo_id,
@@ -396,20 +395,20 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
             LIMIT :candidate_limit
         ),
         fused AS (
-            SELECT 
+            SELECT
                 COALESCE(v.node_id, b.node_id) AS node_id,
                 COALESCE(v.labels, b.labels) AS labels,
                 COALESCE(v.repo_id, b.repo_id) AS repo_id,
                 COALESCE(v.q_score, b.q_score) AS q_score,
                 COALESCE(v.github_created_at, b.github_created_at) AS github_created_at,
                 COALESCE(v.ingested_at, b.ingested_at) AS ingested_at,
-                COALESCE(1.0 / ({RRF_K} + v.v_rank), 0) + 
+                COALESCE(1.0 / ({RRF_K} + v.v_rank), 0) +
                 COALESCE(1.0 / ({RRF_K} + b.b_rank), 0) AS rrf_score
             FROM vector_results v
             FULL OUTER JOIN bm25_results b ON v.node_id = b.node_id
         ),
         filtered AS (
-            SELECT 
+            SELECT
                 fused.node_id,
                 fused.rrf_score,
                 fused.q_score,
@@ -438,7 +437,7 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
             JOIN ingestion.repository r ON fused.repo_id = r.node_id
             {post_filter_where}
         )
-        SELECT 
+        SELECT
             node_id,
             rrf_score,
             COUNT(*) OVER() AS total_count
@@ -449,7 +448,7 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
         # BM25-only fallback (embedding failed)
         sql = f"""
         WITH bm25_results AS (
-            SELECT 
+            SELECT
                 i.node_id,
                 i.labels,
                 i.repo_id,
@@ -465,7 +464,7 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
             LIMIT :candidate_limit
         ),
         fused AS (
-            SELECT 
+            SELECT
                 node_id,
                 labels,
                 repo_id,
@@ -476,7 +475,7 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
             FROM bm25_results
         ),
         filtered AS (
-            SELECT 
+            SELECT
                 fused.node_id,
                 fused.rrf_score,
                 fused.q_score,
@@ -505,14 +504,14 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
             JOIN ingestion.repository r ON fused.repo_id = r.node_id
             {post_filter_where}
         )
-        SELECT 
+        SELECT
             node_id,
             rrf_score,
             COUNT(*) OVER() AS total_count
         FROM filtered
         ORDER BY final_score DESC, q_score DESC, node_id ASC
         """
-    
+
     return sql
 
 

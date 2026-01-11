@@ -1,4 +1,5 @@
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+
 import httpx
 from sqlmodel.ext.asyncio.session import AsyncSession
 

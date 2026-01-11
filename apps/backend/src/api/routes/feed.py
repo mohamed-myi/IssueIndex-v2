@@ -2,27 +2,24 @@
 Feed API route for personalized issue recommendations.
 Uses combined_vector for similarity; falls back to trending when no profile.
 """
-from typing import Optional
-from datetime import datetime, timezone
-from uuid import uuid4
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
+from models.identity import Session, User
 from pydantic import BaseModel, Field
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.api.dependencies import get_db
 from src.middleware.auth import require_auth
 from src.services.feed_service import (
-    get_feed,
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
+    get_feed,
 )
 from src.services.recommendation_event_service import (
     generate_recommendation_batch_id,
     store_recommendation_batch_context,
 )
-from models.identity import User, Session
-
 
 router = APIRouter()
 
@@ -39,13 +36,13 @@ class FeedItemOutput(BaseModel):
     labels: list[str]
     q_score: float
     repo_name: str
-    primary_language: Optional[str]
+    primary_language: str | None
     github_created_at: str
-    similarity_score: Optional[float] = Field(
+    similarity_score: float | None = Field(
         default=None,
         description="Cosine similarity to user profile; null for trending feed",
     )
-    why_this: Optional[list[WhyThisItemOutput]] = Field(
+    why_this: list[WhyThisItemOutput] | None = Field(
         default=None,
         description="Top explanation entities with raw scores; present for personalized feed only.",
     )
@@ -64,7 +61,7 @@ class FeedResponse(BaseModel):
     is_personalized: bool = Field(
         description="True if results are based on user profile; false for trending",
     )
-    profile_cta: Optional[str] = Field(
+    profile_cta: str | None = Field(
         default=None,
         description="Call to action message when showing trending feed",
     )
@@ -84,24 +81,24 @@ async def get_feed_route(
 ) -> FeedResponse:
     """
     Returns personalized issue recommendations based on user profile.
-    
+
     When the user has a combined_vector (from intent, resume, or GitHub data),
     issues are ranked by vector similarity with preference filters applied.
-    
+
     When no profile data exists, returns trending issues (high quality, recent)
     with a call to action to complete the profile.
-    
+
     Pagination:
         page: 1-indexed page number
         page_size: results per page (max 50)
-    
+
     Response includes:
         is_personalized: true if using profile-based ranking
         profile_cta: message shown when using trending fallback
         similarity_score: cosine similarity for personalized results (null for trending)
     """
     user, _ = auth
-    
+
     feed = await get_feed(
         db=db,
         user_id=user.id,
@@ -110,7 +107,7 @@ async def get_feed_route(
     )
 
     recommendation_batch_id = generate_recommendation_batch_id()
-    served_at = datetime.now(timezone.utc)
+    served_at = datetime.now(UTC)
     issue_node_ids = [item.node_id for item in feed.results]
     await store_recommendation_batch_context(
         recommendation_batch_id=recommendation_batch_id,
@@ -120,7 +117,7 @@ async def get_feed_route(
         is_personalized=feed.is_personalized,
         served_at=served_at,
     )
-    
+
     return FeedResponse(
         recommendation_batch_id=str(recommendation_batch_id),
         results=[

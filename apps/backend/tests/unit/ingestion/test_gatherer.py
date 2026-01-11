@@ -1,16 +1,17 @@
 """Unit tests for Gatherer streaming issue harvester"""
 
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.ingestion.gatherer import (
+    BODY_TRUNCATE_LENGTH,
     Gatherer,
     IssueData,
-    BODY_TRUNCATE_LENGTH,
 )
-from src.ingestion.scout import RepositoryData
 from src.ingestion.quality_gate import QScoreComponents
+from src.ingestion.scout import RepositoryData
 
 
 @pytest.fixture
@@ -52,7 +53,7 @@ def make_issue_node(
         "createdAt": created_at,
         "state": state,
         "labels": {
-            "nodes": [{"name": l} for l in (labels or [])]
+            "nodes": [{"name": lbl} for lbl in (labels or [])]
         },
     }
 
@@ -258,7 +259,7 @@ class TestFetchRepoIssues:
 
         mock_client.execute_query.side_effect = [page1, page2]
 
-        issues = [i async for i in gatherer._fetch_repo_issues(sample_repo)]
+        _ = [i async for i in gatherer._fetch_repo_issues(sample_repo)]
 
         assert mock_client.execute_query.call_count == 2
 
@@ -364,7 +365,7 @@ class TestHarvestIssues:
             }
         }
 
-        issues = [i async for i in gatherer.harvest_issues(repos)]
+        _ = [i async for i in gatherer.harvest_issues(repos)]
 
         assert mock_client.execute_query.call_count == 3
 
@@ -420,7 +421,7 @@ class TestIssueData:
             title="Bug report",
             body_text="Description",
             labels=["bug"],
-            github_created_at=datetime.now(timezone.utc),
+            github_created_at=datetime.now(UTC),
             q_score=0.75,
             q_components=components,
             state="open",

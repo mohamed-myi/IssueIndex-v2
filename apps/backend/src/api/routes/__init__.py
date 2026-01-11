@@ -1,17 +1,19 @@
-from . import auth
-from . import search
-from . import feed
-from . import profile
-from . import profile_onboarding
-from . import profile_github
-from . import profile_resume
-from . import bookmarks
-from . import recommendations
-from . import internal_recommendations
-from . import issues
-from . import repositories
-from . import public
-from . import taxonomy
+from . import (
+    auth,
+    bookmarks,
+    feed,
+    internal_recommendations,
+    issues,
+    profile,
+    profile_github,
+    profile_onboarding,
+    profile_resume,
+    public,
+    recommendations,
+    repositories,
+    search,
+    taxonomy,
+)
 
 __all__ = [
     "auth",

@@ -1,14 +1,14 @@
 """
 Unit tests for taxonomy service.
 """
-import pytest
+
+from constants import PROFILE_LANGUAGES, STACK_AREAS
 
 from src.services.taxonomy_service import (
+    StackAreaInfo,
     get_languages,
     get_stack_areas,
-    StackAreaInfo,
 )
-from constants import PROFILE_LANGUAGES, STACK_AREAS
 
 
 class TestGetLanguages:
@@ -90,7 +90,7 @@ class TestGetStackAreas:
         result = get_stack_areas()
         backend = next(a for a in result if a.id == "backend")
         assert backend.label == "Backend"
-        
+
         data_eng = next(a for a in result if a.id == "data_engineering")
         assert data_eng.label == "Data Engineering"
 

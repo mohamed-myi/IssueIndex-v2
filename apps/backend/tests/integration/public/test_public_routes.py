@@ -2,8 +2,8 @@
 Integration tests for public API routes.
 Tests /feed/trending and /stats without authentication.
 """
-from unittest.mock import patch, AsyncMock
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -36,7 +36,7 @@ class _FeedItem:
         self.repo_name = "test/repo"
         self.primary_language = "Python"
         self.repo_topics = ["testing"]
-        self.github_created_at = datetime(2026, 1, 9, 12, 0, 0, tzinfo=timezone.utc)
+        self.github_created_at = datetime(2026, 1, 9, 12, 0, 0, tzinfo=UTC)
         self.similarity_score = None
         self.why_this = None
 
@@ -59,7 +59,7 @@ class _PlatformStats:
         self.total_issues = 15000
         self.total_repos = 500
         self.total_languages = 25
-        self.indexed_at = datetime(2026, 1, 9, 6, 0, 0, tzinfo=timezone.utc)
+        self.indexed_at = datetime(2026, 1, 9, 6, 0, 0, tzinfo=UTC)
 
 
 class TestTrendingRoute:
@@ -72,7 +72,7 @@ class TestTrendingRoute:
             return_value=_FeedResponse(count=5),
         ):
             response = client.get("/feed/trending")
-        
+
         assert response.status_code == 200
 
     def test_trending_returns_expected_structure(self, client):
@@ -82,7 +82,7 @@ class TestTrendingRoute:
             return_value=_FeedResponse(count=3),
         ):
             response = client.get("/feed/trending")
-        
+
         data = response.json()
         assert "results" in data
         assert "total" in data
@@ -95,7 +95,7 @@ class TestTrendingRoute:
             return_value=_FeedResponse(count=1),
         ):
             response = client.get("/feed/trending")
-        
+
         data = response.json()
         result = data["results"][0]
         assert "node_id" in result
@@ -114,7 +114,7 @@ class TestTrendingRoute:
             return_value=_FeedResponse(count=10),
         ):
             response = client.get("/feed/trending")
-        
+
         data = response.json()
         assert data["limit"] == 10
 
@@ -125,7 +125,7 @@ class TestTrendingRoute:
             return_value=_FeedResponse(count=0, total=0),
         ):
             response = client.get("/feed/trending")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["results"] == []
@@ -142,7 +142,7 @@ class TestStatsRoute:
             return_value=_PlatformStats(),
         ):
             response = client.get("/stats")
-        
+
         assert response.status_code == 200
 
     def test_stats_returns_expected_fields(self, client):
@@ -152,7 +152,7 @@ class TestStatsRoute:
             return_value=_PlatformStats(),
         ):
             response = client.get("/stats")
-        
+
         data = response.json()
         assert "total_issues" in data
         assert "total_repos" in data
@@ -166,7 +166,7 @@ class TestStatsRoute:
             return_value=_PlatformStats(),
         ):
             response = client.get("/stats")
-        
+
         data = response.json()
         assert data["total_issues"] == 15000
         assert data["total_repos"] == 500
@@ -176,13 +176,13 @@ class TestStatsRoute:
         """Handles null indexed_at gracefully."""
         stats = _PlatformStats()
         stats.indexed_at = None
-        
+
         with patch(
             "src.api.routes.public.get_platform_stats",
             return_value=stats,
         ):
             response = client.get("/stats")
-        
+
         assert response.status_code == 200
         data = response.json()
         assert data["indexed_at"] is None

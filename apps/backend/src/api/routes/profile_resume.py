@@ -1,27 +1,24 @@
 """Resume profile API routes for uploading and managing resume data."""
-from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
+from models.identity import Session, User
 from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.api.dependencies import get_db
-from src.middleware.auth import require_auth
-from src.services.resume_parsing_service import (
-    initiate_resume_processing,
-    get_resume_data,
-    delete_resume,
-    MAX_FILE_SIZE,
-)
 from src.core.errors import (
-    handle_profile_error,
+    FileTooLargeError,
     ResumeParseError,
     UnsupportedFormatError,
-    FileTooLargeError,
+    handle_profile_error,
 )
-from models.identity import User, Session
-
+from src.middleware.auth import require_auth
+from src.services.resume_parsing_service import (
+    MAX_FILE_SIZE,
+    delete_resume,
+    get_resume_data,
+    initiate_resume_processing,
+)
 
 router = APIRouter()
 
@@ -38,8 +35,8 @@ class ResumeDataResponse(BaseModel):
     status: str
     skills: list[str]
     job_titles: list[str]
-    vector_status: Optional[str]
-    uploaded_at: Optional[str]
+    vector_status: str | None
+    uploaded_at: str | None
 
 
 def _handle_resume_error(e: Exception) -> HTTPException:
@@ -53,7 +50,7 @@ def _handle_resume_error(e: Exception) -> HTTPException:
             status_code=422,
             detail="We couldn't read your resume. Try a different format?"
         )
-    
+
     return handle_profile_error(e)
 
 
@@ -65,30 +62,30 @@ async def upload_resume(
 ) -> ResumeUploadAcceptedResponse:
     """
     Uploads a resume file and initiates async processing.
-    
+
     Accepts PDF or DOCX files up to 5MB.
     File is validated immediately; parsing happens in background via Cloud Tasks.
-    
+
     The original file is processed in memory and never stored.
     Only the extracted metadata and vector are persisted.
-    
+
     Poll GET /profile or GET /profile/resume for processing status.
     Check is_calculating=false and vector_status='ready' for completion.
-    
+
     Returns:
         202 Accepted with job_id and status 'processing'.
-    
+
     Errors:
         400: Unsupported file format (not PDF or DOCX)
         413: File too large (exceeds 5MB)
     """
     user, _ = auth
-    
+
     file_bytes = await file.read()
-    
+
     if len(file_bytes) > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="Resume must be under 5MB")
-    
+
     try:
         result = await initiate_resume_processing(
             db,
@@ -99,7 +96,7 @@ async def upload_resume(
         )
     except (UnsupportedFormatError, FileTooLargeError) as e:
         raise _handle_resume_error(e)
-    
+
     return ResumeUploadAcceptedResponse(
         job_id=result["job_id"],
         status=result["status"],
@@ -114,26 +111,26 @@ async def get_resume(
 ) -> ResumeDataResponse:
     """
     Returns stored resume data.
-    
+
     If is_calculating is true, resume is still being processed.
     Check vector_status for embedding completion status.
-    
+
     Returns:
         ResumeDataResponse with extracted skills and job titles.
-    
+
     Errors:
         404: No resume data found; use POST /profile/resume first.
     """
     user, _ = auth
-    
+
     data = await get_resume_data(db, user.id)
-    
+
     if data is None:
         raise HTTPException(
             status_code=404,
             detail="No resume data found. Upload a resume first."
         )
-    
+
     return ResumeDataResponse(
         status=data["status"],
         skills=data["skills"],
@@ -150,23 +147,23 @@ async def delete_resume_data(
 ) -> dict:
     """
     Clears resume data and vector.
-    
+
     Triggers combined_vector recalculation from remaining sources.
-    
+
     Returns:
         Confirmation of deletion.
-    
+
     Errors:
         404: No resume data to delete.
     """
     user, _ = auth
-    
+
     was_deleted = await delete_resume(db, user.id)
-    
+
     if not was_deleted:
         raise HTTPException(
             status_code=404,
             detail="No resume data to delete"
         )
-    
+
     return {"deleted": True, "message": "Resume data cleared"}

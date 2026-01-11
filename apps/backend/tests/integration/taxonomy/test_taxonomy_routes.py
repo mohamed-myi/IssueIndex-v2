@@ -3,11 +3,11 @@ Integration tests for taxonomy API routes.
 Tests /taxonomy/languages and /taxonomy/stack-areas without authentication.
 """
 import pytest
+from constants import PROFILE_LANGUAGES, STACK_AREAS
 from fastapi.testclient import TestClient
 
 from src.main import app
 from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
-from constants import PROFILE_LANGUAGES, STACK_AREAS
 
 
 @pytest.fixture(autouse=True)

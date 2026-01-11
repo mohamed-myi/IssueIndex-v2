@@ -1,16 +1,17 @@
 """Unit tests for GitHub GraphQL client"""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
+import pytest
 
 from src.ingestion.github_client import (
     GitHubAPIError,
-    GitHubRateLimitError,
     GitHubAuthError,
     GitHubGraphQLClient,
-    RateLimitInfo,
+    GitHubRateLimitError,
     QueryCostInfo,
+    RateLimitInfo,
 )
 
 

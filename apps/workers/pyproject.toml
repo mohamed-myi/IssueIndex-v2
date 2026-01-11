@@ -16,9 +16,6 @@ dependencies = [
     "sentence-transformers>=2.2.0",
     
     # Database
-    "sqlmodel>=0.0.22",
-    "asyncpg>=0.29.0",
-    "pgvector>=0.3.0",
     
     # Configuration
     "pydantic-settings>=2.0.0",

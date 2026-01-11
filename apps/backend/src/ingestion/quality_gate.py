@@ -11,13 +11,12 @@ _workspace_root = Path(__file__).parent.parent.parent.parent.parent
 if str(_workspace_root) not in sys.path:
     sys.path.insert(0, str(_workspace_root))
 
-from packages.shared.src.constants import (
-    TECH_KEYWORDS_BY_LANGUAGE,
+from packages.shared.src.constants import (  # noqa: E402
     DEFAULT_TECH_KEYWORDS,
-    TEMPLATE_HEADERS,
     JUNK_PATTERNS,
+    TECH_KEYWORDS_BY_LANGUAGE,
+    TEMPLATE_HEADERS,
 )
-
 
 JUNK_REGEXES: list[re.Pattern[str]] = [
     re.compile(re.escape(pattern), re.IGNORECASE)

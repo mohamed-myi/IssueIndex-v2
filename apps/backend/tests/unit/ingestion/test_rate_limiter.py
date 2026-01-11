@@ -1,8 +1,9 @@
 """Unit tests for cost aware rate limiters"""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 import time
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from src.ingestion.rate_limiter import (
     InMemoryCostLimiter,
@@ -187,7 +188,7 @@ class TestRedisCostLimiter:
 
     async def test_wait_until_affordable_sleeps_until_reset(self, mock_redis):
         call_count = [0]
-        
+
         async def get_side_effect(key):
             call_count[0] += 1
             if key == RedisCostLimiter.REMAINING_KEY:
@@ -196,7 +197,7 @@ class TestRedisCostLimiter:
             elif key == RedisCostLimiter.RESET_AT_KEY:
                 return str(int(time.time()) + 2)
             return None
-        
+
         mock_redis.get = AsyncMock(side_effect=get_side_effect)
 
         limiter = RedisCostLimiter(mock_redis)

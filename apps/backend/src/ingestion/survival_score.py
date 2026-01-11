@@ -1,6 +1,6 @@
 """Survival score calculation for Janitor pruning decisions"""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # Formula constants
 GRACE_PERIOD: float = 2.0   # Adds 2 days to age; prevents infinite scores for new issues
@@ -11,7 +11,7 @@ GRAVITY: float = 1.5        # Controls decay speed; age eventually outweighs qua
 def calculate_survival_score(q_score: float, days_old: float) -> float:
     """
     S = (Q + beta) / (days_old + gamma)^G
-    
+
     Higher Q scores and younger issues survive longer.
     The gravity exponent ensures old issues are eventually pruned
     regardless of quality.
@@ -22,11 +22,11 @@ def calculate_survival_score(q_score: float, days_old: float) -> float:
 
 def days_since(dt: datetime) -> float:
     """Returns fractional days since given datetime (UTC aware)"""
-    now = datetime.now(timezone.utc)
-    
+    now = datetime.now(UTC)
+
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    
+        dt = dt.replace(tzinfo=UTC)
+
     delta = now - dt
     return delta.total_seconds() / 86400.0
 

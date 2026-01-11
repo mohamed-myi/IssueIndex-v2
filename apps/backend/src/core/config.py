@@ -1,30 +1,31 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     database_url: str = ""
     direct_database_url: str = ""
-    
+
     jwt_secret_key: str = ""
     fingerprint_secret: str = ""
     fernet_key: str = ""  # Token encryption key for linked_accounts
-    
+
     github_client_id: str = ""
     github_client_secret: str = ""
-    
+
     google_client_id: str = ""
     google_client_secret: str = ""
-    
+
     environment: str = "development"
     cors_origins: str = "http://localhost:3000"
-    
+
     session_remember_me_days: int = 7
     session_default_hours: int = 24
     max_sessions_per_user: int = 5
-    
+
     frontend_base_url: str = "http://localhost:3000"
-    
+
     redis_url: str = ""
 
     reco_flush_secret: str = ""
@@ -38,19 +39,19 @@ class Settings(BaseSettings):
     search_freshness_half_life_days: float = 7.0
     search_freshness_weight: float = 0.25
     search_freshness_floor: float = 0.2
-    
+
     max_auth_requests_per_minute: int = 10
     rate_limit_window_seconds: int = 60
-    
+
     git_token: str = ""
-    
+
     # Cloud Tasks config
     gcp_project: str = ""
     gcp_region: str = "us-central1"
     cloud_tasks_queue: str = "profile-jobs"
     embed_worker_url: str = ""
     resume_worker_url: str = ""
-    
+
     model_config = SettingsConfigDict(
         env_file=".env.local",
         env_file_encoding="utf-8",

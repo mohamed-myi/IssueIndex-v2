@@ -98,12 +98,12 @@ class GitHubGraphQLClient:
         """Auto injects rateLimit fragment for cost tracking if caller omits it"""
         if "rateLimit" in query:
             return query
-        
+
         # Find the last '}' and insert rateLimit before it
         last_brace = query.rfind("}")
         if last_brace == -1:
             return query  # Malformed query, let GitHub return the error
-        
+
         return query[:last_brace] + self.RATE_LIMIT_FRAGMENT + query[last_brace:]
 
     async def execute_query(

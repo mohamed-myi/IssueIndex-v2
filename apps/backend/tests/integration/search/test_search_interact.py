@@ -1,12 +1,12 @@
 import json
-from uuid import uuid4
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
 from src.api.dependencies import get_db
+from src.main import app
 from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 

@@ -1,17 +1,17 @@
 """
 Unit tests for stats service.
 """
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, patch, MagicMock
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.services.stats_service import (
-    get_platform_stats,
-    _query_stats,
-    PlatformStats,
     STATS_CACHE_KEY,
     STATS_CACHE_TTL,
+    PlatformStats,
+    _query_stats,
+    get_platform_stats,
 )
 
 
@@ -19,7 +19,7 @@ class MockScalarResult:
     """Mock for database scalar results."""
     def __init__(self, value):
         self._value = value
-    
+
     def scalar(self):
         return self._value
 
@@ -52,12 +52,12 @@ class TestQueryStats:
                 MockScalarResult(1000),  # issues
                 MockScalarResult(50),    # repos
                 MockScalarResult(10),    # languages
-                MockScalarResult(datetime(2026, 1, 9, 12, 0, 0, tzinfo=timezone.utc)),  # indexed_at
+                MockScalarResult(datetime(2026, 1, 9, 12, 0, 0, tzinfo=UTC)),  # indexed_at
             ]
         )
-        
+
         result = await _query_stats(mock_db)
-        
+
         assert isinstance(result, PlatformStats)
         assert result.total_issues == 1000
         assert result.total_repos == 50
@@ -75,9 +75,9 @@ class TestQueryStats:
                 MockScalarResult(None),  # indexed_at
             ]
         )
-        
+
         result = await _query_stats(mock_db)
-        
+
         assert result.total_issues == 0
         assert result.total_repos == 0
         assert result.total_languages == 0
@@ -94,9 +94,9 @@ class TestQueryStats:
                 MockScalarResult(None),  # indexed_at
             ]
         )
-        
+
         result = await _query_stats(mock_db)
-        
+
         assert result.total_issues == 0
         assert result.total_repos == 0
         assert result.total_languages == 0
@@ -116,10 +116,10 @@ class TestGetPlatformStats:
                 MockScalarResult(None),
             ]
         )
-        
+
         with patch("src.services.stats_service.get_redis", return_value=None):
             result = await get_platform_stats(mock_db)
-        
+
         assert result.total_issues == 100
         assert result.total_repos == 10
         assert result.total_languages == 5
@@ -134,10 +134,10 @@ class TestGetPlatformStats:
             "indexed_at": "2026-01-09T10:00:00+00:00",
         }
         mock_redis.hgetall = AsyncMock(return_value=cached_data)
-        
+
         with patch("src.services.stats_service.get_redis", return_value=mock_redis):
             result = await get_platform_stats(mock_db)
-        
+
         assert result.total_issues == 500
         assert result.total_repos == 25
         # DB should not be called
@@ -152,13 +152,13 @@ class TestGetPlatformStats:
                 MockScalarResult(200),
                 MockScalarResult(20),
                 MockScalarResult(6),
-                MockScalarResult(datetime(2026, 1, 9, 12, 0, 0, tzinfo=timezone.utc)),
+                MockScalarResult(datetime(2026, 1, 9, 12, 0, 0, tzinfo=UTC)),
             ]
         )
-        
+
         with patch("src.services.stats_service.get_redis", return_value=mock_redis):
             await get_platform_stats(mock_db)
-        
+
         # Verify cache was written
         mock_redis.hset.assert_called_once()
         mock_redis.expire.assert_called_once_with(STATS_CACHE_KEY, STATS_CACHE_TTL)
@@ -175,10 +175,10 @@ class TestGetPlatformStats:
                 MockScalarResult(None),
             ]
         )
-        
+
         with patch("src.services.stats_service.get_redis", return_value=mock_redis):
             result = await get_platform_stats(mock_db)
-        
+
         # Should still return valid stats from DB
         assert result.total_issues == 100
 
@@ -195,9 +195,9 @@ class TestGetPlatformStats:
                 MockScalarResult(None),
             ]
         )
-        
+
         with patch("src.services.stats_service.get_redis", return_value=mock_redis):
             result = await get_platform_stats(mock_db)
-        
+
         # Should still return valid stats
         assert result.total_issues == 100

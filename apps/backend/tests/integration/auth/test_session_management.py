@@ -1,6 +1,6 @@
-import pytest
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
@@ -17,7 +17,7 @@ class TestGetSessionsEndpoint:
     def test_requires_authentication(self, client):
         """Unauthenticated request returns 401"""
         response = client.get("/auth/sessions")
-        
+
         assert response.status_code == 401
         assert "Not authenticated" in response.json().get("detail", "")
 
@@ -28,7 +28,7 @@ class TestRevokeSessionEndpoint:
     def test_requires_authentication(self, client):
         """Unauthenticated request returns 401"""
         response = client.delete(f"/auth/sessions/{uuid4()}")
-        
+
         assert response.status_code == 401
         assert "Not authenticated" in response.json().get("detail", "")
 
@@ -38,7 +38,7 @@ class TestRevokeSessionEndpoint:
         so this returns 401 for unauthenticated users
         """
         response = client.delete("/auth/sessions/not-a-valid-uuid")
-        
+
         # Auth happens first, so 401 is expected
         assert response.status_code == 401
 
@@ -49,18 +49,18 @@ class TestRevokeAllSessionsEndpoint:
     def test_requires_authentication(self, client):
         """Unauthenticated request returns 401"""
         response = client.delete("/auth/sessions")
-        
+
         assert response.status_code == 401
         assert "Not authenticated" in response.json().get("detail", "")
 
 
 class TestSessionEndpointRouting:
     """Verifies correct HTTP methods are accepted"""
-    
+
     def test_get_sessions_rejects_post(self, client):
         """POST not allowed on GET endpoint"""
         response = client.post("/auth/sessions")
-        
+
         assert response.status_code == 405
 
 

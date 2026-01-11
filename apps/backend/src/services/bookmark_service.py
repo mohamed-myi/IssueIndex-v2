@@ -1,22 +1,21 @@
 """Bookmark service. All queries filter by user_id to enforce authorization."""
 import logging
-from datetime import datetime, timezone
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import delete, func
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-import sys
-from pathlib import Path
-
 db_models_path = Path(__file__).resolve().parent.parent.parent.parent.parent / "packages" / "database" / "src"
 if str(db_models_path) not in sys.path:
     sys.path.insert(0, str(db_models_path))
 
-from models.persistence import BookmarkedIssue, PersonalNote
+from models.persistence import BookmarkedIssue, PersonalNote  # noqa: E402
 
-from src.core.errors import BookmarkAlreadyExistsError
+from src.core.errors import BookmarkAlreadyExistsError  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -235,7 +234,7 @@ async def update_note(
         return None
 
     note.content = content
-    note.updated_at = datetime.now(timezone.utc)
+    note.updated_at = datetime.now(UTC)
 
     await db.commit()
     await db.refresh(note)
@@ -278,7 +277,7 @@ async def check_bookmark(
 ) -> tuple[bool, UUID | None]:
     """
     Checks if user has bookmarked a specific issue.
-    
+
     Returns:
         (bookmarked: bool, bookmark_id: UUID | None)
     """
@@ -288,7 +287,7 @@ async def check_bookmark(
     )
     result = await db.exec(stmt)
     bookmark_id = result.first()
-    
+
     if bookmark_id is not None:
         return True, bookmark_id
     return False, None
@@ -302,22 +301,22 @@ async def check_bookmarks_batch(
     """
     Batch check if user has bookmarked multiple issues.
     Handles duplicates by deduping input.
-    
+
     Args:
         issue_node_ids: List of issue node IDs (duplicates allowed, will be deduped)
-    
+
     Returns:
         Dict mapping issue_node_id -> bookmark_id (or None if not bookmarked)
     """
     if not issue_node_ids:
         return {}
-    
+
     # Dedupe input
     unique_ids = list(set(issue_node_ids))
-    
+
     # Initialize result with None for all requested IDs
     result_map: dict[str, UUID | None] = {node_id: None for node_id in unique_ids}
-    
+
     # Fetch all matching bookmarks in single query
     stmt = select(BookmarkedIssue.issue_node_id, BookmarkedIssue.id).where(
         BookmarkedIssue.user_id == user_id,
@@ -325,11 +324,11 @@ async def check_bookmarks_batch(
     )
     result = await db.exec(stmt)
     rows = result.all()
-    
+
     # Update result map with found bookmarks
     for row in rows:
         result_map[row.issue_node_id] = row.id
-    
+
     return result_map
 
 

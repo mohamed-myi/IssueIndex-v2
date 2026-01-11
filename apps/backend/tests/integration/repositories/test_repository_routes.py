@@ -1,7 +1,7 @@
 """Integration tests for repository routes."""
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
@@ -20,9 +20,9 @@ class TestRepositoriesEndpointIsPublic:
         """Should not require authentication."""
         with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
-            
+
             response = client.get("/repositories")
-            
+
             assert response.status_code == 200
 
 
@@ -35,12 +35,12 @@ class TestListRepositories:
         mock_repo.name = "facebook/react"
         mock_repo.primary_language = "JavaScript"
         mock_repo.issue_count = 1250
-        
+
         with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = [mock_repo]
-            
+
             response = client.get("/repositories")
-            
+
             assert response.status_code == 200
             data = response.json()
             assert len(data["repositories"]) == 1
@@ -50,9 +50,9 @@ class TestListRepositories:
         """Should pass language filter to service."""
         with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
-            
+
             client.get("/repositories?language=Python")
-            
+
             mock_list.assert_called_once()
             call_kwargs = mock_list.call_args[1]
             assert call_kwargs["language"] == "Python"
@@ -61,9 +61,9 @@ class TestListRepositories:
         """Should pass search query to service."""
         with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
-            
+
             client.get("/repositories?q=react")
-            
+
             mock_list.assert_called_once()
             call_kwargs = mock_list.call_args[1]
             assert call_kwargs["search_query"] == "react"
@@ -72,9 +72,9 @@ class TestListRepositories:
         """Should pass limit to service."""
         with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
-            
+
             client.get("/repositories?limit=25")
-            
+
             call_kwargs = mock_list.call_args[1]
             assert call_kwargs["limit"] == 25
 
@@ -87,9 +87,9 @@ class TestListRepositories:
         """Should return empty list when no repos match."""
         with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
-            
+
             response = client.get("/repositories")
-            
+
             assert response.status_code == 200
             assert response.json()["repositories"] == []
 
@@ -101,10 +101,10 @@ class TestSQLSafety:
         """Should treat % as literal string, not SQL wildcard."""
         with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
-            
+
             # This should not match every repo
             response = client.get("/repositories?q=%")
-            
+
             assert response.status_code == 200
             # Verify the service was called (no SQL error)
             mock_list.assert_called_once()
@@ -113,9 +113,9 @@ class TestSQLSafety:
         """Should treat _ as literal string, not SQL wildcard."""
         with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
-            
+
             response = client.get("/repositories?q=_")
-            
+
             assert response.status_code == 200
             mock_list.assert_called_once()
 
@@ -123,8 +123,8 @@ class TestSQLSafety:
         """Should treat SQL injection attempts as literal strings."""
         with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
-            
+
             response = client.get("/repositories?q='; DROP TABLE--")
-            
+
             assert response.status_code == 200
             mock_list.assert_called_once()

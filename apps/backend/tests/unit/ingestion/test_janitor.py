@@ -1,7 +1,8 @@
 """Unit tests for Janitor set-based pruning"""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 
 @pytest.fixture
@@ -28,13 +29,13 @@ def janitor(mock_session, monkeypatch):
     mock_sqlmodel_ext = MagicMock()
     mock_sqlmodel_ext_asyncio = MagicMock()
     mock_sqlmodel_ext_asyncio_session = MagicMock()
-    
+
     monkeypatch.setitem(__import__('sys').modules, "sqlalchemy", mock_sqlalchemy)
     monkeypatch.setitem(__import__('sys').modules, "sqlmodel", mock_sqlmodel)
     monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext", mock_sqlmodel_ext)
     monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio", mock_sqlmodel_ext_asyncio)
     monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio.session", mock_sqlmodel_ext_asyncio_session)
-    
+
     # Now import Janitor
     from src.ingestion.janitor import Janitor
     return Janitor(session=mock_session)
@@ -215,13 +216,13 @@ class TestEdgeCases:
         # Mock sqlalchemy and sqlmodel before importing
         mock_sqlalchemy = MagicMock()
         mock_sqlalchemy.text = MagicMock()
-        
+
         monkeypatch.setitem(__import__('sys').modules, "sqlalchemy", mock_sqlalchemy)
         monkeypatch.setitem(__import__('sys').modules, "sqlmodel", MagicMock())
         monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext", MagicMock())
         monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio", MagicMock())
         monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio.session", MagicMock())
-        
+
         from src.ingestion.janitor import Janitor
         janitor = Janitor(session=mock_session)
         janitor.PRUNE_PERCENTILE = 0.3  # Custom 30%

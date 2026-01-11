@@ -5,7 +5,6 @@ All queries filter open state by default for user-facing endpoints.
 import logging
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -29,7 +28,7 @@ class IssueDetail:
     repo_name: str
     repo_url: str
     github_url: str
-    primary_language: Optional[str]
+    primary_language: str | None
     github_created_at: datetime
     state: str
 
@@ -46,13 +45,13 @@ class SimilarIssue:
 async def get_issue_by_node_id(
     db: AsyncSession,
     node_id: str,
-) -> Optional[IssueDetail]:
+) -> IssueDetail | None:
     """
     Fetches a single issue by node_id with repository metadata.
     Returns issue regardless of state (open/closed) for detail views.
     """
     sql = """
-    SELECT 
+    SELECT
         i.node_id,
         i.title,
         i.body_text AS body,
@@ -60,7 +59,7 @@ async def get_issue_by_node_id(
         i.q_score,
         r.full_name AS repo_name,
         'https://github.com/' || r.full_name AS repo_url,
-        'https://github.com/' || r.full_name || '/issues/' || 
+        'https://github.com/' || r.full_name || '/issues/' ||
             SUBSTRING(i.node_id FROM '[0-9]+$') AS github_url,
         r.primary_language,
         i.github_created_at,
@@ -69,13 +68,13 @@ async def get_issue_by_node_id(
     JOIN ingestion.repository r ON i.repo_id = r.node_id
     WHERE i.node_id = :node_id
     """
-    
+
     result = await db.execute(text(sql), {"node_id": node_id})
     row = result.fetchone()
-    
+
     if row is None:
         return None
-    
+
     return IssueDetail(
         node_id=row.node_id,
         title=row.title,
@@ -95,16 +94,16 @@ async def get_similar_issues(
     db: AsyncSession,
     node_id: str,
     limit: int = DEFAULT_SIMILAR_LIMIT,
-) -> Optional[list[SimilarIssue]]:
+) -> list[SimilarIssue] | None:
     """
     Finds similar open issues based on vector similarity.
-    
+
     Returns None if source issue not found.
     Returns empty list if:
     - Source issue has no embedding
     - No similar issues above MIN_SIMILARITY_THRESHOLD
     - All similar issues are closed
-    
+
     Note: Cosine distance is used (lower = more similar).
     Similarity score = 1 - cosine_distance.
     """
@@ -112,29 +111,29 @@ async def get_similar_issues(
         limit = DEFAULT_SIMILAR_LIMIT
     if limit > MAX_SIMILAR_LIMIT:
         limit = MAX_SIMILAR_LIMIT
-    
+
     # Check if issue exists and get its embedding
     embedding_sql = """
     SELECT node_id, embedding
     FROM ingestion.issue
     WHERE node_id = :node_id
     """
-    
+
     result = await db.execute(text(embedding_sql), {"node_id": node_id})
     source_row = result.fetchone()
-    
+
     if source_row is None:
         return None
-    
+
     if source_row.embedding is None:
         # Issue exists but has no embedding yet
         logger.info(f"Issue {node_id} has no embedding, returning empty similar list")
         return []
-    
+
     # Find similar open issues, excluding source issue
     # Use cosine distance operator <=> and convert to similarity
     similarity_sql = """
-    SELECT 
+    SELECT
         i.node_id,
         i.title,
         r.full_name AS repo_name,
@@ -148,7 +147,7 @@ async def get_similar_issues(
     ORDER BY i.embedding <=> CAST(:source_vec AS vector)
     LIMIT :limit
     """
-    
+
     result = await db.execute(
         text(similarity_sql),
         {
@@ -159,7 +158,7 @@ async def get_similar_issues(
         },
     )
     rows = result.fetchall()
-    
+
     return [
         SimilarIssue(
             node_id=row.node_id,

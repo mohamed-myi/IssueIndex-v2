@@ -1,8 +1,8 @@
 from datetime import datetime
+
 from fastapi import Response
 
 from .config import get_settings
-
 
 SESSION_COOKIE_NAME = "session_id"
 
@@ -15,7 +15,7 @@ def create_session_cookie(
     """If expires_at is None; creates session cookie that expires when browser closes"""
     settings = get_settings()
     is_production = settings.environment == "production"
-    
+
     cookie_params = {
         "key": SESSION_COOKIE_NAME,
         "value": session_id,
@@ -24,17 +24,17 @@ def create_session_cookie(
         "secure": is_production,
         "path": "/",
     }
-    
+
     if expires_at is not None:
         cookie_params["expires"] = int(expires_at.timestamp())
-    
+
     response.set_cookie(**cookie_params)
 
 
 def clear_session_cookie(response: Response) -> None:
     settings = get_settings()
     is_production = settings.environment == "production"
-    
+
     response.delete_cookie(
         key=SESSION_COOKIE_NAME,
         httponly=True,
@@ -51,7 +51,7 @@ LOGIN_FLOW_COOKIE_MAX_AGE = 300
 def create_login_flow_cookie(response, flow_id: str) -> None:
     settings = get_settings()
     is_production = settings.environment == "production"
-    
+
     response.set_cookie(
         key=LOGIN_FLOW_COOKIE_NAME,
         value=flow_id,
@@ -66,7 +66,7 @@ def create_login_flow_cookie(response, flow_id: str) -> None:
 def clear_login_flow_cookie(response) -> None:
     settings = get_settings()
     is_production = settings.environment == "production"
-    
+
     response.delete_cookie(
         key=LOGIN_FLOW_COOKIE_NAME,
         httponly=True,

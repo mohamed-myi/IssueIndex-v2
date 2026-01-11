@@ -4,15 +4,14 @@ Provides synchronous retry with exponential backoff for embedding operations.
 """
 import asyncio
 import logging
-from typing import Optional
 from uuid import UUID
 
-from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlmodel import select
-
 from models.profiles import UserProfile
-from src.services.profile_embedding_service import generate_intent_vector as _generate_intent_vector
+from sqlmodel import select
+from sqlmodel.ext.asyncio.session import AsyncSession
+
 from src.services.embedding_service import embed_query
+from src.services.profile_embedding_service import generate_intent_vector as _generate_intent_vector
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +23,7 @@ async def generate_intent_vector_with_retry(
     stack_areas: list[str],
     text: str,
     max_retries: int = MAX_RETRIES,
-) -> Optional[list[float]]:
+) -> list[float] | None:
     """
     Generates intent vector with exponential backoff retry.
     Returns None if all retries fail; logs error but does not raise.
@@ -34,21 +33,21 @@ async def generate_intent_vector_with_retry(
             vector = await _generate_intent_vector(stack_areas, text)
             if vector is not None:
                 return vector
-            
+
             logger.warning(
                 f"Intent vector returned None on attempt {attempt + 1}/{max_retries}"
             )
-            
+
         except Exception as e:
             logger.warning(
                 f"Intent vector generation failed on attempt {attempt + 1}/{max_retries}: {e}"
             )
-        
+
         if attempt < max_retries - 1:
             backoff = BASE_BACKOFF_SECONDS * (2 ** attempt)
             logger.info(f"Retrying intent vector in {backoff}s")
             await asyncio.sleep(backoff)
-    
+
     logger.error(
         f"Intent vector generation permanently failed after {max_retries} attempts"
     )
@@ -58,7 +57,7 @@ async def generate_intent_vector_with_retry(
 async def generate_resume_vector_with_retry(
     markdown_text: str,
     max_retries: int = MAX_RETRIES,
-) -> Optional[list[float]]:
+) -> list[float] | None:
     """
     Generates resume vector with exponential backoff retry.
     Returns None if all retries fail; logs error but does not raise.
@@ -68,21 +67,21 @@ async def generate_resume_vector_with_retry(
             vector = await embed_query(markdown_text)
             if vector is not None:
                 return vector
-            
+
             logger.warning(
                 f"Resume vector returned None on attempt {attempt + 1}/{max_retries}"
             )
-            
+
         except Exception as e:
             logger.warning(
                 f"Resume vector generation failed on attempt {attempt + 1}/{max_retries}: {e}"
             )
-        
+
         if attempt < max_retries - 1:
             backoff = BASE_BACKOFF_SECONDS * (2 ** attempt)
             logger.info(f"Retrying resume vector in {backoff}s")
             await asyncio.sleep(backoff)
-    
+
     logger.error(
         f"Resume vector generation permanently failed after {max_retries} attempts"
     )
@@ -92,7 +91,7 @@ async def generate_resume_vector_with_retry(
 async def generate_github_vector_with_retry(
     text: str,
     max_retries: int = MAX_RETRIES,
-) -> Optional[list[float]]:
+) -> list[float] | None:
     """
     Generates GitHub vector with exponential backoff retry.
     Returns None if all retries fail; logs error but does not raise.
@@ -102,21 +101,21 @@ async def generate_github_vector_with_retry(
             vector = await embed_query(text)
             if vector is not None:
                 return vector
-            
+
             logger.warning(
                 f"GitHub vector returned None on attempt {attempt + 1}/{max_retries}"
             )
-            
+
         except Exception as e:
             logger.warning(
                 f"GitHub vector generation failed on attempt {attempt + 1}/{max_retries}: {e}"
             )
-        
+
         if attempt < max_retries - 1:
             backoff = BASE_BACKOFF_SECONDS * (2 ** attempt)
             logger.info(f"Retrying GitHub vector in {backoff}s")
             await asyncio.sleep(backoff)
-    
+
     logger.error(
         f"GitHub vector generation permanently failed after {max_retries} attempts"
     )

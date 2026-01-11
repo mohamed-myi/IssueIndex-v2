@@ -1,8 +1,8 @@
 """Integration tests for streaming persistence UPSERT conflict resolution against PostgreSQL with pgvector"""
 
-import os
+from datetime import UTC, datetime, timedelta
+
 import pytest
-from datetime import datetime, timezone, timedelta
 
 try:
     from testcontainers.postgres import PostgresContainer
@@ -21,7 +21,6 @@ from src.ingestion.persistence import StreamingPersistence
 from src.ingestion.quality_gate import QScoreComponents
 from src.ingestion.scout import RepositoryData
 from src.ingestion.survival_score import calculate_survival_score, days_since
-
 
 # Skip entire module if testcontainers not installed
 pytestmark = pytest.mark.skipif(
@@ -64,6 +63,7 @@ CREATE TABLE ingestion.issue (
     labels TEXT[],
     embedding vector(768),
     github_created_at TIMESTAMPTZ NOT NULL,
+    state VARCHAR NOT NULL DEFAULT 'open',
     ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -109,14 +109,14 @@ def async_connection_url(postgres_container):
 def setup_schema(sync_connection_url):
     """Create schema and tables once per module using sync connection"""
     import psycopg2
-    
+
     # Parse URL for psycopg2
     # Format: postgresql://user:password@host:port/dbname
     parts = sync_connection_url.replace("postgresql://", "").split("@")
     user_pass = parts[0].split(":")
     host_port_db = parts[1].split("/")
     host_port = host_port_db[0].split(":")
-    
+
     conn = psycopg2.connect(
         user=user_pass[0],
         password=user_pass[1],
@@ -125,10 +125,10 @@ def setup_schema(sync_connection_url):
         dbname=host_port_db[1],
     )
     conn.autocommit = True
-    
+
     with conn.cursor() as cur:
         cur.execute(SETUP_SQL)
-    
+
     conn.close()
     return True
 
@@ -141,21 +141,21 @@ async def db_session(async_connection_url, setup_schema):
         echo=False,
         pool_pre_ping=True,
     )
-    
+
     async_session_factory = sessionmaker(
         engine,
         class_=AsyncSession,
         expire_on_commit=False,
     )
-    
+
     async with async_session_factory() as session:
         yield session
-        
+
         # Cleanup: delete all rows after test
         await session.execute(text("DELETE FROM ingestion.issue"))
         await session.execute(text("DELETE FROM ingestion.repository"))
         await session.commit()
-    
+
     await engine.dispose()
 
 
@@ -205,9 +205,10 @@ def make_embedded_issue(sample_q_components):
             title=title,
             body_text=body,
             labels=["bug"],
-            github_created_at=datetime.now(timezone.utc) - timedelta(days=created_days_ago),
+            github_created_at=datetime.now(UTC) - timedelta(days=created_days_ago),
             q_score=q_score,
             q_components=sample_q_components,
+            state="open",
         )
         # 768-dim embedding
         return EmbeddedIssue(
@@ -225,11 +226,11 @@ class TestRepositoryUpsert:
         """Clean insert should create new row"""
         persistence = StreamingPersistence(db_session)
         repo = make_repository(node_id="R_new", full_name="test/new-repo")
-        
+
         count = await persistence.upsert_repositories([repo])
-        
+
         assert count == 1
-        
+
         # Verify in database
         result = await db_session.execute(
             text("SELECT full_name FROM ingestion.repository WHERE node_id = :id"),
@@ -243,7 +244,7 @@ class TestRepositoryUpsert:
     async def test_upsert_updates_on_conflict(self, db_session, make_repository):
         """Re-inserting same node_id should UPDATE, not duplicate"""
         persistence = StreamingPersistence(db_session)
-        
+
         # First insert
         repo_v1 = make_repository(
             node_id="R_conflict",
@@ -251,7 +252,7 @@ class TestRepositoryUpsert:
             stargazer_count=100,
         )
         await persistence.upsert_repositories([repo_v1])
-        
+
         # Second insert with updated values
         repo_v2 = make_repository(
             node_id="R_conflict",
@@ -259,9 +260,9 @@ class TestRepositoryUpsert:
             stargazer_count=9999,
         )
         count = await persistence.upsert_repositories([repo_v2])
-        
+
         assert count == 1
-        
+
         # Verify single row with updated value
         result = await db_session.execute(
             text("SELECT stargazer_count FROM ingestion.repository WHERE node_id = :id"),
@@ -279,11 +280,11 @@ class TestRepositoryUpsert:
             make_repository(node_id=f"R_batch_{i}", full_name=f"batch/repo{i}")
             for i in range(5)
         ]
-        
+
         count = await persistence.upsert_repositories(repos)
-        
+
         assert count == 5
-        
+
         result = await db_session.execute(
             text("SELECT COUNT(*) FROM ingestion.repository WHERE node_id LIKE 'R_batch_%'")
         )
@@ -297,20 +298,20 @@ class TestIssueUpsert:
     async def test_insert_new_issue(self, db_session, make_repository, make_embedded_issue):
         """Clean insert should create new issue row"""
         persistence = StreamingPersistence(db_session)
-        
+
         # insert repository first (FK constraint)
         repo = make_repository(node_id="R_for_issue")
         await persistence.upsert_repositories([repo])
-        
+
         embedded = make_embedded_issue(node_id="I_new", repo_id="R_for_issue")
-        
+
         async def single_issue():
             yield embedded
-        
+
         count = await persistence.persist_stream(single_issue())
-        
+
         assert count == 1
-        
+
         result = await db_session.execute(
             text("SELECT title, q_score FROM ingestion.issue WHERE node_id = :id"),
             {"id": "I_new"},
@@ -324,10 +325,10 @@ class TestIssueUpsert:
     async def test_issue_upsert_updates_on_conflict(self, db_session, make_repository, make_embedded_issue):
         """Re-inserting same issue node_id should UPDATE"""
         persistence = StreamingPersistence(db_session)
-        
+
         repo = make_repository(node_id="R_upsert")
         await persistence.upsert_repositories([repo])
-        
+
         # First insert
         issue_v1 = make_embedded_issue(
             node_id="I_upsert",
@@ -335,12 +336,12 @@ class TestIssueUpsert:
             title="Original title",
             q_score=0.6,
         )
-        
+
         async def stream_v1():
             yield issue_v1
-        
+
         await persistence.persist_stream(stream_v1())
-        
+
         # Second insert with updated values
         issue_v2 = make_embedded_issue(
             node_id="I_upsert",
@@ -348,14 +349,14 @@ class TestIssueUpsert:
             title="Updated title",
             q_score=0.9,
         )
-        
+
         async def stream_v2():
             yield issue_v2
-        
+
         count = await persistence.persist_stream(stream_v2())
-        
+
         assert count == 1
-        
+
         # Verify single row with updated values
         result = await db_session.execute(
             text("SELECT title, q_score FROM ingestion.issue WHERE node_id = :id"),
@@ -370,10 +371,10 @@ class TestIssueUpsert:
     async def test_survival_score_calculated_on_insert(self, db_session, make_repository, make_embedded_issue):
         """survival_score should be computed and stored"""
         persistence = StreamingPersistence(db_session)
-        
+
         repo = make_repository(node_id="R_survival")
         await persistence.upsert_repositories([repo])
-        
+
         # Issue with known q_score and age
         embedded = make_embedded_issue(
             node_id="I_survival",
@@ -381,26 +382,26 @@ class TestIssueUpsert:
             q_score=0.8,
             created_days_ago=5,
         )
-        
+
         async def single_issue():
             yield embedded
-        
+
         await persistence.persist_stream(single_issue())
-        
+
         result = await db_session.execute(
             text("SELECT survival_score FROM ingestion.issue WHERE node_id = :id"),
             {"id": "I_survival"},
         )
         stored_score = result.scalar()
-        
+
         # Verify score is positive and reasonable
         assert stored_score is not None
         assert stored_score > 0
-        
+
         # Calculate expected score for comparison
         days_old = days_since(embedded.issue.github_created_at)
         expected_score = calculate_survival_score(embedded.issue.q_score, days_old)
-        
+
         # Allow small tolerance due to timing
         assert abs(stored_score - expected_score) < 0.1
 
@@ -414,11 +415,11 @@ class TestBatchStreamPersistence:
         """Persist 100 issues via stream and verify all stored"""
         persistence = StreamingPersistence(db_session)
         issue_count = 100
-        
+
         # Setup: create repository
         repo = make_repository(node_id="R_batch_100")
         await persistence.upsert_repositories([repo])
-        
+
         async def issue_stream():
             for i in range(issue_count):
                 yield make_embedded_issue(
@@ -426,11 +427,11 @@ class TestBatchStreamPersistence:
                     repo_id="R_batch_100",
                     q_score=0.6 + (i % 10) * 0.04,  # Vary scores 0.6-0.96
                 )
-        
+
         count = await persistence.persist_stream(issue_stream())
-        
+
         assert count == issue_count
-        
+
         # Verify all in database
         result = await db_session.execute(
             text("SELECT COUNT(*) FROM ingestion.issue WHERE node_id LIKE 'I_batch_%'")
@@ -442,10 +443,10 @@ class TestBatchStreamPersistence:
     async def test_batch_survival_scores_vary_correctly(self, db_session, make_repository, make_embedded_issue):
         """Issues with higher q_scores should have higher survival_scores (same age)"""
         persistence = StreamingPersistence(db_session)
-        
+
         repo = make_repository(node_id="R_survival_batch")
         await persistence.upsert_repositories([repo])
-        
+
         # Create issues with varying q_scores, same age
         async def issue_stream():
             for i, q in enumerate([0.5, 0.7, 0.9]):
@@ -455,19 +456,19 @@ class TestBatchStreamPersistence:
                     q_score=q,
                     created_days_ago=1,
                 )
-        
+
         await persistence.persist_stream(issue_stream())
-        
+
         result = await db_session.execute(
             text("""
-                SELECT node_id, q_score, survival_score 
-                FROM ingestion.issue 
+                SELECT node_id, q_score, survival_score
+                FROM ingestion.issue
                 WHERE node_id LIKE 'I_survival_var_%'
                 ORDER BY q_score
             """)
         )
         rows = result.fetchall()
-        
+
         # Verify survival scores increase with q_score
         prev_survival = 0
         for row in rows:
@@ -484,17 +485,17 @@ class TestQScoreComponents:
     async def test_q_components_stored(self, db_session, make_repository, make_embedded_issue):
         """has_code, has_template_headers, tech_stack_weight should be stored"""
         persistence = StreamingPersistence(db_session)
-        
+
         repo = make_repository(node_id="R_components")
         await persistence.upsert_repositories([repo])
-        
+
         embedded = make_embedded_issue(node_id="I_components", repo_id="R_components")
-        
+
         async def single_issue():
             yield embedded
-        
+
         await persistence.persist_stream(single_issue())
-        
+
         result = await db_session.execute(
             text("""
                 SELECT has_code, has_template_headers, tech_stack_weight
@@ -503,7 +504,7 @@ class TestQScoreComponents:
             {"id": "I_components"},
         )
         row = result.fetchone()
-        
+
         assert row is not None
         assert row[0] is True  # has_code
         assert row[1] is True  # has_template_headers
@@ -517,17 +518,17 @@ class TestVectorEmbedding:
     async def test_embedding_stored_correctly(self, db_session, make_repository, make_embedded_issue):
         """768-dim embedding should be stored in vector column"""
         persistence = StreamingPersistence(db_session)
-        
+
         repo = make_repository(node_id="R_vector")
         await persistence.upsert_repositories([repo])
-        
+
         embedded = make_embedded_issue(node_id="I_vector", repo_id="R_vector")
-        
+
         async def single_issue():
             yield embedded
-        
+
         await persistence.persist_stream(single_issue())
-        
+
         # Query embedding dimension
         result = await db_session.execute(
             text("""
@@ -537,6 +538,6 @@ class TestVectorEmbedding:
             {"id": "I_vector"},
         )
         dim = result.scalar()
-        
+
         assert dim == 768
 

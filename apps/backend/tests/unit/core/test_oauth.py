@@ -10,10 +10,11 @@ This module tests the OAuth authentication layer:
 
 Tests are condensed to avoid redundancy while maintaining full security coverage.
 """
-import pytest
 import os
-from unittest.mock import patch, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
+import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -41,12 +42,12 @@ def mock_client():
 class TestAuthorizationUrlGeneration:
     """
     URL generation tests for each OAuth provider.
-    
+
     Ensures client_id and scopes are correctly injected.
     """
-    
+
     def test_github_login_url_uses_login_scopes(self):
-        from src.core.oauth import get_authorization_url, OAuthProvider, GITHUB_LOGIN_SCOPES
+        from src.core.oauth import OAuthProvider, get_authorization_url
         state = "a" * 32
         url = get_authorization_url(
             OAuthProvider.GITHUB,
@@ -59,7 +60,7 @@ class TestAuthorizationUrlGeneration:
         assert "scope=read%3Auser+user%3Aemail" in url  # Login scopes (no repo)
 
     def test_google_authorization_url(self):
-        from src.core.oauth import get_authorization_url, OAuthProvider
+        from src.core.oauth import OAuthProvider, get_authorization_url
         state = "b" * 32
         url = get_authorization_url(
             OAuthProvider.GOOGLE,
@@ -73,7 +74,7 @@ class TestAuthorizationUrlGeneration:
 
     def test_github_profile_url_uses_profile_scopes(self):
         """Profile connect flow uses different scopes (includes repo access)."""
-        from src.core.oauth import get_profile_authorization_url, OAuthProvider
+        from src.core.oauth import OAuthProvider, get_profile_authorization_url
         state = "c" * 32
         url = get_profile_authorization_url(
             OAuthProvider.GITHUB,
@@ -87,26 +88,26 @@ class TestAuthorizationUrlGeneration:
 
     def test_profile_url_rejects_unsupported_provider(self):
         """Google profile connect is not supported (login already has sufficient scopes)."""
-        from src.core.oauth import get_profile_authorization_url, OAuthProvider
+        from src.core.oauth import OAuthProvider, get_profile_authorization_url
         state = "d" * 32
-        
+
         with pytest.raises(ValueError) as exc:
             get_profile_authorization_url(
                 OAuthProvider.GOOGLE,
                 redirect_uri="http://localhost:3000/connect/callback",
                 state=state
             )
-        
+
         assert "not supported" in str(exc.value).lower()
 
 
 class TestStateValidation:
     """
     State parameter validation (CSRF protection).
-    
+
     Condensed to essential boundary cases only.
     """
-    
+
     @pytest.mark.parametrize("state,should_pass", [
         ("a" * 32, True),                # Min length boundary (exactly 32)
         ("x" * 128, True),               # Max length boundary (exactly 128)
@@ -114,8 +115,8 @@ class TestStateValidation:
         ("a" * 31 + "<script>", False),  # XSS/invalid chars
     ])
     def test_state_boundaries(self, state, should_pass):
-        from src.core.oauth import validate_state, OAuthStateError
-        
+        from src.core.oauth import OAuthStateError, validate_state
+
         if should_pass:
             validate_state(state)  # Should not raise
         else:
@@ -126,14 +127,14 @@ class TestStateValidation:
 class TestTokenExchangeResiliency:
     """
     Token exchange tests focusing on retry behavior and error handling.
-    
+
     Critical for handling network blips and provider issues during login.
     """
-    
+
     @pytest.mark.asyncio
     async def test_successful_exchange(self, mock_client):
-        from src.core.oauth import exchange_code_for_token, OAuthProvider
-        
+        from src.core.oauth import OAuthProvider, exchange_code_for_token
+
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -144,28 +145,28 @@ class TestTokenExchangeResiliency:
             "expires_in": 3600
         }
         mock_client.post = AsyncMock(return_value=mock_response)
-        
+
         token = await exchange_code_for_token(
             OAuthProvider.GITHUB,
             code="test-auth-code",
             redirect_uri="http://localhost:3000/callback",
             client=mock_client
         )
-        
+
         assert token.access_token == "gho_test_token"
         assert token.refresh_token == "test_refresh"
 
     @pytest.mark.asyncio
     async def test_retries_on_5xx(self, mock_client):
         """5xx errors should trigger retries before failing."""
-        from src.core.oauth import exchange_code_for_token, OAuthProvider, OAuthError
-        
+        from src.core.oauth import OAuthError, OAuthProvider, exchange_code_for_token
+
         mock_response = MagicMock()
         mock_response.status_code = 503
         mock_response.content = b''
         mock_response.json.return_value = {}
         mock_client.post = AsyncMock(return_value=mock_response)
-        
+
         with patch("asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(OAuthError):
                 await exchange_code_for_token(
@@ -174,16 +175,16 @@ class TestTokenExchangeResiliency:
                     redirect_uri="http://localhost:3000/callback",
                     client=mock_client
                 )
-        
+
         assert mock_client.post.call_count == 3  # 3 attempts
 
     @pytest.mark.asyncio
     async def test_retries_on_timeout(self, mock_client):
         """Timeouts should trigger retries (cold start handling)."""
-        from src.core.oauth import exchange_code_for_token, OAuthProvider, OAuthError
-        
+        from src.core.oauth import OAuthError, OAuthProvider, exchange_code_for_token
+
         mock_client.post = AsyncMock(side_effect=httpx.ConnectTimeout("Connection timed out"))
-        
+
         with patch("asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(OAuthError) as exc_info:
                 await exchange_code_for_token(
@@ -192,21 +193,21 @@ class TestTokenExchangeResiliency:
                     redirect_uri="http://localhost:3000/callback",
                     client=mock_client
                 )
-        
+
         assert "timed out" in str(exc_info.value)
         assert mock_client.post.call_count == 3
 
     @pytest.mark.asyncio
     async def test_no_retry_on_4xx(self, mock_client):
         """4xx errors should NOT retry (wasted rate limit)."""
-        from src.core.oauth import exchange_code_for_token, OAuthProvider, InvalidCodeError
-        
+        from src.core.oauth import InvalidCodeError, OAuthProvider, exchange_code_for_token
+
         mock_response = MagicMock()
         mock_response.status_code = 401
         mock_response.content = b'{"error": "bad_verification_code"}'
         mock_response.json.return_value = {"error": "bad_verification_code"}
         mock_client.post = AsyncMock(return_value=mock_response)
-        
+
         with pytest.raises(InvalidCodeError):
             await exchange_code_for_token(
                 OAuthProvider.GITHUB,
@@ -214,29 +215,29 @@ class TestTokenExchangeResiliency:
                 redirect_uri="http://localhost:3000/callback",
                 client=mock_client
             )
-        
+
         assert mock_client.post.call_count == 1  # No retries
 
 
 class TestGitHubQuirks:
     """
     GitHub-specific edge cases.
-    
+
     GitHub returns 200 OK even when token exchange fails,
     requiring inspection of the response body for errors.
     """
-    
+
     @pytest.mark.asyncio
     async def test_200_ok_with_error_in_body(self, mock_client):
         """CRITICAL: GitHub returns 200 but body contains error."""
-        from src.core.oauth import exchange_code_for_token, OAuthProvider, InvalidCodeError
-        
+        from src.core.oauth import InvalidCodeError, OAuthProvider, exchange_code_for_token
+
         mock_response = MagicMock()
         mock_response.status_code = 200  # Looks successful!
         mock_response.content = b'{"error": "bad_verification_code", "error_description": "Code expired"}'
         mock_response.json.return_value = {"error": "bad_verification_code", "error_description": "Code expired"}
         mock_client.post = AsyncMock(return_value=mock_response)
-        
+
         with pytest.raises(InvalidCodeError):
             await exchange_code_for_token(
                 OAuthProvider.GITHUB,
@@ -244,18 +245,18 @@ class TestGitHubQuirks:
                 redirect_uri="http://localhost:3000/callback",
                 client=mock_client
             )
-        
+
         assert mock_client.post.call_count == 1  # No retry on 200
 
     @pytest.mark.asyncio
     async def test_email_selection_primary_not_first(self, mock_client):
         """Primary verified email is not first in the list."""
-        from src.core.oauth import fetch_user_profile, OAuthProvider, OAuthToken
-        
+        from src.core.oauth import OAuthProvider, OAuthToken, fetch_user_profile
+
         mock_user_response = MagicMock()
         mock_user_response.json.return_value = {"node_id": "MDQ6VXNlcjEyMzQ1", "login": "testuser"}
         mock_user_response.raise_for_status = MagicMock()
-        
+
         mock_emails_response = MagicMock()
         mock_emails_response.json.return_value = [
             {"email": "secondary@example.com", "primary": False, "verified": True},
@@ -263,46 +264,46 @@ class TestGitHubQuirks:
             {"email": "primary@example.com", "primary": True, "verified": True},
         ]
         mock_emails_response.raise_for_status = MagicMock()
-        
+
         mock_client.get = AsyncMock(side_effect=[mock_user_response, mock_emails_response])
-        
+
         token = OAuthToken(access_token="test-token", token_type="bearer")
         profile = await fetch_user_profile(OAuthProvider.GITHUB, token, mock_client)
-        
+
         assert profile.email == "primary@example.com"
 
 
 class TestEmailVerificationGating:
     """
     Email verification enforcement.
-    
+
     Prevents "shadow account" creation where users could spoof emails.
     """
-    
+
     @pytest.mark.asyncio
     async def test_github_unverified_email_rejected(self, mock_client):
-        from src.core.oauth import fetch_user_profile, OAuthProvider, OAuthToken, EmailNotVerifiedError
-        
+        from src.core.oauth import EmailNotVerifiedError, OAuthProvider, OAuthToken, fetch_user_profile
+
         mock_user_response = MagicMock()
         mock_user_response.json.return_value = {"node_id": "MDQ6VXNlcjEyMzQ1"}
         mock_user_response.raise_for_status = MagicMock()
-        
+
         mock_emails_response = MagicMock()
         mock_emails_response.json.return_value = [
             {"email": "test@example.com", "primary": True, "verified": False}
         ]
         mock_emails_response.raise_for_status = MagicMock()
-        
+
         mock_client.get = AsyncMock(side_effect=[mock_user_response, mock_emails_response])
-        
+
         token = OAuthToken(access_token="test-token", token_type="bearer")
         with pytest.raises(EmailNotVerifiedError):
             await fetch_user_profile(OAuthProvider.GITHUB, token, mock_client)
 
     @pytest.mark.asyncio
     async def test_google_unverified_email_rejected(self, mock_client):
-        from src.core.oauth import fetch_user_profile, OAuthProvider, OAuthToken, EmailNotVerifiedError
-        
+        from src.core.oauth import EmailNotVerifiedError, OAuthProvider, OAuthToken, fetch_user_profile
+
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "id": "google-12345",
@@ -311,25 +312,25 @@ class TestEmailVerificationGating:
         }
         mock_response.raise_for_status = MagicMock()
         mock_client.get = AsyncMock(return_value=mock_response)
-        
+
         token = OAuthToken(access_token="test-token", token_type="bearer")
         with pytest.raises(EmailNotVerifiedError):
             await fetch_user_profile(OAuthProvider.GOOGLE, token, mock_client)
 
     @pytest.mark.asyncio
     async def test_github_no_emails_rejected(self, mock_client):
-        from src.core.oauth import fetch_user_profile, OAuthProvider, OAuthToken, NoEmailError
-        
+        from src.core.oauth import NoEmailError, OAuthProvider, OAuthToken, fetch_user_profile
+
         mock_user_response = MagicMock()
         mock_user_response.json.return_value = {"node_id": "MDQ6VXNlcjEyMzQ1"}
         mock_user_response.raise_for_status = MagicMock()
-        
+
         mock_emails_response = MagicMock()
         mock_emails_response.json.return_value = []  # Empty list
         mock_emails_response.raise_for_status = MagicMock()
-        
+
         mock_client.get = AsyncMock(side_effect=[mock_user_response, mock_emails_response])
-        
+
         token = OAuthToken(access_token="test-token", token_type="bearer")
         with pytest.raises(NoEmailError):
             await fetch_user_profile(OAuthProvider.GITHUB, token, mock_client)
@@ -337,12 +338,12 @@ class TestEmailVerificationGating:
 
 class TestProfileFetching:
     """Profile fetching success cases for both providers."""
-    
+
     @pytest.mark.asyncio
     async def test_github_profile_uses_node_id(self, mock_client):
         """GitHub uses node_id as provider_id (stable identifier)."""
-        from src.core.oauth import fetch_user_profile, OAuthProvider, OAuthToken
-        
+        from src.core.oauth import OAuthProvider, OAuthToken, fetch_user_profile
+
         mock_user_response = MagicMock()
         mock_user_response.json.return_value = {
             "id": 12345,
@@ -351,26 +352,26 @@ class TestProfileFetching:
             "avatar_url": "https://github.com/avatar.jpg"
         }
         mock_user_response.raise_for_status = MagicMock()
-        
+
         mock_emails_response = MagicMock()
         mock_emails_response.json.return_value = [
             {"email": "test@example.com", "primary": True, "verified": True}
         ]
         mock_emails_response.raise_for_status = MagicMock()
-        
+
         mock_client.get = AsyncMock(side_effect=[mock_user_response, mock_emails_response])
-        
+
         token = OAuthToken(access_token="test-token", token_type="bearer")
         profile = await fetch_user_profile(OAuthProvider.GITHUB, token, mock_client)
-        
+
         assert profile.provider_id == "MDQ6VXNlcjEyMzQ1"
         assert profile.email == "test@example.com"
         assert profile.username == "testuser"
 
     @pytest.mark.asyncio
     async def test_google_profile_success(self, mock_client):
-        from src.core.oauth import fetch_user_profile, OAuthProvider, OAuthToken
-        
+        from src.core.oauth import OAuthProvider, OAuthToken, fetch_user_profile
+
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "id": "google-12345",
@@ -380,10 +381,10 @@ class TestProfileFetching:
         }
         mock_response.raise_for_status = MagicMock()
         mock_client.get = AsyncMock(return_value=mock_response)
-        
+
         token = OAuthToken(access_token="test-token", token_type="bearer")
         profile = await fetch_user_profile(OAuthProvider.GOOGLE, token, mock_client)
-        
+
         assert profile.provider_id == "google-12345"
         assert profile.email == "test@gmail.com"
         assert profile.is_verified is True

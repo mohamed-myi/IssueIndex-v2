@@ -1,18 +1,18 @@
 import json
-from datetime import datetime, timezone
-from uuid import uuid4
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 
 from src.services.recommendation_event_service import (
+    RECO_EVENTS_QUEUE_KEY,
     RecommendationBatchContext,
     RecommendationEvent,
-    validate_event_against_context,
     enqueue_recommendation_events,
-    store_recommendation_batch_context,
     get_recommendation_batch_context,
-    RECO_EVENTS_QUEUE_KEY,
+    store_recommendation_batch_context,
+    validate_event_against_context,
 )
 
 
@@ -45,7 +45,7 @@ class _FakeRedis:
 async def test_store_and_get_recommendation_batch_context_roundtrip():
     fake = _FakeRedis()
     batch_id = uuid4()
-    served_at = datetime.now(timezone.utc)
+    served_at = datetime.now(UTC)
 
     with patch("src.services.recommendation_event_service.get_redis", new=AsyncMock(return_value=fake)):
         ok = await store_recommendation_batch_context(
@@ -72,7 +72,7 @@ def test_validate_event_against_context_position_matches():
         page=1,
         page_size=20,
         is_personalized=False,
-        served_at=datetime.now(timezone.utc),
+        served_at=datetime.now(UTC),
     )
     assert validate_event_against_context(context=ctx, issue_node_id="y", position=2) is True
     assert validate_event_against_context(context=ctx, issue_node_id="y", position=3) is False
@@ -88,7 +88,7 @@ async def test_enqueue_recommendation_events_dedupes_on_event_id():
         page=1,
         page_size=20,
         is_personalized=True,
-        served_at=datetime.now(timezone.utc),
+        served_at=datetime.now(UTC),
     )
     user_id = uuid4()
     ev_id = uuid4()
@@ -100,7 +100,7 @@ async def test_enqueue_recommendation_events_dedupes_on_event_id():
         issue_node_id="x",
         position=1,
         surface="feed",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         metadata={"k": "v"},
     )
 

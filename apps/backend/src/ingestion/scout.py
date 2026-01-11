@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -130,7 +130,7 @@ class Scout:
         return repos
 
     def _build_search_query(self, language: str) -> str:
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=self.RECENCY_DAYS)).strftime("%Y-%m-%d")
+        cutoff = (datetime.now(UTC) - timedelta(days=self.RECENCY_DAYS)).strftime("%Y-%m-%d")
         return f"language:{language} stars:>{self.MIN_STARS} pushed:>{cutoff} sort:stars-desc"
 
     def _parse_repository(self, node: dict, fallback_language: str) -> RepositoryData | None:

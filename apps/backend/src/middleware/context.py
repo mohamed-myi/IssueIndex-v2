@@ -26,15 +26,15 @@ def _extract_client_ip(request: Request) -> str:
     Cloud Run appends the real client IP as the RIGHTMOST value in X-Forwarded-For
     """
     forwarded_for = request.headers.get("X-Forwarded-For", "")
-    
+
     if forwarded_for:
         ips = [ip.strip() for ip in forwarded_for.split(",") if ip.strip()]
         if ips:
             return ips[-1]
-    
+
     if request.client and request.client.host:
         return request.client.host
-    
+
     return "0.0.0.0"
 
 
@@ -42,7 +42,7 @@ def _parse_user_agent(ua_string: str | None) -> tuple[str | None, str | None]:
     """Returns (os_family, ua_family) from User-Agent string"""
     if not ua_string:
         return None, None
-    
+
     try:
         parsed = user_agent_parser.Parse(ua_string)
         os_family = parsed.get("os", {}).get("family")
@@ -63,11 +63,11 @@ def _extract_gcp_metadata(request: Request) -> tuple[str | None, str | None]:
         request.headers.get("CF-IPCountry")
     )
     asn = request.headers.get("X-GCP-ASN")
-    
+
     # Normalize country code to uppercase 2-letter
     if country:
         country = country.upper()[:2]
-    
+
     return asn, country
 
 
@@ -77,14 +77,14 @@ async def get_request_context(request: Request) -> RequestContext:
     fingerprint_hash = None
     if fingerprint_raw:
         fingerprint_hash = hash_fingerprint(fingerprint_raw)
-    
+
     ip_address = _extract_client_ip(request)
     user_agent = request.headers.get("User-Agent")
     login_flow_id = request.cookies.get("login_flow_id")
-    
+
     os_family, ua_family = _parse_user_agent(user_agent)
     asn, country_code = _extract_gcp_metadata(request)
-    
+
     return RequestContext(
         fingerprint_raw=fingerprint_raw,
         fingerprint_hash=fingerprint_hash,

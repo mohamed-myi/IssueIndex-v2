@@ -3,26 +3,27 @@ Search Cache Unit Tests
 
 Tests cache serialization, deserialization, and key generation.
 """
-import pytest
 import json
-from datetime import datetime, timezone
-from uuid import uuid4
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
+import pytest
+
+from src.services.search_cache import (
+    CACHE_PREFIX,
+    CACHE_TTL_SECONDS,
+    CONTEXT_PREFIX,
+    _deserialize_response,
+    _serialize_response,
+    cache_search_context,
+    get_cached_search_context,
+)
 from src.services.search_service import (
     SearchFilters,
     SearchRequest,
-    SearchResultItem,
     SearchResponse,
-)
-from src.services.search_cache import (
-    CACHE_TTL_SECONDS,
-    CACHE_PREFIX,
-    CONTEXT_PREFIX,
-    _serialize_response,
-    _deserialize_response,
-    cache_search_context,
-    get_cached_search_context,
+    SearchResultItem,
 )
 
 
@@ -52,10 +53,10 @@ class TestCacheSerialization:
             q_score=0.75,
             repo_name="facebook/react",
             primary_language="JavaScript",
-            github_created_at=datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+            github_created_at=datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC),
             rrf_score=0.025,
         )
-        
+
         return SearchResponse(
             search_id=uuid4(),
             results=[item],
@@ -74,7 +75,7 @@ class TestCacheSerialization:
     def test_serialize_produces_valid_json(self, sample_response):
         """Serialization should produce valid JSON."""
         serialized = _serialize_response(sample_response)
-        
+
         # Should be valid JSON
         parsed = json.loads(serialized)
         assert isinstance(parsed, dict)
@@ -83,7 +84,7 @@ class TestCacheSerialization:
         """Serialization should include all response fields."""
         serialized = _serialize_response(sample_response)
         parsed = json.loads(serialized)
-        
+
         assert "search_id" in parsed
         assert "results" in parsed
         assert "total" in parsed
@@ -97,7 +98,7 @@ class TestCacheSerialization:
         """Serialization should include all result item fields."""
         serialized = _serialize_response(sample_response)
         parsed = json.loads(serialized)
-        
+
         result = parsed["results"][0]
         assert result["node_id"] == "MDU6SXNzdWUx"
         assert result["title"] == "Test Issue Title"
@@ -112,7 +113,7 @@ class TestCacheSerialization:
         """Serialization should include filter data."""
         serialized = _serialize_response(sample_response)
         parsed = json.loads(serialized)
-        
+
         filters = parsed["filters"]
         assert filters["languages"] == ["JavaScript"]
         assert filters["labels"] == ["bug"]
@@ -122,7 +123,7 @@ class TestCacheSerialization:
         """Deserialization should restore the original response."""
         serialized = _serialize_response(sample_response)
         restored = _deserialize_response(serialized)
-        
+
         assert str(restored.search_id) == str(sample_response.search_id)
         assert restored.total == sample_response.total
         assert restored.page == sample_response.page
@@ -134,11 +135,11 @@ class TestCacheSerialization:
         """Deserialization should restore result items."""
         serialized = _serialize_response(sample_response)
         restored = _deserialize_response(serialized)
-        
+
         assert len(restored.results) == 1
         result = restored.results[0]
         original = sample_response.results[0]
-        
+
         assert result.node_id == original.node_id
         assert result.title == original.title
         assert result.body_text == original.body_text
@@ -152,7 +153,7 @@ class TestCacheSerialization:
         """Deserialization should restore filter data."""
         serialized = _serialize_response(sample_response)
         restored = _deserialize_response(serialized)
-        
+
         assert restored.filters.languages == sample_response.filters.languages
         assert restored.filters.labels == sample_response.filters.labels
         assert restored.filters.repos == sample_response.filters.repos
@@ -161,10 +162,10 @@ class TestCacheSerialization:
         """Roundtrip should preserve datetime values."""
         serialized = _serialize_response(sample_response)
         restored = _deserialize_response(serialized)
-        
+
         original_dt = sample_response.results[0].github_created_at
         restored_dt = restored.results[0].github_created_at
-        
+
         assert restored_dt == original_dt
 
     def test_empty_results_serialization(self):
@@ -179,10 +180,10 @@ class TestCacheSerialization:
             query="no results query",
             filters=SearchFilters(),
         )
-        
+
         serialized = _serialize_response(response)
         restored = _deserialize_response(serialized)
-        
+
         assert len(restored.results) == 0
         assert restored.total == 0
 
@@ -197,12 +198,12 @@ class TestCacheSerialization:
                 q_score=0.5 + (i * 0.1),
                 repo_name=f"repo_{i}",
                 primary_language="Python",
-                github_created_at=datetime.now(timezone.utc),
+                github_created_at=datetime.now(UTC),
                 rrf_score=0.03 - (i * 0.01),
             )
             for i in range(3)
         ]
-        
+
         response = SearchResponse(
             search_id=uuid4(),
             results=items,
@@ -213,10 +214,10 @@ class TestCacheSerialization:
             query="test",
             filters=SearchFilters(),
         )
-        
+
         serialized = _serialize_response(response)
         restored = _deserialize_response(serialized)
-        
+
         assert len(restored.results) == 3
         for i, result in enumerate(restored.results):
             assert result.node_id == f"node_{i}"
@@ -229,7 +230,7 @@ class TestCacheKeyGeneration:
         """Cache key should be a SHA256 hash (64 hex chars)."""
         request = SearchRequest(query="test")
         key = request.cache_key()
-        
+
         assert len(key) == 64
         assert all(c in "0123456789abcdef" for c in key)
 
@@ -247,7 +248,7 @@ class TestCacheKeyGeneration:
             page=2,
             page_size=10,
         )
-        
+
         assert request1.cache_key() == request2.cache_key()
 
 
@@ -322,21 +323,21 @@ class TestSearchContextCaching:
         """Different queries should produce different cache keys."""
         request1 = SearchRequest(query="query one")
         request2 = SearchRequest(query="query two")
-        
+
         assert request1.cache_key() != request2.cache_key()
 
     def test_different_page_different_key(self):
         """Different pages should produce different cache keys."""
         request1 = SearchRequest(query="test", page=1)
         request2 = SearchRequest(query="test", page=2)
-        
+
         assert request1.cache_key() != request2.cache_key()
 
     def test_different_page_size_different_key(self):
         """Different page sizes should produce different cache keys."""
         request1 = SearchRequest(query="test", page_size=10)
         request2 = SearchRequest(query="test", page_size=20)
-        
+
         assert request1.cache_key() != request2.cache_key()
 
     def test_different_filters_different_key(self):
@@ -349,7 +350,7 @@ class TestSearchContextCaching:
             query="test",
             filters=SearchFilters(languages=["Rust"]),
         )
-        
+
         assert request1.cache_key() != request2.cache_key()
 
     def test_filter_order_does_not_affect_key(self):
@@ -362,6 +363,6 @@ class TestSearchContextCaching:
             query="test",
             filters=SearchFilters(languages=["Rust", "Python"]),
         )
-        
+
         assert request1.cache_key() == request2.cache_key()
 

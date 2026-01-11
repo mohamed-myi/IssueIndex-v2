@@ -4,8 +4,7 @@ Provides aggregated counts for landing page trust signals.
 """
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import datetime
 
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -25,13 +24,13 @@ class PlatformStats:
     total_issues: int
     total_repos: int
     total_languages: int
-    indexed_at: Optional[datetime]
+    indexed_at: datetime | None
 
 
 async def get_platform_stats(db: AsyncSession) -> PlatformStats:
     """
     Returns platform statistics, cached with 1-hour TTL.
-    
+
     Counts:
     - total_issues: Open issues only (consistent with user-facing surfaces)
     - total_repos: All indexed repositories
@@ -57,10 +56,10 @@ async def get_platform_stats(db: AsyncSession) -> PlatformStats:
                 )
         except Exception as e:
             logger.warning(f"Stats cache read failed: {e}")
-    
+
     # Query database
     stats = await _query_stats(db)
-    
+
     # Cache results
     if redis and stats:
         try:
@@ -75,13 +74,13 @@ async def get_platform_stats(db: AsyncSession) -> PlatformStats:
             logger.debug("Stats cached")
         except Exception as e:
             logger.warning(f"Stats cache write failed: {e}")
-    
+
     return stats
 
 
 async def _query_stats(db: AsyncSession) -> PlatformStats:
     """Execute statistics queries against database."""
-    
+
     # Count open issues
     issue_sql = """
     SELECT COUNT(*) as total
@@ -90,7 +89,7 @@ async def _query_stats(db: AsyncSession) -> PlatformStats:
     """
     issue_result = await db.execute(text(issue_sql))
     total_issues = issue_result.scalar() or 0
-    
+
     # Count repositories
     repo_sql = """
     SELECT COUNT(*) as total
@@ -98,7 +97,7 @@ async def _query_stats(db: AsyncSession) -> PlatformStats:
     """
     repo_result = await db.execute(text(repo_sql))
     total_repos = repo_result.scalar() or 0
-    
+
     # Count distinct languages
     lang_sql = """
     SELECT COUNT(DISTINCT primary_language) as total
@@ -107,7 +106,7 @@ async def _query_stats(db: AsyncSession) -> PlatformStats:
     """
     lang_result = await db.execute(text(lang_sql))
     total_languages = lang_result.scalar() or 0
-    
+
     # Get most recent scrape time
     scrape_sql = """
     SELECT MAX(last_scraped_at) as latest
@@ -115,11 +114,11 @@ async def _query_stats(db: AsyncSession) -> PlatformStats:
     """
     scrape_result = await db.execute(text(scrape_sql))
     indexed_at = scrape_result.scalar()
-    
+
     logger.info(
         f"Stats queried: {total_issues} issues, {total_repos} repos, {total_languages} languages"
     )
-    
+
     return PlatformStats(
         total_issues=total_issues,
         total_repos=total_repos,

@@ -4,11 +4,27 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.core.config import get_settings
-from src.core.redis import close_redis
-from src.core.errors import ProfileError, profile_exception_handler
-from src.middleware.auth import session_cookie_sync_middleware
 from src.api.dependencies import close_http_client
+from src.api.routes import (
+    auth,
+    bookmarks,
+    feed,
+    internal_recommendations,
+    issues,
+    profile,
+    profile_github,
+    profile_onboarding,
+    profile_resume,
+    public,
+    recommendations,
+    repositories,
+    search,
+    taxonomy,
+)
+from src.core.config import get_settings
+from src.core.errors import ProfileError, profile_exception_handler
+from src.core.redis import close_redis
+from src.middleware.auth import session_cookie_sync_middleware
 from src.services.embedding_service import close_embedder
 
 logging.basicConfig(
@@ -58,22 +74,7 @@ async def health_check():
     return {"status": "ok"}
 
 
-from src.api.routes import (
-    auth,
-    search,
-    profile,
-    profile_onboarding,
-    profile_github,
-    profile_resume,
-    feed,
-    bookmarks,
-    recommendations,
-    internal_recommendations,
-    issues,
-    repositories,
-    public,
-    taxonomy,
-)
+
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(search.router, prefix="/search", tags=["search"])

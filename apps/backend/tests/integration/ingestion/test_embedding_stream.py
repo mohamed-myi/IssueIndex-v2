@@ -1,8 +1,9 @@
 """Integration tests for streaming embedding generation with real SentenceTransformer model"""
 
 import asyncio
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -16,7 +17,6 @@ from src.ingestion.embeddings import (
 )
 from src.ingestion.gatherer import IssueData
 from src.ingestion.quality_gate import QScoreComponents
-
 
 # Skip entire module if sentence-transformers not installed
 pytestmark = pytest.mark.skipif(
@@ -52,7 +52,7 @@ class IntegrationEmbedder:
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        
+
         model = self._load_model()
         loop = asyncio.get_running_loop()
         embeddings = await loop.run_in_executor(
@@ -81,9 +81,10 @@ def make_issue(sample_q_components):
             title=title,
             body_text=body,
             labels=["bug"],
-            github_created_at=datetime.now(timezone.utc),
+            github_created_at=datetime.now(UTC),
             q_score=0.75,
             q_components=sample_q_components,
+            state="open",
         )
     return _make
 
@@ -101,18 +102,18 @@ class TestEmbedderModelLoading:
     async def test_model_loads_lazily(self):
         """Model should not load until first embed call"""
         embedder = IntegrationEmbedder()
-        
+
         assert embedder._model is None
-        
+
         await embedder.embed_batch(["test text"])
-        
+
         assert embedder._model is not None
 
     @pytest.mark.asyncio
     async def test_embedding_dimension_is_384(self, test_embedder):
         """all-MiniLM-L6-v2 produces 384-dimensional vectors"""
         embeddings = await test_embedder.embed_batch(["Hello world"])
-        
+
         assert len(embeddings) == 1
         assert len(embeddings[0]) == TEST_EMBEDDING_DIM
 
@@ -120,9 +121,9 @@ class TestEmbedderModelLoading:
     async def test_embeddings_are_normalized(self, test_embedder):
         """Embeddings should be L2 normalized (unit vectors)"""
         import math
-        
+
         embeddings = await test_embedder.embed_batch(["Test sentence"])
-        
+
         magnitude = math.sqrt(sum(x * x for x in embeddings[0]))
         assert abs(magnitude - 1.0) < 0.001, f"Expected unit vector, got magnitude {magnitude}"
 
@@ -136,7 +137,7 @@ class TestEmbedStream100Issues:
         """Verify 100 issues stream correctly with proper batching"""
         issue_count = 100
         batch_size = 25
-        
+
         async def issue_generator():
             for i in range(issue_count):
                 yield make_issue(
@@ -144,7 +145,7 @@ class TestEmbedStream100Issues:
                     title=f"Issue {i}: Test bug",
                     body=f"This is the body of issue {i} with some technical content.",
                 )
-        
+
         results = []
         async for embedded in embed_issue_stream(
             issue_generator(),
@@ -152,10 +153,10 @@ class TestEmbedStream100Issues:
             batch_size=batch_size,
         ):
             results.append(embedded)
-        
+
         # Verify count
         assert len(results) == issue_count, f"Expected {issue_count} results, got {len(results)}"
-        
+
         # Verify all have embeddings of correct dimension
         for i, result in enumerate(results):
             assert isinstance(result, EmbeddedIssue)
@@ -169,17 +170,17 @@ class TestEmbedStream100Issues:
     async def test_stream_maintains_order(self, test_embedder, make_issue):
         """Issues should be yielded in the same order as input"""
         issue_count = 50
-        
+
         async def ordered_issues():
             for i in range(issue_count):
                 yield make_issue(node_id=f"ORDER_{i}")
-        
+
         results = [item async for item in embed_issue_stream(
             ordered_issues(),
             test_embedder,
             batch_size=25,
         )]
-        
+
         for i, result in enumerate(results):
             assert result.issue.node_id == f"ORDER_{i}", (
                 f"Order mismatch at index {i}: expected ORDER_{i}, got {result.issue.node_id}"
@@ -189,17 +190,17 @@ class TestEmbedStream100Issues:
     async def test_partial_batch_handled(self, test_embedder, make_issue):
         """Verify final partial batch is flushed correctly"""
         issue_count = 37  # 25 + 12 partial
-        
+
         async def issue_generator():
             for i in range(issue_count):
                 yield make_issue(node_id=f"I_{i}")
-        
+
         results = [item async for item in embed_issue_stream(
             issue_generator(),
             test_embedder,
             batch_size=25,
         )]
-        
+
         assert len(results) == issue_count
 
 
@@ -210,13 +211,13 @@ class TestEmbeddingQuality:
     async def test_similar_texts_have_similar_embeddings(self, test_embedder, make_issue):
         """Semantically similar issues should have high cosine similarity"""
         import math
-        
+
         def cosine_similarity(a: list[float], b: list[float]) -> float:
             dot = sum(x * y for x, y in zip(a, b))
             mag_a = math.sqrt(sum(x * x for x in a))
             mag_b = math.sqrt(sum(x * x for x in b))
             return dot / (mag_a * mag_b)
-        
+
         # Similar issues
         issue1 = make_issue(
             node_id="I_1",
@@ -234,23 +235,23 @@ class TestEmbeddingQuality:
             title="Memory leak in cache implementation",
             body="The LRU cache is not releasing memory when items expire",
         )
-        
+
         async def issue_stream():
             yield issue1
             yield issue2
             yield issue3
-        
+
         results = [item async for item in embed_issue_stream(
             issue_stream(),
             test_embedder,
             batch_size=25,
         )]
-        
+
         emb1, emb2, emb3 = [r.embedding for r in results]
-        
+
         sim_1_2 = cosine_similarity(emb1, emb2)
         sim_1_3 = cosine_similarity(emb1, emb3)
-        
+
         # Similar issues should have higher similarity than different ones
         assert sim_1_2 > sim_1_3, (
             f"Similar issues should have higher similarity: {sim_1_2:.3f} vs {sim_1_3:.3f}"
@@ -264,13 +265,13 @@ class TestEmbeddingQuality:
         async def empty_stream():
             return
             yield  # Makes this an async generator
-        
+
         results = [item async for item in embed_issue_stream(
             empty_stream(),
             test_embedder,
             batch_size=25,
         )]
-        
+
         assert len(results) == 0
 
 
@@ -284,27 +285,27 @@ class TestTextFormatting:
             title="Specific Title Here",
             body="Specific body content here",
         )
-        
+
         async def single_issue():
             yield issue
-        
+
         # Track what text gets embedded
         original_embed = test_embedder.embed_batch
         captured_texts = []
-        
+
         async def capturing_embed(texts):
             captured_texts.extend(texts)
             return await original_embed(texts)
-        
+
         test_embedder.embed_batch = capturing_embed
-        
+
         try:
             _ = [item async for item in embed_issue_stream(
                 single_issue(),
                 test_embedder,
                 batch_size=25,
             )]
-            
+
             assert len(captured_texts) == 1
             assert captured_texts[0] == "Specific Title Here\nSpecific body content here"
         finally:

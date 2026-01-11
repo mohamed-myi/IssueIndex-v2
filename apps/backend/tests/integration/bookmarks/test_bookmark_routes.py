@@ -1,9 +1,9 @@
 """Integration tests for bookmarks and notes API routes."""
-import pytest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
-from unittest.mock import patch, MagicMock, AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
@@ -59,7 +59,7 @@ def mock_bookmark():
     bookmark.title_snapshot = "Bug title"
     bookmark.body_snapshot = "Bug body description"
     bookmark.is_resolved = False
-    bookmark.created_at = datetime.now(timezone.utc)
+    bookmark.created_at = datetime.now(UTC)
     return bookmark
 
 
@@ -69,7 +69,7 @@ def mock_note(mock_bookmark):
     note.id = uuid4()
     note.bookmark_id = mock_bookmark.id
     note.content = "My note content"
-    note.updated_at = datetime.now(timezone.utc)
+    note.updated_at = datetime.now(UTC)
     return note
 
 

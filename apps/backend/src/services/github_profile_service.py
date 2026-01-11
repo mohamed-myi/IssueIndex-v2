@@ -9,34 +9,31 @@ For async processing via Cloud Tasks:
 """
 import logging
 from collections import Counter
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime
 from uuid import UUID
 
+from models.profiles import UserProfile
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from models.profiles import UserProfile
 from src.ingestion.github_client import (
-    GitHubGraphQLClient,
-    GitHubAPIError,
     GitHubAuthError,
-    GitHubRateLimitError,
+    GitHubGraphQLClient,
 )
+from src.services.cloud_tasks_service import enqueue_github_task
 from src.services.linked_account_service import (
-    get_valid_access_token,
     LinkedAccountNotFoundError,
     LinkedAccountRevokedError,
+    get_valid_access_token,
 )
+from src.services.onboarding_service import mark_onboarding_in_progress
 from src.services.profile_embedding_service import calculate_combined_vector
 from src.services.vector_generation import generate_github_vector_with_retry
-from src.services.onboarding_service import mark_onboarding_in_progress
-from src.services.cloud_tasks_service import enqueue_github_task
 
 logger = logging.getLogger(__name__)
 
 
-from src.core.errors import GitHubNotConnectedError, RefreshRateLimitError
-
+from src.core.errors import GitHubNotConnectedError, RefreshRateLimitError  # noqa: E402
 
 REFRESH_COOLDOWN_SECONDS = 3600  # 1 hour
 
@@ -85,17 +82,17 @@ async def _get_or_create_profile(
     statement = select(UserProfile).where(UserProfile.user_id == user_id)
     result = await db.exec(statement)
     profile = result.first()
-    
+
     if profile is not None:
         return profile
-    
+
     profile = UserProfile(
         user_id=user_id,
         min_heat_threshold=0.6,
         is_calculating=False,
         onboarding_status="not_started",
     )
-    
+
     db.add(profile)
     await db.commit()
     await db.refresh(profile)
@@ -111,35 +108,35 @@ async def _fetch_starred_repos(
     repos = []
     cursor = None
     page_size = min(50, max_repos)
-    
+
     while len(repos) < max_repos:
         variables = {
             "login": username,
             "first": page_size,
             "after": cursor,
         }
-        
+
         data = await client.execute_query(
             STARRED_REPOS_QUERY,
             variables=variables,
             estimated_cost=1,
         )
-        
+
         user_data = data.get("user")
         if not user_data:
             break
-            
+
         starred = user_data.get("starredRepositories", {})
-        total_count = starred.get("totalCount", 0)
+        _ = starred.get("totalCount", 0)
         nodes = starred.get("nodes", [])
-        
+
         repos.extend(nodes)
-        
+
         page_info = starred.get("pageInfo", {})
         if not page_info.get("hasNextPage"):
             break
         cursor = page_info.get("endCursor")
-    
+
     return (
         data.get("user", {}).get("starredRepositories", {}).get("totalCount", len(repos)),
         repos[:max_repos]
@@ -156,21 +153,21 @@ async def _fetch_contributed_repos(
         "login": username,
         "first": min(50, max_repos),
     }
-    
+
     data = await client.execute_query(
         CONTRIBUTED_REPOS_QUERY,
         variables=variables,
         estimated_cost=1,
     )
-    
+
     user_data = data.get("user")
     if not user_data:
         return 0, []
-    
+
     contributed = user_data.get("repositoriesContributedTo", {})
     total_count = contributed.get("totalCount", 0)
     nodes = contributed.get("nodes", [])
-    
+
     return total_count, nodes[:max_repos]
 
 
@@ -183,7 +180,7 @@ def _extract_languages_from_repos(repos: list[dict]) -> list[str]:
         primary = repo.get("primaryLanguage")
         if primary and primary.get("name"):
             languages.append(primary["name"])
-        
+
         languages_data = repo.get("languages")
         if languages_data is None:
             continue
@@ -191,7 +188,7 @@ def _extract_languages_from_repos(repos: list[dict]) -> list[str]:
         for lang in lang_nodes:
             if lang and lang.get("name"):
                 languages.append(lang["name"])
-    
+
     return languages
 
 
@@ -211,7 +208,7 @@ def _extract_topics_from_repos(repos: list[dict]) -> list[str]:
             topic = topic_node.get("topic")
             if topic and topic.get("name"):
                 topics.append(topic["name"])
-    
+
     return topics
 
 
@@ -239,15 +236,15 @@ def extract_languages(
     Returns deduplicated list sorted by frequency.
     """
     counter: Counter = Counter()
-    
+
     starred_langs = _extract_languages_from_repos(starred_repos)
     for lang in starred_langs:
         counter[lang] += 1
-    
+
     contributed_langs = _extract_languages_from_repos(contributed_repos)
     for lang in contributed_langs:
-        counter[lang] += 2  
-    
+        counter[lang] += 2
+
     sorted_langs = sorted(counter.keys(), key=lambda x: (-counter[x], x))
     return sorted_langs
 
@@ -261,15 +258,15 @@ def extract_topics(
     Returns deduplicated list sorted by frequency.
     """
     counter: Counter = Counter()
-    
+
     starred_topics = _extract_topics_from_repos(starred_repos)
     for topic in starred_topics:
         counter[topic] += 1
-    
+
     contributed_topics = _extract_topics_from_repos(contributed_repos)
     for topic in contributed_topics:
         counter[topic] += 2  # 2x weight
-    
+
     sorted_topics = sorted(counter.keys(), key=lambda x: (-counter[x], x))
     return sorted_topics
 
@@ -284,16 +281,16 @@ def format_github_text(
     Format: "{languages}. {topics}. {descriptions}"
     """
     parts = []
-    
+
     if languages:
         parts.append(", ".join(languages[:10]))
-    
+
     if topics:
         parts.append(", ".join(topics[:15]))
-    
+
     if descriptions:
         parts.append(" ".join(descriptions[:5]))
-    
+
     return ". ".join(parts)
 
 
@@ -321,15 +318,15 @@ def check_refresh_allowed(
     """
     if last_fetched_at is None:
         return None
-    
-    now = datetime.now(timezone.utc)
+
+    now = datetime.now(UTC)
     if last_fetched_at.tzinfo is None:
-        last_fetched_at = last_fetched_at.replace(tzinfo=timezone.utc)
-    
+        last_fetched_at = last_fetched_at.replace(tzinfo=UTC)
+
     elapsed = (now - last_fetched_at).total_seconds()
     if elapsed >= REFRESH_COOLDOWN_SECONDS:
         return None
-    
+
     return int(REFRESH_COOLDOWN_SECONDS - elapsed)
 
 
@@ -340,18 +337,18 @@ async def generate_github_vector(
 ) -> list[float] | None:
     """Generates 768-dim embedding from GitHub profile data with retry support."""
     text = format_github_text(languages, topics, descriptions)
-    
+
     if not text:
         logger.warning("Cannot generate GitHub vector: no text content")
         return None
-    
+
     logger.info(f"Generating GitHub vector for text length {len(text)}")
     vector = await generate_github_vector_with_retry(text)
-    
+
     if vector is None:
         logger.warning("GitHub vector generation failed after retries")
         return None
-    
+
     return vector
 
 
@@ -365,12 +362,12 @@ async def initiate_github_fetch(
     Returns immediately with job_id and status 'processing'.
     """
     profile = await _get_or_create_profile(db, user_id)
-    
+
     if is_refresh and profile.github_fetched_at:
         seconds_remaining = check_refresh_allowed(profile.github_fetched_at)
         if seconds_remaining is not None:
             raise RefreshRateLimitError(seconds_remaining)
-    
+
     try:
         await get_valid_access_token(db, user_id, "github")
     except LinkedAccountNotFoundError:
@@ -381,16 +378,16 @@ async def initiate_github_fetch(
         raise GitHubNotConnectedError(
             "Please reconnect your GitHub account"
         )
-    
+
     await mark_onboarding_in_progress(db, profile)
-    
+
     profile.is_calculating = True
     await db.commit()
-    
+
     job_id = await enqueue_github_task(user_id)
-    
+
     logger.info(f"GitHub fetch initiated for user {user_id}, job_id {job_id}")
-    
+
     return {
         "job_id": job_id,
         "status": "processing",
@@ -407,14 +404,14 @@ async def execute_github_fetch(
     Does not check refresh rate limit (already validated in initiate).
     """
     profile = await _get_or_create_profile(db, user_id)
-    
+
     try:
         access_token = await get_valid_access_token(db, user_id, "github")
     except (LinkedAccountNotFoundError, LinkedAccountRevokedError) as e:
         profile.is_calculating = False
         await db.commit()
         raise GitHubNotConnectedError(str(e))
-    
+
     async with GitHubGraphQLClient(access_token) as client:
         try:
             username = await client.verify_authentication()
@@ -422,23 +419,23 @@ async def execute_github_fetch(
             profile.is_calculating = False
             await db.commit()
             raise GitHubNotConnectedError("Please reconnect your GitHub account")
-        
+
         if not username:
             profile.is_calculating = False
             await db.commit()
             raise GitHubNotConnectedError("Could not retrieve GitHub username")
-        
+
         starred_count, starred_repos = await _fetch_starred_repos(client, username)
         contributed_count, contributed_repos = await _fetch_contributed_repos(client, username)
-    
+
     languages = extract_languages(starred_repos, contributed_repos)
     topics = extract_topics(starred_repos, contributed_repos)
-    
+
     descriptions = _extract_descriptions_from_repos(contributed_repos, max_count=3)
     descriptions.extend(_extract_descriptions_from_repos(starred_repos, max_count=2))
-    
+
     minimal_warning = check_minimal_data(starred_count, contributed_count)
-    
+
     profile.github_username = username
     profile.github_languages = languages[:20] if languages else []
     profile.github_topics = topics[:30] if topics else []
@@ -448,14 +445,14 @@ async def execute_github_fetch(
         "starred_repos": [r.get("name") for r in starred_repos[:20] if r],
         "contributed_repos": [r.get("name") for r in contributed_repos[:20] if r],
     }
-    profile.github_fetched_at = datetime.now(timezone.utc)
+    profile.github_fetched_at = datetime.now(UTC)
     await db.commit()
-    
+
     try:
         logger.info(f"Generating GitHub vector for user {user_id}")
         github_vector = await generate_github_vector(languages, topics, descriptions)
         profile.github_vector = github_vector
-        
+
         combined = await calculate_combined_vector(
             intent_vector=profile.intent_vector,
             resume_vector=profile.resume_vector,
@@ -465,10 +462,10 @@ async def execute_github_fetch(
         logger.info(f"GitHub vector generated for user {user_id}")
     finally:
         profile.is_calculating = False
-    
+
     await db.commit()
     await db.refresh(profile)
-    
+
     return {
         "status": "ready",
         "username": username,
@@ -492,12 +489,12 @@ async def fetch_github_profile(
     Used for testing or as fallback when Cloud Tasks is unavailable.
     """
     profile = await _get_or_create_profile(db, user_id)
-    
+
     if is_refresh and profile.github_fetched_at:
         seconds_remaining = check_refresh_allowed(profile.github_fetched_at)
         if seconds_remaining is not None:
             raise RefreshRateLimitError(seconds_remaining)
-    
+
     # Get GitHub access token from linked accounts
     try:
         access_token = await get_valid_access_token(db, user_id, "github")
@@ -509,7 +506,7 @@ async def fetch_github_profile(
         raise GitHubNotConnectedError(
             "Please reconnect your GitHub account"
         )
-    
+
     async with GitHubGraphQLClient(access_token) as client:
         try:
             username = await client.verify_authentication()
@@ -517,27 +514,27 @@ async def fetch_github_profile(
             raise GitHubNotConnectedError(
                 "Please reconnect your GitHub account"
             )
-        
+
         if not username:
             raise GitHubNotConnectedError(
                 "Could not retrieve GitHub username. Please reconnect."
             )
-        
+
         # Fetch starred and contributed repos
         starred_count, starred_repos = await _fetch_starred_repos(client, username)
         contributed_count, contributed_repos = await _fetch_contributed_repos(client, username)
-    
+
     # Extract languages and topics
     languages = extract_languages(starred_repos, contributed_repos)
     topics = extract_topics(starred_repos, contributed_repos)
-    
+
     descriptions = _extract_descriptions_from_repos(contributed_repos, max_count=3)
     descriptions.extend(_extract_descriptions_from_repos(starred_repos, max_count=2))
-    
+
     minimal_warning = check_minimal_data(starred_count, contributed_count)
-    
+
     await mark_onboarding_in_progress(db, profile)
-    
+
     # Update profile with fetched data
     profile.github_username = username
     profile.github_languages = languages[:20] if languages else []
@@ -548,16 +545,16 @@ async def fetch_github_profile(
         "starred_repos": [r.get("name") for r in starred_repos[:20] if r],
         "contributed_repos": [r.get("name") for r in contributed_repos[:20] if r],
     }
-    profile.github_fetched_at = datetime.now(timezone.utc)
+    profile.github_fetched_at = datetime.now(UTC)
     profile.is_calculating = True
     await db.commit()
-    
+
     # Generate GitHub vector
     try:
         logger.info(f"Generating GitHub vector for user {user_id}")
         github_vector = await generate_github_vector(languages, topics, descriptions)
         profile.github_vector = github_vector
-        
+
         # Recalculate combined vector
         combined = await calculate_combined_vector(
             intent_vector=profile.intent_vector,
@@ -568,10 +565,10 @@ async def fetch_github_profile(
         logger.info(f"GitHub vector generated for user {user_id}")
     finally:
         profile.is_calculating = False
-    
+
     await db.commit()
     await db.refresh(profile)
-    
+
     return {
         "status": "ready",
         "username": username,
@@ -591,12 +588,12 @@ async def get_github_data(
 ) -> dict | None:
     """Returns stored GitHub profile data or None if not populated."""
     profile = await _get_or_create_profile(db, user_id)
-    
+
     if profile.github_username is None:
         return None
-    
+
     github_data = profile.github_data or {}
-    
+
     return {
         "status": "ready",
         "username": profile.github_username,
@@ -615,13 +612,13 @@ async def delete_github(
 ) -> bool:
     """Clears GitHub data and recalculates combined vector."""
     profile = await _get_or_create_profile(db, user_id)
-    
+
     if profile.github_username is None:
         return False
-    
+
     profile.is_calculating = True
     await db.commit()
-    
+
     try:
         profile.github_username = None
         profile.github_languages = None
@@ -629,7 +626,7 @@ async def delete_github(
         profile.github_data = None
         profile.github_fetched_at = None
         profile.github_vector = None
-        
+
         logger.info(f"Recalculating combined vector after GitHub deletion for user {user_id}")
         combined = await calculate_combined_vector(
             intent_vector=profile.intent_vector,
@@ -639,7 +636,7 @@ async def delete_github(
         profile.combined_vector = combined
     finally:
         profile.is_calculating = False
-    
+
     await db.commit()
     await db.refresh(profile)
     return True

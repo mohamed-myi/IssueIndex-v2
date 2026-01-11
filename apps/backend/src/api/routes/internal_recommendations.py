@@ -5,7 +5,6 @@ from src.api.dependencies import get_db
 from src.core.config import get_settings
 from src.services.recommendation_event_service import flush_recommendation_event_queue_once
 
-
 router = APIRouter()
 
 

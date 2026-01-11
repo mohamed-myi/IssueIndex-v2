@@ -1,8 +1,9 @@
-import pytest
-from datetime import datetime, timedelta, timezone
-from uuid import uuid4
-from unittest.mock import AsyncMock, MagicMock, patch
 import os
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
+
+import pytest
 
 
 @pytest.fixture(autouse=True)
@@ -56,31 +57,31 @@ def google_profile():
 
 class TestRefreshSessionLogic:
     """Tests the REFRESH_THRESHOLD_RATIO business rule that prevents excessive DB writes"""
-    
+
     async def test_updates_session_when_threshold_exceeded(self, mock_db):
         """Refresh updates DB when more than 10 percent through lifespan"""
         from src.services.session_service import refresh_session
-        
+
         session = MagicMock()
         session.remember_me = True
-        session.expires_at = datetime.now(timezone.utc) + timedelta(days=3)
-        session.last_active_at = datetime.now(timezone.utc) - timedelta(hours=1)
-        
+        session.expires_at = datetime.now(UTC) + timedelta(days=3)
+        session.last_active_at = datetime.now(UTC) - timedelta(hours=1)
+
         new_expires = await refresh_session(mock_db, session)
-        
+
         assert new_expires is not None
         mock_db.commit.assert_called_once()
 
     async def test_skips_update_when_within_threshold(self, mock_db):
         """Refresh skips DB write when less than 10 percent through lifespan"""
         from src.services.session_service import refresh_session
-        
+
         session = MagicMock()
         session.remember_me = True
-        session.expires_at = datetime.now(timezone.utc) + timedelta(days=6, hours=22)
-        
+        session.expires_at = datetime.now(UTC) + timedelta(days=6, hours=22)
+
         new_expires = await refresh_session(mock_db, session)
-        
+
         assert new_expires is None
         mock_db.commit.assert_not_called()
 
@@ -90,15 +91,15 @@ class TestRefreshSessionLogic:
         prevents indefinite session extension through repeated refreshes
         """
         from src.services.session_service import refresh_session
-        
+
         session = MagicMock()
         session.remember_me = True
-        session.expires_at = datetime.now(timezone.utc) + timedelta(days=1)
-        
-        before = datetime.now(timezone.utc)
+        session.expires_at = datetime.now(UTC) + timedelta(days=1)
+
+        before = datetime.now(UTC)
         new_expires = await refresh_session(mock_db, session)
-        after = datetime.now(timezone.utc)
-        
+        after = datetime.now(UTC)
+
         assert new_expires is not None
         expected_min = before + timedelta(days=6, hours=23)
         expected_max = after + timedelta(days=7, hours=1)
@@ -107,42 +108,42 @@ class TestRefreshSessionLogic:
 
 class TestIdentityConflicts:
     """OAuth identity collision detection"""
-    
+
     async def test_raises_existing_account_error_different_provider(self, mock_db, github_profile):
         """
         Prevents duplicate accounts; if user signed up with Google then tries
         GitHub login with same email, must fail with ExistingAccountError
         """
-        from src.services.session_service import upsert_user, ExistingAccountError
         from src.core.oauth import OAuthProvider
-        
+        from src.services.session_service import ExistingAccountError, upsert_user
+
         existing_user = MagicMock()
         existing_user.created_via = "google"
-        
+
         mock_result = MagicMock()
         mock_result.first.return_value = existing_user
         mock_db.exec.return_value = mock_result
-        
+
         with pytest.raises(ExistingAccountError) as exc:
             await upsert_user(mock_db, github_profile, OAuthProvider.GITHUB)
-        
+
         assert exc.value.original_provider == "google"
 
     async def test_raises_conflict_when_provider_linked_to_other(self, mock_db, github_profile):
         """Two different users cannot link the same OAuth provider account"""
-        from src.services.session_service import link_provider, ProviderConflictError
         from src.core.oauth import OAuthProvider
-        
+        from src.services.session_service import ProviderConflictError, link_provider
+
         user = MagicMock()
         user.id = uuid4()
-        
+
         other_user = MagicMock()
         other_user.id = uuid4()
-        
+
         mock_result = MagicMock()
         mock_result.first.return_value = other_user
         mock_db.exec.return_value = mock_result
-        
+
         with pytest.raises(ProviderConflictError):
             await link_provider(mock_db, user, github_profile, OAuthProvider.GITHUB)
 
@@ -151,7 +152,7 @@ class TestIdentityConflicts:
 
 class TestBulkSessionOperations:
     """Sign out of all other devices feature"""
-    
+
     @pytest.mark.parametrize("except_id, expected_where_calls", [
         (uuid4(), 2),
         (None, 1),
@@ -161,45 +162,45 @@ class TestBulkSessionOperations:
         With except_session_id uses 2 WHERE clauses; without uses 1
         """
         from src.services.session_service import invalidate_all_sessions
-        
+
         user_id = uuid4()
-        
+
         mock_result = MagicMock()
         mock_result.rowcount = 3
         mock_db.exec.return_value = mock_result
-        
+
         with patch("src.services.session_service.delete") as mock_delete:
             chain = mock_delete.return_value.where.return_value
             chain.where.return_value = chain
-            
+
             await invalidate_all_sessions(mock_db, user_id, except_session_id=except_id)
-            
+
             assert mock_delete.return_value.where.call_count == 1
             assert chain.where.call_count == (expected_where_calls - 1)
 
     async def test_invalidate_all_except_preserves_current(self, mock_db):
         """Excludes current session from bulk deletion"""
         from src.services.session_service import invalidate_all_sessions
-        
+
         user_id = uuid4()
         current_session_id = uuid4()
-        
+
         mock_result = MagicMock()
         mock_result.rowcount = 3
         mock_db.exec.return_value = mock_result
-        
+
         with patch("src.services.session_service.delete") as mock_delete:
             mock_where = MagicMock()
             mock_where.where.return_value = MagicMock()
             mock_delete.return_value.where.return_value = mock_where
-            
+
             count = await invalidate_all_sessions(
                 mock_db, user_id, except_session_id=current_session_id
             )
-            
+
             mock_delete.return_value.where.assert_called_once()
             mock_where.where.assert_called_once()
-            
+
             assert count == 3
 
 
@@ -208,46 +209,46 @@ class TestDeleteUserCascade:
 
     async def test_raises_error_when_user_not_found(self, mock_db):
         """UserNotFoundError raised if user does not exist"""
-        from src.services.session_service import delete_user_cascade, UserNotFoundError
-        
+        from src.services.session_service import UserNotFoundError, delete_user_cascade
+
         mock_result = MagicMock()
         mock_result.first.return_value = None
         mock_db.exec.return_value = mock_result
-        
+
         with pytest.raises(UserNotFoundError) as exc:
             await delete_user_cascade(mock_db, uuid4())
-        
+
         assert "not found" in str(exc.value).lower()
 
     async def test_returns_result_with_tables_and_counts(self, mock_db):
         """Returns CascadeDeletionResult with tables_affected and total_rows"""
-        from src.services.session_service import delete_user_cascade, CascadeDeletionResult
-        
+        from src.services.session_service import CascadeDeletionResult, delete_user_cascade
+
         user_id = uuid4()
         mock_user = MagicMock()
         mock_user.id = user_id
-        
+
         # First call returns user, subsequent calls return delete results
         mock_select_result = MagicMock()
         mock_select_result.first.return_value = mock_user
-        
+
         mock_delete_result = MagicMock()
         mock_delete_result.rowcount = 1  # Simulate 1 row deleted per table
-        
+
         call_count = [0]
         def exec_side_effect(stmt):
             call_count[0] += 1
             if call_count[0] == 1:
                 return mock_select_result
             return mock_delete_result
-        
+
         mock_db.exec = AsyncMock(side_effect=exec_side_effect)
-        
+
         # Mock the transaction context manager
         mock_db.begin = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock()))
-        
+
         result = await delete_user_cascade(mock_db, user_id)
-        
+
         assert isinstance(result, CascadeDeletionResult)
         assert isinstance(result.tables_affected, list)
         assert isinstance(result.total_rows, int)
@@ -255,21 +256,21 @@ class TestDeleteUserCascade:
     async def test_handles_empty_relations(self, mock_db):
         """User with no bookmarks or notes returns 0 for those tables"""
         from src.services.session_service import delete_user_cascade
-        
+
         user_id = uuid4()
         mock_user = MagicMock()
         mock_user.id = user_id
-        
+
         mock_select_result = MagicMock()
         mock_select_result.first.return_value = mock_user
-        
+
         # All deletes return 0 except user
         mock_empty_result = MagicMock()
         mock_empty_result.rowcount = 0
-        
+
         mock_user_delete = MagicMock()
         mock_user_delete.rowcount = 1
-        
+
         call_count = [0]
         def exec_side_effect(stmt):
             call_count[0] += 1
@@ -278,12 +279,12 @@ class TestDeleteUserCascade:
             if call_count[0] == 7:  # Last delete is user table
                 return mock_user_delete
             return mock_empty_result
-        
+
         mock_db.exec = AsyncMock(side_effect=exec_side_effect)
         mock_db.begin = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock()))
-        
+
         result = await delete_user_cascade(mock_db, user_id)
-        
+
         # Should not crash, should only include users in affected tables
         assert "users" in result.tables_affected
         assert result.total_rows >= 1
@@ -295,37 +296,37 @@ class TestDeleteUserCascadeIsolation:
     async def test_deletion_passes_correct_user_id(self, mock_db):
         """All delete statements filter by the correct user_id"""
         from src.services.session_service import delete_user_cascade
-        
+
         user_id = uuid4()
-        other_user_id = uuid4()
-        
+
+
         mock_user = MagicMock()
         mock_user.id = user_id
-        
+
         mock_select_result = MagicMock()
         mock_select_result.first.return_value = mock_user
-        
+
         mock_delete_result = MagicMock()
         mock_delete_result.rowcount = 0
-        
+
         call_count = [0]
         def exec_side_effect(stmt):
             call_count[0] += 1
             if call_count[0] == 1:
                 return mock_select_result
             return mock_delete_result
-        
+
         mock_db.exec = AsyncMock(side_effect=exec_side_effect)
         mock_db.begin = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock()))
-        
+
         # Execute deletion for user_id
         with patch("src.services.session_service.delete") as mock_delete:
             mock_chain = MagicMock()
             mock_chain.where.return_value = mock_chain
             mock_chain.in_.return_value = mock_chain
             mock_delete.return_value.where.return_value = mock_chain
-            
+
             await delete_user_cascade(mock_db, user_id)
-            
+
             # Verify delete was called (isolation is verified by the WHERE clause)
             assert mock_delete.call_count > 0

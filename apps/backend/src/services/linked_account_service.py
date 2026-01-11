@@ -4,15 +4,15 @@ Handles token storage (with encryption), retrieval, refresh, and revocation.
 Used by the profile connect flow to store GitHub OAuth tokens for background
 fetching of user activity data.
 """
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from cryptography.fernet import Fernet, InvalidToken
+from models.identity import LinkedAccount
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.core.config import get_settings
-from models.identity import LinkedAccount
 
 
 class TokenEncryptionError(Exception):
@@ -31,7 +31,7 @@ class LinkedAccountRevokedError(Exception):
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _get_fernet() -> Fernet:
@@ -82,10 +82,10 @@ async def store_linked_account(
     )
     result = await db.exec(statement)
     existing = result.first()
-    
+
     encrypted_access = encrypt_token(access_token)
     encrypted_refresh = encrypt_token(refresh_token) if refresh_token else None
-    
+
     if existing is not None:
         # Update existing account (reactivate if was revoked)
         existing.provider_user_id = provider_user_id
@@ -94,11 +94,11 @@ async def store_linked_account(
         existing.scopes = scopes or []
         existing.expires_at = expires_at
         existing.revoked_at = None  # Reactivate
-        
+
         await db.commit()
         await db.refresh(existing)
         return existing
-    
+
     # Create new linked account
     account = LinkedAccount(
         user_id=user_id,
@@ -109,7 +109,7 @@ async def store_linked_account(
         scopes=scopes or [],
         expires_at=expires_at,
     )
-    
+
     db.add(account)
     await db.commit()
     await db.refresh(account)
@@ -159,17 +159,17 @@ async def get_valid_access_token(
     Raises LinkedAccountRevokedError if account was revoked.
     """
     account = await get_linked_account(db, user_id, provider)
-    
+
     if account is None:
         raise LinkedAccountNotFoundError(
             f"No linked {provider} account for user {user_id}"
         )
-    
+
     if account.revoked_at is not None:
         raise LinkedAccountRevokedError(
             f"{provider} account was disconnected at {account.revoked_at}"
         )
-    
+
     return decrypt_token(account.access_token)
 
 
@@ -184,10 +184,10 @@ async def mark_revoked(
     Returns True if account was found and revoked, False if not found.
     """
     account = await get_linked_account(db, user_id, provider)
-    
+
     if account is None:
         return False
-    
+
     account.revoked_at = _utc_now()
     await db.commit()
     return True
@@ -202,10 +202,10 @@ async def list_linked_accounts(
     statement = select(LinkedAccount).where(
         LinkedAccount.user_id == user_id,
     )
-    
+
     if not include_revoked:
         statement = statement.where(LinkedAccount.revoked_at.is_(None))
-    
+
     result = await db.exec(statement)
     return list(result.all())
 
@@ -220,18 +220,18 @@ async def update_tokens(
 ) -> LinkedAccount:
     """Updates tokens for an existing linked account."""
     account = await get_linked_account(db, user_id, provider)
-    
+
     if account is None:
         raise LinkedAccountNotFoundError(
             f"No linked {provider} account for user {user_id}"
         )
-    
+
     account.access_token = encrypt_token(access_token)
     if refresh_token is not None:
         account.refresh_token = encrypt_token(refresh_token)
     if expires_at is not None:
         account.expires_at = expires_at
-    
+
     await db.commit()
     await db.refresh(account)
     return account

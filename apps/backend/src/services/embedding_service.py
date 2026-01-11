@@ -6,14 +6,13 @@ Uses asyncio.Lock with double-check pattern for thread safety in multi-worker en
 
 import asyncio
 import logging
-from typing import Optional
 
-from src.ingestion.embeddings import NomicEmbedder, EMBEDDING_DIM
+from src.ingestion.embeddings import EMBEDDING_DIM, NomicEmbedder
 
 logger = logging.getLogger(__name__)
 
 # Module-level singleton with lock for thread-safe initialization
-_embedder: Optional[NomicEmbedder] = None
+_embedder: NomicEmbedder | None = None
 _embedder_lock: asyncio.Lock = asyncio.Lock()
 
 
@@ -24,29 +23,29 @@ async def get_embedder() -> NomicEmbedder:
     Model loads lazily on first embed call.
     """
     global _embedder
-    
+
     # Fast path: already initialized
     if _embedder is not None:
         return _embedder
-    
+
     # Slow path: acquire lock and double-check
     async with _embedder_lock:
         # Another worker may have initialized while waiting
         if _embedder is None:
             logger.info("Initializing embedding service singleton")
             _embedder = NomicEmbedder()
-    
+
     return _embedder
 
 
-async def embed_query(text: str) -> Optional[list[float]]:
+async def embed_query(text: str) -> list[float] | None:
     """
     Embeds a single search query text into a 768-dim vector.
     Uses the singleton embedder to avoid model reload overhead.
-    
+
     Args:
         text: The search query to embed
-        
+
     Returns:
         768-dimensional normalized embedding vector, or None if embedding fails
     """
@@ -61,20 +60,20 @@ async def embed_query(text: str) -> Optional[list[float]]:
         return None
 
 
-async def embed_queries(texts: list[str]) -> list[Optional[list[float]]]:
+async def embed_queries(texts: list[str]) -> list[list[float] | None]:
     """
     Embeds multiple search queries in a single batch.
     More efficient than calling embed_query repeatedly.
-    
+
     Args:
         texts: List of search queries to embed
-        
+
     Returns:
         List of 768-dimensional normalized embedding vectors (None for failed embeddings)
     """
     if not texts:
         return []
-    
+
     try:
         embedder = await get_embedder()
         return await embedder.embed_batch(texts)
@@ -89,7 +88,7 @@ async def close_embedder() -> None:
     Acquires lock to prevent race with initialization.
     """
     global _embedder
-    
+
     async with _embedder_lock:
         if _embedder is not None:
             logger.info("Closing embedding service")
@@ -107,7 +106,7 @@ __all__ = [
     "EMBEDDING_DIM",
     "get_embedder",
     "embed_query",
-    "embed_queries", 
+    "embed_queries",
     "close_embedder",
     "reset_embedder_for_testing",
 ]

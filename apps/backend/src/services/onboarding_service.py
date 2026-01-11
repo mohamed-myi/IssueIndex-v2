@@ -2,17 +2,14 @@
 Onboarding service for tracking user onboarding progress and state transitions.
 """
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
+from models.profiles import UserProfile
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from models.profiles import UserProfile
-
-
 from src.core.errors import CannotCompleteOnboardingError, OnboardingAlreadyCompletedError
-
 
 ALL_STEPS = ["welcome", "intent", "github", "resume", "preferences"]
 
@@ -39,17 +36,17 @@ async def _get_or_create_profile(
     statement = select(UserProfile).where(UserProfile.user_id == user_id)
     result = await db.exec(statement)
     profile = result.first()
-    
+
     if profile is not None:
         return profile
-    
+
     profile = UserProfile(
         user_id=user_id,
         min_heat_threshold=0.6,
         is_calculating=False,
         onboarding_status="not_started",
     )
-    
+
     db.add(profile)
     await db.commit()
     await db.refresh(profile)
@@ -58,22 +55,22 @@ async def _get_or_create_profile(
 
 def _get_completed_steps(profile: UserProfile) -> list[str]:
     completed = []
-    
+
     if profile.onboarding_status != "not_started":
         completed.append("welcome")
-    
+
     if profile.intent_text is not None:
         completed.append("intent")
-    
+
     if profile.github_username is not None:
         completed.append("github")
-    
+
     if profile.resume_skills is not None:
         completed.append("resume")
-    
+
     if profile.preferred_languages is not None:
         completed.append("preferences")
-    
+
     return completed
 
 
@@ -94,7 +91,7 @@ def compute_onboarding_state(profile: UserProfile) -> OnboardingState:
     completed_steps = _get_completed_steps(profile)
     available_steps = _get_available_steps(completed_steps)
     can_complete = _can_complete(profile)
-    
+
     return OnboardingState(
         status=profile.onboarding_status,
         completed_steps=completed_steps,
@@ -117,23 +114,23 @@ async def complete_onboarding(
 ) -> OnboardingState:
     """Requires at least one source; raises CannotCompleteOnboardingError otherwise."""
     profile = await _get_or_create_profile(db, user_id)
-    
+
     if profile.onboarding_status in ("completed", "skipped"):
         raise OnboardingAlreadyCompletedError(
             f"Onboarding already {profile.onboarding_status}"
         )
-    
+
     if not _can_complete(profile):
         raise CannotCompleteOnboardingError(
             "Cannot complete onboarding without at least one profile source"
         )
-    
+
     profile.onboarding_status = "completed"
-    profile.onboarding_completed_at = datetime.now(timezone.utc)
-    
+    profile.onboarding_completed_at = datetime.now(UTC)
+
     await db.commit()
     await db.refresh(profile)
-    
+
     return compute_onboarding_state(profile)
 
 
@@ -143,18 +140,18 @@ async def skip_onboarding(
 ) -> OnboardingState:
     """Can be called without any profile sources."""
     profile = await _get_or_create_profile(db, user_id)
-    
+
     if profile.onboarding_status in ("completed", "skipped"):
         raise OnboardingAlreadyCompletedError(
             f"Onboarding already {profile.onboarding_status}"
         )
-    
+
     profile.onboarding_status = "skipped"
-    profile.onboarding_completed_at = datetime.now(timezone.utc)
-    
+    profile.onboarding_completed_at = datetime.now(UTC)
+
     await db.commit()
     await db.refresh(profile)
-    
+
     return compute_onboarding_state(profile)
 
 
