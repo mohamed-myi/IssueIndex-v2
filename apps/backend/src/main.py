@@ -69,6 +69,10 @@ from src.api.routes import (
     bookmarks,
     recommendations,
     internal_recommendations,
+    issues,
+    repositories,
+    public,
+    taxonomy,
 )
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -81,3 +85,8 @@ app.include_router(profile_onboarding.router, prefix="/profile", tags=["profile"
 app.include_router(profile_github.router, prefix="/profile", tags=["profile"])
 app.include_router(profile_resume.router, prefix="/profile", tags=["profile"])
 app.include_router(bookmarks.router, prefix="/bookmarks", tags=["bookmarks"])
+app.include_router(issues.router, prefix="/issues", tags=["issues"])
+app.include_router(repositories.router, prefix="/repositories", tags=["repositories"])
+app.include_router(public.router, tags=["public"])
+app.include_router(taxonomy.router, prefix="/taxonomy", tags=["taxonomy"])
+

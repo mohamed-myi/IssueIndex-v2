@@ -8,6 +8,10 @@ from . import profile_resume
 from . import bookmarks
 from . import recommendations
 from . import internal_recommendations
+from . import issues
+from . import repositories
+from . import public
+from . import taxonomy
 
 __all__ = [
     "auth",
@@ -20,4 +24,8 @@ __all__ = [
     "bookmarks",
     "recommendations",
     "internal_recommendations",
+    "issues",
+    "repositories",
+    "public",
+    "taxonomy",
 ]
