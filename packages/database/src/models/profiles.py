@@ -1,10 +1,13 @@
 from uuid import UUID
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import TYPE_CHECKING, List, Optional, Dict, Any
 from sqlmodel import SQLModel, Field, Relationship, Column
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 import sqlalchemy as sa
 from pgvector.sqlalchemy import Vector
+
+if TYPE_CHECKING:
+    from .user import User
 
 
 class UserProfile(SQLModel, table=True):

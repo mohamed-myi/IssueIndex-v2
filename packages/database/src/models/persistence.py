@@ -1,8 +1,11 @@
 from uuid import UUID, uuid4
 from datetime import datetime
-from typing import List
+from typing import TYPE_CHECKING, List
 import sqlalchemy as sa
 from sqlmodel import SQLModel, Field, Relationship
+
+if TYPE_CHECKING:
+    from .user import User
 
 class BookmarkedIssue(SQLModel, table=True):
     __table_args__ = {"schema": "public"}
