@@ -58,7 +58,7 @@ class Settings(BaseSettings):
 
     # Performance optimizations
     gatherer_concurrency: int = 10  # Max concurrent repo fetches
-    max_issues_per_repo: int = 200  # Cap issues per repository
+    max_issues_per_repo: int = 100  # Cap issues per repository (reduced for rate limits)
 
     # GCS writer performance settings
     gcs_buffer_flush_threshold: int = 5000  # Issues before flush to GCS to prevent OOM

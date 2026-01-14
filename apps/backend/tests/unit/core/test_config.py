@@ -23,7 +23,7 @@ class TestSettingsDefaults:
         settings = Settings()
 
         # Act & Assert
-        assert settings.max_issues_per_repo == 200
+        assert settings.max_issues_per_repo == 100
 
 
 class TestSettingsEnvironmentOverride:
@@ -69,7 +69,7 @@ class TestGetSettings:
         # Assert
         assert isinstance(settings, Settings)
         assert settings.gatherer_concurrency == 10
-        assert settings.max_issues_per_repo == 200
+        assert settings.max_issues_per_repo == 100
 
     def test_get_settings_is_cached(self):
         # Arrange

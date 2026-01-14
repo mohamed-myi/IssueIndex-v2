@@ -34,11 +34,12 @@ class RepositoryData:
 
 class Scout:
     """
-    Discovers Top 50 repositories per language meeting velocity criteria;
-    returns list of RepositoryData; approximately 500 repos total, 50KB memory
+    Discovers top repositories per language meeting velocity criteria.
+    Returns list of RepositoryData; approximately 200 repos total.
+    Reduced from 50 to 20 per language to fit within GitHub rate limits.
     """
 
-    REPOS_PER_LANGUAGE: int = 50
+    REPOS_PER_LANGUAGE: int = 20
     MIN_STARS: int = 1000
     MIN_ISSUE_VELOCITY: int = 10
     RECENCY_DAYS: int = 14
