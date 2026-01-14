@@ -123,7 +123,7 @@ async def embed_issue_stream(
     """
     Consumes issue stream, batches for embedding API, yields embedded issues.
     Memory ceiling: holds at most batch_size issues + embeddings at once.
-    
+
     Uses provider.BATCH_SIZE if available, otherwise defaults to 25.
     """
     # Use provider-specific batch size to respect API limits (e.g. Vertex AI 20K tokens)

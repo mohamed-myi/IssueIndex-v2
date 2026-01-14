@@ -1,8 +1,14 @@
 """Unit tests for Vertex AI Batch Prediction wrapper"""
 
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+# Mock google.cloud.aiplatform before importing the module
+mock_aiplatform = MagicMock()
+sys.modules["google.cloud.aiplatform"] = mock_aiplatform
+sys.modules["google.cloud"] = MagicMock()
 
 from src.ingestion.vertex_batch import (
     EMBEDDING_MODEL,

@@ -28,7 +28,7 @@ class BatchPredictionResult:
 class VertexBatchEmbedder:
     """
     Submits embedding requests to Vertex AI Batch Prediction API.
-    
+
     This is significantly faster than real-time API calls because:
     - Vertex AI handles parallelization internally
     - Optimized for throughput over latency
@@ -48,12 +48,12 @@ class VertexBatchEmbedder:
     ) -> str:
         """
         Submit a batch embedding job.
-        
+
         Args:
             input_gcs_path: GCS path to JSONL file with 'content' field
             output_gcs_bucket: GCS bucket for output (gs://bucket-name)
             job_display_name: Optional display name for the job
-        
+
         Returns:
             Job resource name for polling
         """
@@ -97,17 +97,17 @@ class VertexBatchEmbedder:
     ) -> BatchPredictionResult:
         """
         Poll for job completion.
-        
+
         Args:
             job_name: Resource name from submit_batch_job
             poll_interval_seconds: How often to check status
             timeout_seconds: Maximum time to wait
-        
+
         Returns:
             BatchPredictionResult with job details
         """
         start_time = time.time()
-        
+
         while True:
             elapsed = time.time() - start_time
             if elapsed > timeout_seconds:
@@ -130,7 +130,7 @@ class VertexBatchEmbedder:
                 # Get output location
                 output_info = job.output_info
                 output_gcs_path = output_info.gcs_output_directory if output_info else ""
-                
+
                 return BatchPredictionResult(
                     job_name=job_name,
                     output_gcs_path=output_gcs_path,
@@ -164,7 +164,7 @@ class VertexBatchEmbedder:
             output_gcs_bucket=output_gcs_bucket,
             job_display_name=job_display_name,
         )
-        
+
         return self.wait_for_completion(
             job_name=job_name,
             poll_interval_seconds=poll_interval_seconds,

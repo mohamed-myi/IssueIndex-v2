@@ -1,10 +1,16 @@
 """Unit tests for GCS storage utilities"""
 
 import json
+import sys
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+# Mock google.cloud.storage before importing the module
+mock_storage = MagicMock()
+sys.modules["google.cloud.storage"] = mock_storage
+sys.modules["google.cloud"] = MagicMock()
 
 from src.ingestion.gcs_storage import (
     GCSReader,
@@ -86,11 +92,11 @@ class TestGCSWriter:
             mock_client = MagicMock()
             mock_bucket = MagicMock()
             mock_blob = MagicMock()
-            
+
             mock_storage.Client.return_value = mock_client
             mock_client.bucket.return_value = mock_bucket
             mock_bucket.blob.return_value = mock_blob
-            
+
             yield {
                 "storage": mock_storage,
                 "client": mock_client,
@@ -100,26 +106,26 @@ class TestGCSWriter:
 
     @pytest.fixture
     def sample_issue_data(self):
-        """Create a mock IssueData-like object for testing"""
-        # Using a simple object with the required attributes
-        class MockQComponents:
-            has_code = True
-            has_headers = True
-            tech_weight = 0.5
-            is_junk = False
+        """Create a real IssueData dataclass instance for testing"""
+        from src.ingestion.gatherer import IssueData
+        from src.ingestion.quality_gate import QScoreComponents
 
-        class MockIssue:
-            node_id = "I_123"
-            repo_id = "R_456"
-            title = "Test Issue"
-            body_text = "Test body content"
-            labels = ["bug"]
-            github_created_at = datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC)
-            q_score = 0.75
-            q_components = MockQComponents()
-            state = "open"
-
-        return MockIssue()
+        return IssueData(
+            node_id="I_123",
+            repo_id="R_456",
+            title="Test Issue",
+            body_text="Test body content",
+            labels=["bug"],
+            github_created_at=datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC),
+            q_score=0.75,
+            q_components=QScoreComponents(
+                has_code=True,
+                has_headers=True,
+                tech_weight=0.5,
+                is_junk=False,
+            ),
+            state="open",
+        )
 
     def test_initializes_with_gcs_path(self):
         writer = GCSWriter("gs://bucket/path/file.jsonl")

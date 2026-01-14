@@ -6,7 +6,7 @@ import json
 import logging
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import asdict
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from google.cloud import storage
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def generate_batch_path(bucket_name: str, prefix: str = "issues") -> str:
     """Generate a unique GCS path for a batch of issues"""
-    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     return f"gs://{bucket_name}/{prefix}/batch_{timestamp}.jsonl"
 
 
@@ -50,14 +50,14 @@ class GCSWriter:
         """Add an issue to the buffer"""
         # Convert dataclass to dict, handling nested dataclasses
         issue_dict = asdict(issue)
-        
+
         # Convert datetime to ISO string for JSON serialization
         if isinstance(issue_dict.get("github_created_at"), datetime):
             issue_dict["github_created_at"] = issue_dict["github_created_at"].isoformat()
-        
+
         # Add content field for embedding (title + body)
         issue_dict["content"] = f"{issue.title}\n{issue.body_text}"
-        
+
         self._buffer.append(json.dumps(issue_dict))
         self._count += 1
 
@@ -73,14 +73,14 @@ class GCSWriter:
 
         # Join all lines with newlines
         content = "\n".join(self._buffer)
-        
+
         blob.upload_from_string(content, content_type="application/jsonl")
-        
+
         logger.info(
             f"Uploaded {self._count} issues to {self._gcs_path}",
             extra={"issues_uploaded": self._count, "gcs_path": self._gcs_path},
         )
-        
+
         return self._count
 
     @property
@@ -106,7 +106,7 @@ class GCSReader:
         blob = bucket.blob(self._blob_path)
 
         content = blob.download_as_text()
-        
+
         for line in content.strip().split("\n"):
             if line:
                 yield json.loads(line)
@@ -126,15 +126,15 @@ async def write_issues_to_gcs(
     Returns (gcs_path, count).
     """
     writer = GCSWriter(gcs_path)
-    
+
     async for issue in issues:
         writer.write_issue(issue)
-        
+
         if writer.count % log_every == 0:
             logger.info(
                 f"Collector progress: {writer.count} issues buffered",
                 extra={"issues_buffered": writer.count},
             )
-    
+
     count = writer.upload()
     return writer.gcs_path, count
