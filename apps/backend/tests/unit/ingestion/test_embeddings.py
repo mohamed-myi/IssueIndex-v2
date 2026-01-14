@@ -180,6 +180,58 @@ class TestEmbedIssueStream:
             assert result.issue.node_id == f"I_{i}"
 
 
+class TestProviderBatchSize:
+    async def test_uses_provider_batch_size_when_not_specified(self, mock_provider, make_issue):
+        """Verify uses provider.BATCH_SIZE when batch_size param is None"""
+        mock_provider.BATCH_SIZE = 5
+
+        async def issue_generator():
+            for i in range(10):
+                yield make_issue(node_id=f"I_{i}")
+
+        results = [item async for item in embed_issue_stream(
+            issue_generator(), mock_provider
+        )]
+
+        # Should batch at 5 (provider's setting), so 2 calls for 10 issues
+        assert mock_provider.embed_batch.call_count == 2
+        assert len(results) == 10
+
+    async def test_explicit_batch_size_overrides_provider(self, mock_provider, make_issue):
+        """Verify explicit batch_size param takes precedence"""
+        mock_provider.BATCH_SIZE = 5
+
+        async def issue_generator():
+            for i in range(10):
+                yield make_issue(node_id=f"I_{i}")
+
+        results = [item async for item in embed_issue_stream(
+            issue_generator(), mock_provider, batch_size=10
+        )]
+
+        # Should batch at 10 (explicit), so 1 call for 10 issues
+        assert mock_provider.embed_batch.call_count == 1
+        assert len(results) == 10
+
+    async def test_defaults_to_25_without_provider_batch_size(self, mock_provider, make_issue):
+        """Verify defaults to 25 when provider has no BATCH_SIZE"""
+        # Ensure provider has no BATCH_SIZE attribute
+        if hasattr(mock_provider, "BATCH_SIZE"):
+            delattr(mock_provider, "BATCH_SIZE")
+
+        async def issue_generator():
+            for i in range(25):
+                yield make_issue(node_id=f"I_{i}")
+
+        results = [item async for item in embed_issue_stream(
+            issue_generator(), mock_provider
+        )]
+
+        # Should batch at 25 (default), so 1 call for 25 issues
+        assert mock_provider.embed_batch.call_count == 1
+        assert len(results) == 25
+
+
 class TestEmbeddingDimConstant:
     def test_embedding_dim_is_768(self):
         assert EMBEDDING_DIM == 768

@@ -84,20 +84,46 @@ class StreamingPersistence:
         """
         batch: list[EmbeddedIssue] = []
         total = 0
+        batch_number = 0
 
         async for item in embedded_issues:
             batch.append(item)
 
             if len(batch) >= self.BATCH_SIZE:
-                await self._upsert_batch(batch)
-                total += len(batch)
+                batch_number += 1
+                try:
+                    await self._upsert_batch(batch)
+                    total += len(batch)
+                    # Log progress every 5 batches (250 issues) to avoid log spam
+                    if batch_number % 5 == 0:
+                        logger.info(
+                            f"Persistence progress: {total} issues persisted (batch {batch_number})",
+                            extra={"issues_persisted": total, "batch_number": batch_number},
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"Database upsert failed at batch {batch_number} (total {total} issues so far): {e}",
+                        extra={"batch_number": batch_number, "issues_so_far": total, "error": str(e)},
+                    )
+                    raise
                 batch.clear()
 
         if batch:
-            await self._upsert_batch(batch)
-            total += len(batch)
+            batch_number += 1
+            try:
+                await self._upsert_batch(batch)
+                total += len(batch)
+            except Exception as e:
+                logger.error(
+                    f"Database upsert failed at final batch {batch_number} (total {total} issues so far): {e}",
+                    extra={"batch_number": batch_number, "issues_so_far": total, "error": str(e)},
+                )
+                raise
 
-        logger.info(f"Persisted {total} issues to database")
+        logger.info(
+            f"Persisted {total} issues to database in {batch_number} batches",
+            extra={"issues_persisted": total, "total_batches": batch_number},
+        )
         return total
 
     async def _upsert_batch(self, batch: list[EmbeddedIssue]) -> None:

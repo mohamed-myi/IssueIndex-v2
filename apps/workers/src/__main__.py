@@ -2,7 +2,9 @@
 Single entrypoint for IssueIndex worker jobs.
 
 Usage:
-    JOB_TYPE=gatherer python -m src
+    JOB_TYPE=gatherer python -m src     # Legacy: full pipeline (slow)
+    JOB_TYPE=collector python -m src    # Job 1: Scout + Gather -> GCS
+    JOB_TYPE=embedder python -m src     # Job 2: GCS -> Vertex AI Batch -> DB
     JOB_TYPE=janitor python -m src
 """
 
@@ -34,8 +36,19 @@ async def main() -> None:
     try:
         match job_type:
             case "gatherer":
+                # Legacy full pipeline - kept for backwards compatibility
                 from jobs.gatherer_job import run_gatherer_job
                 result = await run_gatherer_job()
+            
+            case "collector":
+                # Job 1: Scout + Gather issues -> Write to GCS -> Trigger embedder
+                from jobs.collector_job import run_collector_job
+                result = await run_collector_job()
+            
+            case "embedder":
+                # Job 2: Read GCS -> Vertex AI Batch Prediction -> Persist to DB
+                from jobs.embedder_job import run_embedder_job
+                result = await run_embedder_job()
             
             case "janitor":
                 from jobs.janitor_job import run_janitor_job

@@ -79,22 +79,48 @@ class Gatherer:
         repos: list[RepositoryData],
     ) -> AsyncIterator[IssueData]:
         """Holds at most PAGE_SIZE issues at a time"""
+        total_repos = len(repos)
+        total_issues = 0
+        repos_processed = 0
+
         for repo in repos:
+            repos_processed += 1
             try:
                 issue_count = 0
                 async for issue in self._fetch_repo_issues_with_retry(repo):
                     issue_count += 1
+                    total_issues += 1
                     yield issue
 
-                if issue_count > 0:
+                # Log progress every 25 repos to track where we are
+                if repos_processed % 25 == 0:
+                    logger.info(
+                        f"Gatherer progress: {repos_processed}/{total_repos} repos, {total_issues} issues yielded",
+                        extra={
+                            "repos_processed": repos_processed,
+                            "total_repos": total_repos,
+                            "issues_yielded": total_issues,
+                        },
+                    )
+                elif issue_count > 0:
                     logger.debug(
                         f"Gatherer: {repo.full_name} yielded {issue_count} issues"
                     )
             except Exception as e:
                 logger.warning(
-                    f"Gatherer: Skipping {repo.full_name} after retries: {e}"
+                    f"Gatherer: Skipping {repo.full_name} (repo {repos_processed}/{total_repos}) after retries: {e}",
+                    extra={
+                        "repo": repo.full_name,
+                        "repos_processed": repos_processed,
+                        "error": str(e),
+                    },
                 )
                 continue
+
+        logger.info(
+            f"Gatherer complete: processed {repos_processed} repos, yielded {total_issues} issues",
+            extra={"repos_processed": repos_processed, "total_issues": total_issues},
+        )
 
     async def _fetch_repo_issues_with_retry(
         self,

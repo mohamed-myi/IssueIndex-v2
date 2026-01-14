@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     embed_worker_url: str = ""
     resume_worker_url: str = ""
 
+    # GCS config for split ingestion pipeline
+    gcs_bucket: str = ""  # Bucket for storing issue JSONL files (e.g., "issueindex-data")
+
     model_config = SettingsConfigDict(
         env_file=".env.local",
         env_file_encoding="utf-8",

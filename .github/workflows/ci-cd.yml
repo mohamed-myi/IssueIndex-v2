@@ -196,13 +196,29 @@ jobs:
             --set-secrets="DATABASE_URL=database-url:latest" \
             --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},EMBEDDING_MODE=vertex"
 
-      - name: Update gatherer job
+      - name: Update gatherer job (legacy)
         run: |
           gcloud run jobs update issueindex-gatherer \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --set-secrets="DATABASE_URL=database-url:latest,GIT_TOKEN=github-token:latest" \
             --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},GCP_PROJECT=${{ env.PROJECT_ID }},EMBEDDING_MODE=vertex"
+
+      - name: Update collector job
+        run: |
+          gcloud run jobs update issueindex-collector \
+            --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --set-secrets="DATABASE_URL=database-url:latest,GIT_TOKEN=github-token:latest" \
+            --set-env-vars="JOB_TYPE=collector,GCS_BUCKET=${{ secrets.GCS_BUCKET }},GCP_PROJECT=${{ env.PROJECT_ID }},GCP_REGION=${{ env.REGION }},FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }}"
+
+      - name: Update embedder job
+        run: |
+          gcloud run jobs update issueindex-embedder \
+            --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --set-secrets="DATABASE_URL=database-url:latest" \
+            --set-env-vars="JOB_TYPE=embedder,GCS_BUCKET=${{ secrets.GCS_BUCKET }},GCP_PROJECT=${{ env.PROJECT_ID }},GCP_REGION=${{ env.REGION }},FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }}"
 
       - name: Update janitor job
         run: |
@@ -241,5 +257,7 @@ jobs:
           echo "- issueindex-worker-resume" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Jobs Updated:" >> $GITHUB_STEP_SUMMARY
-          echo "- issueindex-gatherer" >> $GITHUB_STEP_SUMMARY
+          echo "- issueindex-gatherer (legacy)" >> $GITHUB_STEP_SUMMARY
+          echo "- issueindex-collector (Job 1: Scout + Gather → GCS)" >> $GITHUB_STEP_SUMMARY
+          echo "- issueindex-embedder (Job 2: GCS → Vertex AI Batch → DB)" >> $GITHUB_STEP_SUMMARY
           echo "- issueindex-janitor" >> $GITHUB_STEP_SUMMARY
