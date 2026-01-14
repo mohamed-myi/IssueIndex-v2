@@ -87,8 +87,8 @@ class VertexEmbedder:
     """Generates 768-dim embeddings using Google Vertex AI text-embedding-004"""
 
     def __init__(self, project: str, region: str = "us-central1"):
-        from vertexai.language_models import TextEmbeddingModel
         import vertexai
+        from vertexai.language_models import TextEmbeddingModel
 
         vertexai.init(project=project, location=region)
         self._model = TextEmbeddingModel.from_pretrained("text-embedding-004")
