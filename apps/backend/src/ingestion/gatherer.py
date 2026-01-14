@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -96,11 +97,17 @@ class Gatherer:
         total_repos = len(repos)
         semaphore = asyncio.Semaphore(self._concurrency)
         issue_queue: asyncio.Queue[IssueData | None] = asyncio.Queue()
+        start_time = time.monotonic()
+
+        logger.info(
+            f"Gatherer starting: {total_repos} repos with concurrency={self._concurrency}",
+            extra={"total_repos": total_repos, "concurrency": self._concurrency},
+        )
 
         # Start all worker tasks
         tasks = [
             asyncio.create_task(
-                self._repo_worker(repo, issue_queue, semaphore, idx, total_repos)
+                self._repo_worker(repo, issue_queue, semaphore, idx, total_repos, start_time)
             )
             for idx, repo in enumerate(repos)
         ]
@@ -115,14 +122,18 @@ class Gatherer:
             if item is None:
                 # Sentinel indicates a worker finished
                 completed_workers += 1
-                # Log progress every 25 repos
-                if completed_workers % 25 == 0:
+                # Log progress every 10 repos for better visibility
+                if completed_workers % 10 == 0 or completed_workers == total_repos:
+                    elapsed = time.monotonic() - start_time
+                    rate = completed_workers / elapsed if elapsed > 0 else 0
                     logger.info(
-                        f"Gatherer progress: {completed_workers}/{total_repos} repos, {total_issues} issues yielded",
+                        f"Gatherer progress: {completed_workers}/{total_repos} repos in {elapsed:.1f}s ({rate:.1f} repos/s), {total_issues} issues",
                         extra={
                             "repos_processed": completed_workers,
                             "total_repos": total_repos,
                             "issues_yielded": total_issues,
+                            "elapsed_s": round(elapsed, 1),
+                            "repos_per_second": round(rate, 1),
                         },
                     )
             else:
@@ -132,9 +143,14 @@ class Gatherer:
         # Ensure all tasks are complete and collect any exceptions for logging
         await asyncio.gather(*tasks, return_exceptions=True)
 
+        elapsed = time.monotonic() - start_time
         logger.info(
-            f"Gatherer complete: processed {completed_workers} repos, yielded {total_issues} issues",
-            extra={"repos_processed": completed_workers, "total_issues": total_issues},
+            f"Gatherer complete: {completed_workers} repos, {total_issues} issues in {elapsed:.1f}s",
+            extra={
+                "repos_processed": completed_workers,
+                "total_issues": total_issues,
+                "total_duration_s": round(elapsed, 1),
+            },
         )
 
     async def _repo_worker(
@@ -144,6 +160,7 @@ class Gatherer:
         semaphore: asyncio.Semaphore,
         repo_idx: int,
         total_repos: int,
+        job_start_time: float,
     ) -> int:
         """Process a single repo under semaphore control, push issues to queue.
 
@@ -151,15 +168,32 @@ class Gatherer:
         Sends None sentinel to queue when complete regardless of success or failure.
         """
         issue_count = 0
+        acquire_start = time.monotonic()
+
         try:
             async with semaphore:
+                wait_time = time.monotonic() - acquire_start
+                # Log if worker waited more than 1 second for semaphore
+                if wait_time > 1.0:
+                    logger.debug(
+                        f"Gatherer: Worker {repo_idx} waited {wait_time:.1f}s for semaphore",
+                        extra={"repo": repo.full_name, "wait_time_s": round(wait_time, 1)},
+                    )
+
+                fetch_start = time.monotonic()
                 async for issue in self._fetch_repo_issues_with_retry(repo):
                     await issue_queue.put(issue)
                     issue_count += 1
+                fetch_elapsed = time.monotonic() - fetch_start
 
                 if issue_count > 0:
                     logger.debug(
-                        f"Gatherer: {repo.full_name} yielded {issue_count} issues"
+                        f"Gatherer: {repo.full_name} yielded {issue_count} issues in {fetch_elapsed:.1f}s",
+                        extra={
+                            "repo": repo.full_name,
+                            "issue_count": issue_count,
+                            "fetch_duration_s": round(fetch_elapsed, 1),
+                        },
                     )
         except Exception as e:
             logger.warning(

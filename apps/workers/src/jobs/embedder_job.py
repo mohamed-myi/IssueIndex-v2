@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -233,6 +234,7 @@ async def run_embedder_job() -> dict:
     
     Returns stats dict with issues_embedded and any errors.
     """
+    job_start = time.monotonic()
     settings = get_settings()
     
     input_gcs_path = os.environ.get("INPUT_GCS_PATH")
@@ -243,11 +245,12 @@ async def run_embedder_job() -> dict:
         raise ValueError("GCS_BUCKET environment variable is required")
 
     logger.info(
-        f"Starting embedder job",
+        "Phase 1/3: Starting embedder job",
         extra={"input_path": input_gcs_path},
     )
 
-    # Submit batch prediction job
+    # Phase 1: Submit batch prediction job
+    submit_start = time.monotonic()
     embedder = VertexBatchEmbedder(
         project=settings.gcp_project,
         region=settings.gcp_region,
@@ -255,51 +258,88 @@ async def run_embedder_job() -> dict:
     
     output_bucket = f"gs://{settings.gcs_bucket}/embeddings"
     
+    logger.info(
+        "Phase 1/3: Submitting to Vertex AI Batch Prediction",
+        extra={"output_bucket": output_bucket},
+    )
+    
     result = embedder.submit_and_wait(
         input_gcs_path=input_gcs_path,
         output_gcs_bucket=output_bucket,
         poll_interval_seconds=30,
         timeout_seconds=7200,  # 2 hours
     )
+    submit_elapsed = time.monotonic() - submit_start
     
     if result.state != "SUCCEEDED":
         logger.error(
-            f"Batch prediction failed: {result.state}",
-            extra={"state": result.state, "error": result.error_message},
+            f"Phase 1/3: Batch prediction failed after {submit_elapsed:.1f}s: {result.state}",
+            extra={
+                "state": result.state,
+                "error": result.error_message,
+                "duration_s": round(submit_elapsed, 1),
+            },
         )
         return {
             "state": result.state,
             "error": result.error_message,
             "issues_embedded": 0,
+            "duration_s": round(time.monotonic() - job_start, 1),
         }
     
     logger.info(
-        f"Batch prediction complete, reading output from {result.output_gcs_path}",
-        extra={"output_path": result.output_gcs_path},
+        f"Phase 1/3: Batch prediction complete in {submit_elapsed:.1f}s",
+        extra={
+            "output_path": result.output_gcs_path,
+            "batch_duration_s": round(submit_elapsed, 1),
+        },
     )
     
-    # Read embeddings from output
+    # Phase 2: Read embeddings from output
+    read_start = time.monotonic()
+    logger.info(f"Phase 2/3: Reading embeddings from {result.output_gcs_path}")
     embeddings_map = read_batch_output(result.output_gcs_path)
+    read_elapsed = time.monotonic() - read_start
     
     if not embeddings_map:
-        logger.error("No embeddings found in batch output")
+        logger.error("Phase 2/3: No embeddings found in batch output")
         return {
             "state": "NO_EMBEDDINGS",
             "error": "Batch output contained no embeddings",
             "issues_embedded": 0,
+            "duration_s": round(time.monotonic() - job_start, 1),
         }
     
-    # Persist to database
+    logger.info(
+        f"Phase 2/3: Read {len(embeddings_map)} embeddings in {read_elapsed:.1f}s",
+        extra={
+            "embeddings_count": len(embeddings_map),
+            "read_duration_s": round(read_elapsed, 1),
+        },
+    )
+    
+    # Phase 3: Persist to database
+    persist_start = time.monotonic()
+    logger.info(f"Phase 3/3: Persisting {len(embeddings_map)} issues to database")
+    
     async with async_session_factory() as session:
         total = await persist_embeddings(
             input_gcs_path=input_gcs_path,
             embeddings_map=embeddings_map,
             session=session,
         )
+    persist_elapsed = time.monotonic() - persist_start
     
+    job_elapsed = time.monotonic() - job_start
     logger.info(
-        f"Embedder job complete: {total} issues persisted",
-        extra={"issues_embedded": total},
+        f"Embedder job complete in {job_elapsed:.1f}s: {total} issues persisted",
+        extra={
+            "issues_embedded": total,
+            "total_duration_s": round(job_elapsed, 1),
+            "batch_duration_s": round(submit_elapsed, 1),
+            "read_duration_s": round(read_elapsed, 1),
+            "persist_duration_s": round(persist_elapsed, 1),
+        },
     )
     
     return {
@@ -307,4 +347,5 @@ async def run_embedder_job() -> dict:
         "issues_embedded": total,
         "input_path": input_gcs_path,
         "output_path": result.output_gcs_path,
+        "duration_s": round(job_elapsed, 1),
     }

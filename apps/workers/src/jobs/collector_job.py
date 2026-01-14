@@ -7,12 +7,12 @@ This is Job 1 of the split pipeline:
 3. Store: Write to GCS as JSONL
 4. Trigger: Start embedder job with the GCS path
 
-Runs fast (10-15 minutes) because it skips embedding.
+Runs fast (1-2 minutes) with concurrent repo processing.
 """
 
 import logging
-import os
 import sys
+import time
 from pathlib import Path
 
 # Add backend src to path
@@ -91,6 +91,7 @@ async def run_collector_job() -> dict:
     
     Returns stats dict with repos_discovered, issues_collected, and gcs_path.
     """
+    job_start = time.monotonic()
     settings = get_settings()
     
     if not settings.git_token:
@@ -99,40 +100,57 @@ async def run_collector_job() -> dict:
     if not settings.gcs_bucket:
         raise ValueError("GCS_BUCKET environment variable is required")
 
+    logger.info(
+        "Collector config",
+        extra={
+            "gatherer_concurrency": settings.gatherer_concurrency,
+            "max_issues_per_repo": settings.max_issues_per_repo,
+        },
+    )
+
     async with GitHubGraphQLClient(settings.git_token) as client:
-        logger.info("Starting Scout: discovering repositories")
+        # Phase 1: Scout
+        scout_start = time.monotonic()
+        logger.info("Phase 1/3: Starting Scout - discovering repositories")
         scout = Scout(client)
         repos = await scout.discover_repositories()
+        scout_elapsed = time.monotonic() - scout_start
         
         logger.info(
-            f"Scout complete: discovered {len(repos)} repositories",
-            extra={"repos_discovered": len(repos)},
+            f"Phase 1/3: Scout complete in {scout_elapsed:.1f}s - discovered {len(repos)} repositories",
+            extra={"repos_discovered": len(repos), "scout_duration_s": round(scout_elapsed, 1)},
         )
 
         if not repos:
             logger.warning("No repositories discovered; skipping collection")
             return {"repos_discovered": 0, "issues_collected": 0, "gcs_path": None}
 
-        # Persist repositories first (FK constraint for issues)
+        # Phase 1.5: Persist repositories (FK constraint for issues)
+        persist_start = time.monotonic()
         async with async_session_factory() as session:
             persistence = StreamingPersistence(session)
             repos_upserted = await persistence.upsert_repositories(repos)
+        persist_elapsed = time.monotonic() - persist_start
             
-            logger.info(
-                f"Repositories upserted: {repos_upserted}",
-                extra={"repos_upserted": repos_upserted},
-            )
+        logger.info(
+            f"Repositories upserted in {persist_elapsed:.1f}s: {repos_upserted}",
+            extra={"repos_upserted": repos_upserted, "persist_duration_s": round(persist_elapsed, 1)},
+        )
 
-        # Generate GCS path for this batch
+        # Phase 2: Gather issues and write to GCS
         gcs_path = generate_batch_path(settings.gcs_bucket)
+        gather_start = time.monotonic()
         
         logger.info(
-            f"Starting collection pipeline: Gather -> GCS",
-            extra={"gcs_path": gcs_path},
+            f"Phase 2/3: Starting Gather -> GCS with concurrency={settings.gatherer_concurrency}",
+            extra={"gcs_path": gcs_path, "concurrency": settings.gatherer_concurrency},
         )
         
-        # Gather issues and write to GCS
-        gatherer = Gatherer(client, max_issues_per_repo=settings.max_issues_per_repo)
+        gatherer = Gatherer(
+            client,
+            max_issues_per_repo=settings.max_issues_per_repo,
+            concurrency=settings.gatherer_concurrency,
+        )
         issue_stream = gatherer.harvest_issues(repos)
         
         gcs_path, total = await write_issues_to_gcs(
@@ -140,13 +158,19 @@ async def run_collector_job() -> dict:
             gcs_path=gcs_path,
             log_every=500,
         )
+        gather_elapsed = time.monotonic() - gather_start
         
         logger.info(
-            f"Collection complete: {total} issues written to {gcs_path}",
-            extra={"issues_collected": total, "gcs_path": gcs_path},
+            f"Phase 2/3: Gather complete in {gather_elapsed:.1f}s - {total} issues written to GCS",
+            extra={
+                "issues_collected": total,
+                "gcs_path": gcs_path,
+                "gather_duration_s": round(gather_elapsed, 1),
+            },
         )
 
-        # Trigger embedder job
+        # Phase 3: Trigger embedder job
+        logger.info("Phase 3/3: Triggering embedder job")
         if total > 0:
             execution_name = trigger_embedder_job(
                 gcs_path=gcs_path,
@@ -156,16 +180,29 @@ async def run_collector_job() -> dict:
             
             if execution_name:
                 logger.info(
-                    f"Embedder job triggered successfully",
+                    "Phase 3/3: Embedder job triggered successfully",
                     extra={"embedder_execution": execution_name},
                 )
             else:
-                logger.warning("Failed to trigger embedder job; manual trigger required")
+                logger.warning("Phase 3/3: Failed to trigger embedder job; manual trigger required")
         else:
-            logger.warning("No issues collected; skipping embedder trigger")
+            logger.warning("Phase 3/3: No issues collected; skipping embedder trigger")
+
+        job_elapsed = time.monotonic() - job_start
+        logger.info(
+            f"Collector job complete in {job_elapsed:.1f}s",
+            extra={
+                "total_duration_s": round(job_elapsed, 1),
+                "scout_duration_s": round(scout_elapsed, 1),
+                "gather_duration_s": round(gather_elapsed, 1),
+                "repos_discovered": len(repos),
+                "issues_collected": total,
+            },
+        )
 
         return {
             "repos_discovered": len(repos),
             "issues_collected": total,
             "gcs_path": gcs_path,
+            "duration_s": round(job_elapsed, 1),
         }

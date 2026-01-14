@@ -225,6 +225,25 @@ class GitHubGraphQLClient:
                 f"Query cost: {self._query_cost.cost} points, "
                 f"{self._query_cost.remaining}/{self._query_cost.limit} remaining"
             )
+
+            # Warn when rate limit is getting low
+            if self._query_cost.remaining < 500:
+                logger.warning(
+                    f"GitHub rate limit low: {self._query_cost.remaining}/{self._query_cost.limit} remaining",
+                    extra={
+                        "remaining": self._query_cost.remaining,
+                        "limit": self._query_cost.limit,
+                        "reset_at": self._query_cost.reset_at,
+                    },
+                )
+            elif self._query_cost.remaining < 1000:
+                logger.info(
+                    f"GitHub rate limit: {self._query_cost.remaining}/{self._query_cost.limit} remaining",
+                    extra={
+                        "remaining": self._query_cost.remaining,
+                        "limit": self._query_cost.limit,
+                    },
+                )
         except (ValueError, TypeError, KeyError) as e:
             logger.warning(f"Failed to parse query cost: {e}")
 

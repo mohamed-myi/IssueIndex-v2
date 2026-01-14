@@ -98,9 +98,9 @@ class GCSWriter:
         buffer_size = len(self._buffer)
         self._buffer.clear()
 
-        logger.debug(
-            f"Flushed chunk {chunk_idx} with {buffer_size} issues to {chunk_path}",
-            extra={"chunk_idx": chunk_idx, "issues_in_chunk": buffer_size},
+        logger.info(
+            f"GCS: Flushed chunk {chunk_idx} with {buffer_size} issues ({self._count} total)",
+            extra={"chunk_idx": chunk_idx, "issues_in_chunk": buffer_size, "total_issues": self._count},
         )
 
     def upload(self) -> int:
@@ -130,8 +130,8 @@ class GCSWriter:
             for chunk_path in self._chunk_paths:
                 bucket.blob(chunk_path).delete()
 
-            logger.debug(
-                f"Composed {len(self._chunk_paths)} chunks and cleaned up intermediates",
+            logger.info(
+                f"GCS: Composed {len(self._chunk_paths)} chunks into final file",
                 extra={"chunk_count": len(self._chunk_paths)},
             )
 
