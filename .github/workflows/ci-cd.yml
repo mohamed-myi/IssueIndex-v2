@@ -177,35 +177,40 @@ jobs:
           gcloud run services update issueindex-api \
             --image=${{ env.REGISTRY }}/api:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --set-env-vars="DATABASE_URL=${{ secrets.DATABASE_URL }},FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}"
+            --set-secrets="DATABASE_URL=database-url:latest" \
+            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},EMBEDDING_MODE=vertex"
 
       - name: Deploy embed worker service
         run: |
           gcloud run services update issueindex-worker-embed \
             --image=${{ env.REGISTRY }}/worker-embed:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --set-env-vars="DATABASE_URL=${{ secrets.DATABASE_URL }},FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }}"
+            --set-secrets="DATABASE_URL=database-url:latest" \
+            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},EMBEDDING_MODE=vertex"
 
       - name: Deploy resume worker service
         run: |
           gcloud run services update issueindex-worker-resume \
             --image=${{ env.REGISTRY }}/worker-resume:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --set-env-vars="DATABASE_URL=${{ secrets.DATABASE_URL }},FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }}"
+            --set-secrets="DATABASE_URL=database-url:latest" \
+            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},EMBEDDING_MODE=vertex"
 
       - name: Update gatherer job
         run: |
           gcloud run jobs update issueindex-gatherer \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --set-env-vars="DATABASE_URL=${{ secrets.DATABASE_URL }},FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},GIT_TOKEN=${{ secrets.GIT_TOKEN }},GCP_PROJECT=${{ env.PROJECT_ID }}"
+            --set-secrets="DATABASE_URL=database-url:latest,GIT_TOKEN=github-token:latest" \
+            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},GCP_PROJECT=${{ env.PROJECT_ID }},EMBEDDING_MODE=vertex"
 
       - name: Update janitor job
         run: |
           gcloud run jobs update issueindex-janitor \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --set-env-vars="DATABASE_URL=${{ secrets.DATABASE_URL }},FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }}"
+            --set-secrets="DATABASE_URL=database-url:latest" \
+            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }}"
 
       - name: Verify API deployment
         run: |
