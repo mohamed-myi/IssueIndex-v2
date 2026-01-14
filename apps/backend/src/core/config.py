@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     # GCS config for split ingestion pipeline
     gcs_bucket: str = ""  # Bucket for storing issue JSONL files (e.g., "issueindex-data")
 
+    # Performance optimizations
+    gatherer_concurrency: int = 10  # Max concurrent repo fetches
+    max_issues_per_repo: int = 200  # Cap issues per repository
+
+    # GCS writer performance settings
+    gcs_buffer_flush_threshold: int = 5000  # Issues before flush to GCS to prevent OOM
+
     model_config = SettingsConfigDict(
         env_file=".env.local",
         env_file_encoding="utf-8",

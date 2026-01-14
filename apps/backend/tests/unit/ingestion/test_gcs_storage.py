@@ -168,9 +168,11 @@ class TestGCSWriter:
         
         writer.upload()
         
-        mock_storage_client["storage"].Client.assert_called_once()
+        # With chunked buffering, storage client is called for chunk upload
+        mock_storage_client["storage"].Client.assert_called()
         mock_storage_client["client"].bucket.assert_called_with("my-bucket")
-        mock_storage_client["bucket"].blob.assert_called_with("path/file.jsonl")
+        # First blob call is for the chunk, then rename_blob moves it to final path
+        mock_storage_client["bucket"].blob.assert_called_with("path/file.jsonl.chunk_0")
 
     def test_upload_writes_jsonl_content(self, mock_storage_client, sample_issue_data):
         writer = GCSWriter("gs://bucket/file.jsonl")
@@ -339,3 +341,223 @@ class TestWriteIssuesToGcs:
         )
 
         assert path == "gs://bucket/test.jsonl"
+
+
+class TestChunkedBuffering:
+    """Tests for PERF-004: chunked buffering in GCSWriter to prevent OOM"""
+
+    @pytest.fixture
+    def mock_storage_client(self):
+        with patch("src.ingestion.gcs_storage.storage") as mock_storage:
+            mock_client = MagicMock()
+            mock_bucket = MagicMock()
+
+            # Track blobs created for each path
+            blobs = {}
+
+            def get_blob(path):
+                if path not in blobs:
+                    blob = MagicMock()
+                    blob.path = path
+                    blobs[path] = blob
+                return blobs[path]
+
+            mock_storage.Client.return_value = mock_client
+            mock_client.bucket.return_value = mock_bucket
+            mock_bucket.blob.side_effect = get_blob
+
+            yield {
+                "storage": mock_storage,
+                "client": mock_client,
+                "bucket": mock_bucket,
+                "blobs": blobs,
+            }
+
+    @pytest.fixture
+    def sample_issue_data(self):
+        """Create a real IssueData dataclass instance for testing"""
+        from src.ingestion.gatherer import IssueData
+        from src.ingestion.quality_gate import QScoreComponents
+
+        return IssueData(
+            node_id="I_123",
+            repo_id="R_456",
+            title="Test Issue",
+            body_text="Test body content",
+            labels=["bug"],
+            github_created_at=datetime(2024, 1, 15, 12, 0, 0, tzinfo=UTC),
+            q_score=0.75,
+            q_components=QScoreComponents(
+                has_code=True,
+                has_headers=True,
+                tech_weight=0.5,
+                is_junk=False,
+            ),
+            state="open",
+        )
+
+    def test_flush_threshold_configurable(self):
+        # Arrange & Act
+        writer_default = GCSWriter("gs://bucket/file.jsonl")
+        writer_custom = GCSWriter("gs://bucket/file.jsonl", flush_threshold=100)
+        writer_zero = GCSWriter("gs://bucket/file.jsonl", flush_threshold=0)
+
+        # Assert - default should be 5000, custom should be 100, zero should fallback to default
+        assert writer_default.flush_threshold == 5000
+        assert writer_custom.flush_threshold == 100
+        assert writer_zero.flush_threshold == 5000
+
+    def test_flushes_buffer_at_threshold(self, mock_storage_client, sample_issue_data):
+        # Arrange - create writer with small threshold of 3
+        writer = GCSWriter("gs://bucket/path/file.jsonl", flush_threshold=3)
+
+        # Act - write 5 issues (should trigger 1 flush at 3, leaving 2 in buffer)
+        for _ in range(5):
+            writer.write_issue(sample_issue_data)
+
+        # Assert - should have flushed once when hitting threshold
+        assert len(writer._chunk_paths) == 1
+        assert len(writer._buffer) == 2  # Remaining 2 issues still in buffer
+        assert writer.count == 5
+
+        # Verify chunk blob was created and uploaded
+        chunk_path = "path/file.jsonl.chunk_0"
+        chunk_blob = mock_storage_client["blobs"][chunk_path]
+        chunk_blob.upload_from_string.assert_called_once()
+
+    def test_composes_multiple_chunks_into_final(self, mock_storage_client, sample_issue_data):
+        # Arrange - create writer with small threshold to trigger multiple chunks
+        writer = GCSWriter("gs://bucket/path/file.jsonl", flush_threshold=2)
+
+        # Act - write 5 issues (2 chunks of 2, plus 1 remaining)
+        for _ in range(5):
+            writer.write_issue(sample_issue_data)
+
+        # Should have 2 chunks flushed, 1 issue remaining in buffer
+        assert len(writer._chunk_paths) == 2
+        assert len(writer._buffer) == 1
+
+        # Upload should compose all chunks
+        count = writer.upload()
+
+        # Assert
+        assert count == 5
+        # After upload, should have 3 chunks total (2 + final flush of 1)
+        assert len(writer._chunk_paths) == 3
+
+        # Verify compose was called on the final blob
+        final_blob = mock_storage_client["blobs"]["path/file.jsonl"]
+        final_blob.compose.assert_called_once()
+
+    def test_cleans_up_intermediate_chunks(self, mock_storage_client, sample_issue_data):
+        # Arrange - create writer that will produce multiple chunks
+        writer = GCSWriter("gs://bucket/path/file.jsonl", flush_threshold=2)
+
+        # Act - write enough issues to create multiple chunks
+        for _ in range(5):
+            writer.write_issue(sample_issue_data)
+
+        writer.upload()
+
+        # Assert - verify delete was called on intermediate chunk blobs
+        chunk_paths = [
+            "path/file.jsonl.chunk_0",
+            "path/file.jsonl.chunk_1",
+            "path/file.jsonl.chunk_2",
+        ]
+
+        for chunk_path in chunk_paths:
+            chunk_blob = mock_storage_client["blobs"][chunk_path]
+            chunk_blob.delete.assert_called_once()
+
+    def test_small_batches_under_threshold_use_rename(self, mock_storage_client, sample_issue_data):
+        # Arrange - create writer with threshold larger than issue count
+        writer = GCSWriter("gs://bucket/path/file.jsonl", flush_threshold=100)
+
+        # Act - write fewer issues than threshold
+        for _ in range(5):
+            writer.write_issue(sample_issue_data)
+
+        writer.upload()
+
+        # Assert - should use rename since only one chunk
+        mock_storage_client["bucket"].rename_blob.assert_called_once()
+
+        # Compose should NOT be called since only one chunk
+        final_blob = mock_storage_client["blobs"].get("path/file.jsonl")
+        if final_blob:
+            final_blob.compose.assert_not_called()
+
+    def test_upload_with_no_issues_returns_zero(self, mock_storage_client):
+        # Arrange
+        writer = GCSWriter("gs://bucket/path/file.jsonl")
+
+        # Act
+        count = writer.upload()
+
+        # Assert
+        assert count == 0
+        mock_storage_client["storage"].Client.assert_not_called()
+
+    def test_buffer_cleared_after_flush(self, mock_storage_client, sample_issue_data):
+        # Arrange
+        writer = GCSWriter("gs://bucket/path/file.jsonl", flush_threshold=3)
+
+        # Act - write exactly threshold issues to trigger flush
+        for _ in range(3):
+            writer.write_issue(sample_issue_data)
+
+        # Assert - buffer should be empty after flush
+        assert len(writer._buffer) == 0
+        assert len(writer._chunk_paths) == 1
+        assert writer.count == 3
+
+    def test_multiple_flushes_increment_chunk_index(self, mock_storage_client, sample_issue_data):
+        # Arrange
+        writer = GCSWriter("gs://bucket/path/file.jsonl", flush_threshold=2)
+
+        # Act - write 6 issues to trigger 3 flushes
+        for _ in range(6):
+            writer.write_issue(sample_issue_data)
+
+        # Assert - should have 3 chunks
+        assert len(writer._chunk_paths) == 3
+        assert writer._chunk_paths[0] == "path/file.jsonl.chunk_0"
+        assert writer._chunk_paths[1] == "path/file.jsonl.chunk_1"
+        assert writer._chunk_paths[2] == "path/file.jsonl.chunk_2"
+
+    def test_flush_threshold_property_exposed(self):
+        # Arrange & Act
+        writer = GCSWriter("gs://bucket/file.jsonl", flush_threshold=1000)
+
+        # Assert
+        assert writer.flush_threshold == 1000
+
+    def test_content_preserved_across_chunks(self, mock_storage_client, sample_issue_data):
+        # Arrange - track all uploaded content
+        uploaded_contents = []
+
+        def capture_upload(content, **kwargs):
+            uploaded_contents.append(content)
+
+        writer = GCSWriter("gs://bucket/path/file.jsonl", flush_threshold=2)
+
+        # Make blobs capture their upload content
+        for blob in mock_storage_client["blobs"].values():
+            blob.upload_from_string.side_effect = capture_upload
+
+        # Act - write 4 issues (should create 2 chunks)
+        for i in range(4):
+            writer.write_issue(sample_issue_data)
+
+        # Assert - each chunk should contain serialized issues
+        assert len(writer._chunk_paths) == 2
+
+        # Each flush should have uploaded JSON content
+        for content in uploaded_contents:
+            # Content should be JSONL format (JSON objects separated by newlines)
+            lines = content.strip().split("\n")
+            for line in lines:
+                parsed = json.loads(line)
+                assert "node_id" in parsed
+                assert "content" in parsed

@@ -1,5 +1,6 @@
 """Unit tests for Gatherer streaming issue harvester"""
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
@@ -437,4 +438,381 @@ class TestIssueData:
 class TestBodyTruncation:
     def test_truncate_length_is_4000(self):
         assert BODY_TRUNCATE_LENGTH == 4000
+
+
+class TestIssueCapping:
+    """Tests for PERF-002: max_issues_per_repo capping functionality"""
+
+    async def test_stops_pagination_at_cap(self, mock_client, sample_repo):
+        # Arrange - create gatherer with cap of 3 issues
+        gatherer = Gatherer(client=mock_client, max_issues_per_repo=3)
+
+        # Two pages of high quality issues that would all pass Q-Score
+        page1 = {
+            "repository": {
+                "issues": {
+                    "pageInfo": {"hasNextPage": True, "endCursor": "cursor_1"},
+                    "nodes": [
+                        make_issue_node(f"I_{i}", body="## Description\n```code\n```")
+                        for i in range(2)
+                    ],
+                }
+            }
+        }
+        page2 = {
+            "repository": {
+                "issues": {
+                    "pageInfo": {"hasNextPage": True, "endCursor": "cursor_2"},
+                    "nodes": [
+                        make_issue_node(f"I_{i+10}", body="## Description\n```code\n```")
+                        for i in range(2)
+                    ],
+                }
+            }
+        }
+        page3 = {
+            "repository": {
+                "issues": {
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    "nodes": [
+                        make_issue_node(f"I_{i+20}", body="## Description\n```code\n```")
+                        for i in range(2)
+                    ],
+                }
+            }
+        }
+
+        mock_client.execute_query.side_effect = [page1, page2, page3]
+
+        # Act
+        issues = [i async for i in gatherer._fetch_repo_issues(sample_repo)]
+
+        # Assert - should stop after cap of 3, not fetch all 6
+        assert len(issues) == 3
+        # Should have stopped after 2 pages since cap reached during page 2
+        assert mock_client.execute_query.call_count == 2
+
+    async def test_cap_counts_only_yielded_issues(self, mock_client, sample_repo):
+        # Arrange - cap of 2, but include low Q-Score issues that wont count
+        gatherer = Gatherer(client=mock_client, max_issues_per_repo=2)
+
+        # High quality body with code blocks and headers passes Q-Score threshold of 0.6
+        high_quality_body = "## Description\n```typescript\nthrow new TypeError()\n```"
+        # Low quality body without code or headers fails Q-Score threshold
+        low_quality_body = "this is broken please fix"
+
+        # Mix of high and low quality issues
+        mock_client.execute_query.return_value = {
+            "repository": {
+                "issues": {
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    "nodes": [
+                        # High quality - will pass Q-Score and count toward cap
+                        make_issue_node("I_high_1", body=high_quality_body),
+                        # Low quality - will NOT pass Q-Score threshold
+                        make_issue_node("I_low_1", title="bug", body=low_quality_body),
+                        make_issue_node("I_low_2", title="help", body=low_quality_body),
+                        # High quality - will pass and count toward cap
+                        make_issue_node("I_high_2", body=high_quality_body),
+                        # This would pass but cap should already be reached
+                        make_issue_node("I_high_3", body=high_quality_body),
+                    ],
+                }
+            }
+        }
+
+        # Act
+        issues = [i async for i in gatherer._fetch_repo_issues(sample_repo)]
+
+        # Assert - should only get 2 high quality issues due to cap
+        assert len(issues) == 2
+        assert all(i.node_id.startswith("I_high") for i in issues)
+
+    async def test_zero_cap_disables_capping(self, mock_client, sample_repo):
+        # Arrange - cap of 0 means no limit
+        gatherer = Gatherer(client=mock_client, max_issues_per_repo=0)
+
+        # Multiple pages of issues
+        page1 = {
+            "repository": {
+                "issues": {
+                    "pageInfo": {"hasNextPage": True, "endCursor": "cursor_1"},
+                    "nodes": [
+                        make_issue_node(f"I_{i}", body="## Description\n```code\n```")
+                        for i in range(3)
+                    ],
+                }
+            }
+        }
+        page2 = {
+            "repository": {
+                "issues": {
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    "nodes": [
+                        make_issue_node(f"I_{i+10}", body="## Description\n```code\n```")
+                        for i in range(3)
+                    ],
+                }
+            }
+        }
+
+        mock_client.execute_query.side_effect = [page1, page2]
+
+        # Act
+        issues = [i async for i in gatherer._fetch_repo_issues(sample_repo)]
+
+        # Assert - should fetch all issues from both pages
+        assert len(issues) == 6
+        assert mock_client.execute_query.call_count == 2
+
+    async def test_repos_with_fewer_issues_fully_processed(self, mock_client, sample_repo):
+        # Arrange - cap of 100, but repo only has 5 issues
+        gatherer = Gatherer(client=mock_client, max_issues_per_repo=100)
+
+        mock_client.execute_query.return_value = {
+            "repository": {
+                "issues": {
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    "nodes": [
+                        make_issue_node(f"I_{i}", body="## Description\n```code\n```")
+                        for i in range(5)
+                    ],
+                }
+            }
+        }
+
+        # Act
+        issues = [i async for i in gatherer._fetch_repo_issues(sample_repo)]
+
+        # Assert - all 5 issues should be returned since under cap
+        assert len(issues) == 5
+
+    async def test_logs_when_cap_reached(self, mock_client, sample_repo, caplog):
+        # Arrange
+        gatherer = Gatherer(client=mock_client, max_issues_per_repo=2)
+
+        mock_client.execute_query.return_value = {
+            "repository": {
+                "issues": {
+                    "pageInfo": {"hasNextPage": True, "endCursor": "cursor_1"},
+                    "nodes": [
+                        make_issue_node(f"I_{i}", body="## Description\n```code\n```")
+                        for i in range(5)
+                    ],
+                }
+            }
+        }
+
+        # Act
+        import logging
+        with caplog.at_level(logging.INFO):
+            _ = [i async for i in gatherer._fetch_repo_issues(sample_repo)]
+
+        # Assert - should log info message about reaching cap
+        assert any("Reached cap of 2 issues" in record.message for record in caplog.records)
+        assert any("facebook/react" in record.message for record in caplog.records)
+
+
+class TestConcurrentHarvesting:
+    """Tests for PERF-001: concurrent repository processing with bounded concurrency"""
+
+    async def test_processes_repos_concurrently(self, mock_client):
+        # Arrange - 5 repos with concurrency=3, each API call has 50ms delay
+        # If sequential: 5 * 50ms = 250ms minimum
+        # If concurrent (3): ~100ms (2 batches)
+        repos = [
+            RepositoryData(
+                node_id=f"R_{i}",
+                full_name=f"owner/repo{i}",
+                primary_language="Python",
+                stargazer_count=1000,
+                issue_count_open=50,
+                topics=[],
+            )
+            for i in range(5)
+        ]
+
+        call_times = []
+
+        async def mock_execute_with_delay(*args, **kwargs):
+            import time
+            start = time.monotonic()
+            await asyncio.sleep(0.05)  # 50ms delay per API call
+            call_times.append(time.monotonic() - start)
+            return {
+                "repository": {
+                    "issues": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [make_issue_node("I_1", body="## Description\n```code\n```")],
+                    }
+                }
+            }
+
+        mock_client.execute_query.side_effect = mock_execute_with_delay
+        gatherer = Gatherer(client=mock_client, concurrency=3)
+
+        # Act
+        import time
+        start_time = time.monotonic()
+        issues = [i async for i in gatherer.harvest_issues(repos)]
+        elapsed = time.monotonic() - start_time
+
+        # Assert - concurrent execution should be faster than sequential
+        # 5 repos at 50ms each sequential = 250ms
+        # With concurrency=3: batch1 (3 repos) + batch2 (2 repos) = ~100ms
+        assert elapsed < 0.2  # Should complete in under 200ms, not 250ms+
+        assert len(issues) == 5  # All 5 repos should yield 1 issue each
+
+    async def test_semaphore_limits_concurrent_requests(self, mock_client):
+        # Arrange - 10 repos with concurrency=2
+        # Track max simultaneous active fetches to verify semaphore works
+        repos = [
+            RepositoryData(
+                node_id=f"R_{i}",
+                full_name=f"owner/repo{i}",
+                primary_language="Python",
+                stargazer_count=1000,
+                issue_count_open=50,
+                topics=[],
+            )
+            for i in range(10)
+        ]
+
+        active_count = [0]
+        max_concurrent = [0]
+
+        async def mock_execute_tracking(*args, **kwargs):
+            active_count[0] += 1
+            max_concurrent[0] = max(max_concurrent[0], active_count[0])
+            await asyncio.sleep(0.02)  # Small delay to allow overlap detection
+            active_count[0] -= 1
+            return {
+                "repository": {
+                    "issues": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [make_issue_node("I_1", body="## Description\n```code\n```")],
+                    }
+                }
+            }
+
+        mock_client.execute_query.side_effect = mock_execute_tracking
+        gatherer = Gatherer(client=mock_client, concurrency=2)
+
+        # Act
+        _ = [i async for i in gatherer.harvest_issues(repos)]
+
+        # Assert - max concurrent should never exceed semaphore limit of 2
+        assert max_concurrent[0] <= 2
+        assert max_concurrent[0] >= 1  # Should have had at least some concurrency
+
+    async def test_single_repo_failure_does_not_stop_others(self, mock_client):
+        # Arrange - 5 repos, repo at index 1 raises exception after all retries
+        repos = [
+            RepositoryData(
+                node_id=f"R_{i}",
+                full_name=f"owner/repo{i}",
+                primary_language="Python",
+                stargazer_count=1000,
+                issue_count_open=50,
+                topics=[],
+            )
+            for i in range(5)
+        ]
+
+        call_counts_by_repo = {}
+
+        async def mock_execute_with_failure(*args, **kwargs):
+            variables = kwargs.get("variables", args[1] if len(args) > 1 else {})
+            repo_name = f"{variables.get('owner')}/{variables.get('name')}"
+            call_counts_by_repo[repo_name] = call_counts_by_repo.get(repo_name, 0) + 1
+
+            # Repo1 always fails
+            if "repo1" in repo_name:
+                raise Exception("Simulated failure for repo1")
+
+            return {
+                "repository": {
+                    "issues": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [make_issue_node(f"I_{repo_name}", body="## Description\n```code\n```")],
+                    }
+                }
+            }
+
+        mock_client.execute_query.side_effect = mock_execute_with_failure
+        gatherer = Gatherer(client=mock_client, concurrency=3)
+
+        # Act
+        with patch("asyncio.sleep", new_callable=AsyncMock):
+            issues = [i async for i in gatherer.harvest_issues(repos)]
+
+        # Assert - should get issues from 4 successful repos (0, 2, 3, 4)
+        # repo1 failed but others should succeed
+        assert len(issues) == 4
+        issue_ids = [i.node_id for i in issues]
+        assert not any("repo1" in id for id in issue_ids)
+
+    async def test_all_issues_from_all_repos_yielded(self, mock_client):
+        # Arrange - 5 repos, each yields 3 issues = 15 total
+        repos = [
+            RepositoryData(
+                node_id=f"R_{i}",
+                full_name=f"owner/repo{i}",
+                primary_language="Python",
+                stargazer_count=1000,
+                issue_count_open=50,
+                topics=[],
+            )
+            for i in range(5)
+        ]
+
+        def make_response_for_repo(repo_idx):
+            return {
+                "repository": {
+                    "issues": {
+                        "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        "nodes": [
+                            make_issue_node(f"I_repo{repo_idx}_issue{j}", body="## Description\n```code\n```")
+                            for j in range(3)
+                        ],
+                    }
+                }
+            }
+
+        repo_call_idx = [0]
+
+        async def mock_execute_multi_issues(*args, **kwargs):
+            variables = kwargs.get("variables", args[1] if len(args) > 1 else {})
+            repo_name = variables.get("name", "")
+            # Extract repo index from name like "repo0", "repo1", etc.
+            repo_idx = int(repo_name.replace("repo", ""))
+            return make_response_for_repo(repo_idx)
+
+        mock_client.execute_query.side_effect = mock_execute_multi_issues
+        gatherer = Gatherer(client=mock_client, concurrency=3)
+
+        # Act
+        issues = [i async for i in gatherer.harvest_issues(repos)]
+
+        # Assert - all 15 issues should be yielded
+        assert len(issues) == 15
+        # Verify we got issues from all 5 repos
+        repo_ids_in_issues = set(i.node_id.split("_")[1] for i in issues)
+        assert repo_ids_in_issues == {"repo0", "repo1", "repo2", "repo3", "repo4"}
+
+    async def test_uses_configurable_concurrency(self, mock_client):
+        # Arrange - verify concurrency parameter is accepted and stored
+        gatherer_low = Gatherer(client=mock_client, concurrency=2)
+        gatherer_high = Gatherer(client=mock_client, concurrency=20)
+
+        # Assert - concurrency should be stored correctly
+        assert gatherer_low._concurrency == 2
+        assert gatherer_high._concurrency == 20
+
+    async def test_defaults_to_concurrency_of_10(self, mock_client):
+        # Arrange & Act - create gatherer without specifying concurrency
+        gatherer = Gatherer(client=mock_client)
+
+        # Assert - should default to 10 as specified in PERF-005
+        assert gatherer._concurrency == 10
 

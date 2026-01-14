@@ -36,18 +36,32 @@ def parse_gcs_path(gcs_path: str) -> tuple[str, str]:
 
 class GCSWriter:
     """
-    Writes IssueData objects to GCS as JSONL.
-    Buffers in memory and uploads on close.
+    Writes IssueData objects to GCS as JSONL with chunked buffering.
+
+    Uses chunked uploads to prevent OOM on large batches by flushing to
+    intermediate GCS blobs when buffer reaches threshold, then composing
+    them into the final JSONL file.
     """
 
-    def __init__(self, gcs_path: str):
+    DEFAULT_FLUSH_THRESHOLD: int = 5000
+
+    def __init__(self, gcs_path: str, flush_threshold: int = 0):
+        """Initialize GCSWriter with optional flush threshold.
+
+        Args:
+            gcs_path: Target GCS path for final JSONL file
+            flush_threshold: Number of issues before flushing to intermediate blob.
+                             0 means use DEFAULT_FLUSH_THRESHOLD.
+        """
         self._gcs_path = gcs_path
         self._bucket_name, self._blob_path = parse_gcs_path(gcs_path)
+        self._flush_threshold = flush_threshold if flush_threshold > 0 else self.DEFAULT_FLUSH_THRESHOLD
         self._buffer: list[str] = []
         self._count = 0
+        self._chunk_paths: list[str] = []  # Track intermediate blob paths
 
     def write_issue(self, issue: IssueData) -> None:
-        """Add an issue to the buffer"""
+        """Add an issue to the buffer, auto-flushing when threshold reached"""
         # Convert dataclass to dict, handling nested dataclasses
         issue_dict = asdict(issue)
 
@@ -61,24 +75,73 @@ class GCSWriter:
         self._buffer.append(json.dumps(issue_dict))
         self._count += 1
 
-    def upload(self) -> int:
-        """Upload buffered data to GCS and return count"""
+        # Auto-flush when threshold reached to bound memory usage
+        if len(self._buffer) >= self._flush_threshold:
+            self._flush_chunk()
+
+    def _flush_chunk(self) -> None:
+        """Upload current buffer as intermediate chunk blob"""
         if not self._buffer:
-            logger.warning("No issues to upload to GCS")
-            return 0
+            return
+
+        chunk_idx = len(self._chunk_paths)
+        chunk_path = f"{self._blob_path}.chunk_{chunk_idx}"
 
         client = storage.Client()
         bucket = client.bucket(self._bucket_name)
-        blob = bucket.blob(self._blob_path)
+        blob = bucket.blob(chunk_path)
 
-        # Join all lines with newlines
         content = "\n".join(self._buffer)
-
         blob.upload_from_string(content, content_type="application/jsonl")
+
+        self._chunk_paths.append(chunk_path)
+        buffer_size = len(self._buffer)
+        self._buffer.clear()
+
+        logger.debug(
+            f"Flushed chunk {chunk_idx} with {buffer_size} issues to {chunk_path}",
+            extra={"chunk_idx": chunk_idx, "issues_in_chunk": buffer_size},
+        )
+
+    def upload(self) -> int:
+        """Finalize upload - flush remaining buffer and compose chunks into final file"""
+        if not self._buffer and not self._chunk_paths:
+            logger.warning("No issues to upload to GCS")
+            return 0
+
+        # Flush any remaining buffered issues
+        if self._buffer:
+            self._flush_chunk()
+
+        client = storage.Client()
+        bucket = client.bucket(self._bucket_name)
+
+        if len(self._chunk_paths) == 1:
+            # Single chunk - just rename it to final path
+            source_blob = bucket.blob(self._chunk_paths[0])
+            bucket.rename_blob(source_blob, self._blob_path)
+        else:
+            # Multiple chunks - compose them into final blob
+            final_blob = bucket.blob(self._blob_path)
+            source_blobs = [bucket.blob(p) for p in self._chunk_paths]
+            final_blob.compose(source_blobs)
+
+            # Clean up intermediate chunks after successful compose
+            for chunk_path in self._chunk_paths:
+                bucket.blob(chunk_path).delete()
+
+            logger.debug(
+                f"Composed {len(self._chunk_paths)} chunks and cleaned up intermediates",
+                extra={"chunk_count": len(self._chunk_paths)},
+            )
 
         logger.info(
             f"Uploaded {self._count} issues to {self._gcs_path}",
-            extra={"issues_uploaded": self._count, "gcs_path": self._gcs_path},
+            extra={
+                "issues_uploaded": self._count,
+                "gcs_path": self._gcs_path,
+                "chunks_used": len(self._chunk_paths),
+            },
         )
 
         return self._count
@@ -90,6 +153,10 @@ class GCSWriter:
     @property
     def count(self) -> int:
         return self._count
+
+    @property
+    def flush_threshold(self) -> int:
+        return self._flush_threshold
 
 
 class GCSReader:
@@ -120,12 +187,21 @@ async def write_issues_to_gcs(
     issues: AsyncIterator[IssueData],
     gcs_path: str,
     log_every: int = 500,
+    flush_threshold: int = 0,
 ) -> tuple[str, int]:
     """
     Consume issue stream and write to GCS as JSONL.
-    Returns (gcs_path, count).
+
+    Args:
+        issues: Async iterator of IssueData objects
+        gcs_path: Target GCS path for final JSONL file
+        log_every: Log progress every N issues
+        flush_threshold: Issues before flushing to intermediate blob (0 = default)
+
+    Returns:
+        Tuple of (gcs_path, count)
     """
-    writer = GCSWriter(gcs_path)
+    writer = GCSWriter(gcs_path, flush_threshold=flush_threshold)
 
     async for issue in issues:
         writer.write_issue(issue)

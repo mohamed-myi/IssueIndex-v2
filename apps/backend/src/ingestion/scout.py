@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -75,20 +76,32 @@ class Scout:
         """
 
     async def discover_repositories(self) -> list[RepositoryData]:
-        """Fetches top repos for all 10 languages; estimated cost 20 to 40 points"""
+        """Fetches top repos for all 10 languages concurrently; estimated cost 20 to 40 points.
+
+        Uses asyncio.gather to fetch all languages in parallel for ~10x speedup.
+        Deduplicates by node_id in case a repo appears in multiple language results.
+        """
+        # Create coroutines for each language to fetch concurrently
+        coros = [self._discover_for_language(lang) for lang in SCOUT_LANGUAGES]
+
+        # Fetch all languages concurrently, capturing exceptions to isolate failures
+        results = await asyncio.gather(*coros, return_exceptions=True)
+
+        # Flatten results, filter exceptions, deduplicate by node_id
+        seen_ids: set[str] = set()
         repositories: list[RepositoryData] = []
 
-        for language in SCOUT_LANGUAGES:
-            try:
-                repos = await self._discover_for_language(language)
-                repositories.extend(repos)
-                logger.info(
-                    f"Scout: {language} yielded {len(repos)} repos "
-                    f"(total: {len(repositories)})"
-                )
-            except Exception as e:
-                logger.warning(f"Scout: Failed to fetch {language}: {e}")
+        for lang, result in zip(SCOUT_LANGUAGES, results):
+            if isinstance(result, Exception):
+                logger.warning(f"Scout: Failed to fetch {lang}: {result}")
                 continue
+
+            for repo in result:
+                if repo.node_id not in seen_ids:
+                    seen_ids.add(repo.node_id)
+                    repositories.append(repo)
+
+            logger.info(f"Scout: {lang} yielded {len(result)} repos")
 
         logger.info(f"Scout: Discovery complete; {len(repositories)} total repos")
         return repositories

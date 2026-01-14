@@ -49,8 +49,15 @@ class Gatherer:
     RETRY_DELAY_SECONDS: float = 2.0
     Q_SCORE_THRESHOLD: float = 0.6
 
-    def __init__(self, client: GitHubGraphQLClient):
+    def __init__(
+        self,
+        client: GitHubGraphQLClient,
+        max_issues_per_repo: int = 0,
+        concurrency: int = 10,
+    ):
         self._client = client
+        self._max_issues_per_repo = max_issues_per_repo
+        self._concurrency = concurrency
         self._query = self._load_query()
 
     def _load_query(self) -> str:
@@ -78,49 +85,96 @@ class Gatherer:
         self,
         repos: list[RepositoryData],
     ) -> AsyncIterator[IssueData]:
-        """Holds at most PAGE_SIZE issues at a time"""
+        """Process repos concurrently with bounded concurrency, yield issues as they arrive.
+
+        Uses asyncio.Semaphore to limit concurrent API requests and asyncio.Queue
+        to stream issues back to the caller while workers process repos in parallel.
+        """
+        if not repos:
+            return
+
         total_repos = len(repos)
+        semaphore = asyncio.Semaphore(self._concurrency)
+        issue_queue: asyncio.Queue[IssueData | None] = asyncio.Queue()
+
+        # Start all worker tasks
+        tasks = [
+            asyncio.create_task(
+                self._repo_worker(repo, issue_queue, semaphore, idx, total_repos)
+            )
+            for idx, repo in enumerate(repos)
+        ]
+
+        # Track completed workers via sentinel None values
+        completed_workers = 0
         total_issues = 0
-        repos_processed = 0
 
-        for repo in repos:
-            repos_processed += 1
-            try:
-                issue_count = 0
-                async for issue in self._fetch_repo_issues_with_retry(repo):
-                    issue_count += 1
-                    total_issues += 1
-                    yield issue
-
-                # Log progress every 25 repos to track where we are
-                if repos_processed % 25 == 0:
+        # Yield issues from queue until all workers complete
+        while completed_workers < total_repos:
+            item = await issue_queue.get()
+            if item is None:
+                # Sentinel indicates a worker finished
+                completed_workers += 1
+                # Log progress every 25 repos
+                if completed_workers % 25 == 0:
                     logger.info(
-                        f"Gatherer progress: {repos_processed}/{total_repos} repos, {total_issues} issues yielded",
+                        f"Gatherer progress: {completed_workers}/{total_repos} repos, {total_issues} issues yielded",
                         extra={
-                            "repos_processed": repos_processed,
+                            "repos_processed": completed_workers,
                             "total_repos": total_repos,
                             "issues_yielded": total_issues,
                         },
                     )
-                elif issue_count > 0:
+            else:
+                total_issues += 1
+                yield item
+
+        # Ensure all tasks are complete and collect any exceptions for logging
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+        logger.info(
+            f"Gatherer complete: processed {completed_workers} repos, yielded {total_issues} issues",
+            extra={"repos_processed": completed_workers, "total_issues": total_issues},
+        )
+
+    async def _repo_worker(
+        self,
+        repo: RepositoryData,
+        issue_queue: asyncio.Queue[IssueData | None],
+        semaphore: asyncio.Semaphore,
+        repo_idx: int,
+        total_repos: int,
+    ) -> int:
+        """Process a single repo under semaphore control, push issues to queue.
+
+        Returns the number of issues yielded from this repo.
+        Sends None sentinel to queue when complete regardless of success or failure.
+        """
+        issue_count = 0
+        try:
+            async with semaphore:
+                async for issue in self._fetch_repo_issues_with_retry(repo):
+                    await issue_queue.put(issue)
+                    issue_count += 1
+
+                if issue_count > 0:
                     logger.debug(
                         f"Gatherer: {repo.full_name} yielded {issue_count} issues"
                     )
-            except Exception as e:
-                logger.warning(
-                    f"Gatherer: Skipping {repo.full_name} (repo {repos_processed}/{total_repos}) after retries: {e}",
-                    extra={
-                        "repo": repo.full_name,
-                        "repos_processed": repos_processed,
-                        "error": str(e),
-                    },
-                )
-                continue
+        except Exception as e:
+            logger.warning(
+                f"Gatherer: Skipping {repo.full_name} (repo {repo_idx + 1}/{total_repos}) after retries: {e}",
+                extra={
+                    "repo": repo.full_name,
+                    "repos_processed": repo_idx + 1,
+                    "error": str(e),
+                },
+            )
+        finally:
+            # Always send sentinel to signal this worker is done
+            await issue_queue.put(None)
 
-        logger.info(
-            f"Gatherer complete: processed {repos_processed} repos, yielded {total_issues} issues",
-            extra={"repos_processed": repos_processed, "total_issues": total_issues},
-        )
+        return issue_count
 
     async def _fetch_repo_issues_with_retry(
         self,
@@ -152,6 +206,7 @@ class Gatherer:
     ) -> AsyncIterator[IssueData]:
         owner, name = repo.full_name.split("/", 1)
         cursor: str | None = None
+        yielded_count = 0  # Track issues that pass Q-Score filter
 
         while True:
             data = await self._client.execute_query(
@@ -178,6 +233,15 @@ class Gatherer:
                 issue = self._parse_issue(node, repo)
                 if issue and passes_quality_gate(issue.q_score, self.Q_SCORE_THRESHOLD):
                     yield issue
+                    yielded_count += 1
+
+                    # Check cap after yield to limit large repos
+                    if self._max_issues_per_repo > 0 and yielded_count >= self._max_issues_per_repo:
+                        logger.info(
+                            f"Gatherer: Reached cap of {self._max_issues_per_repo} issues for {repo.full_name}",
+                            extra={"repo": repo.full_name, "cap": self._max_issues_per_repo},
+                        )
+                        return  # Exit pagination early
 
             if not page_info.get("hasNextPage"):
                 break

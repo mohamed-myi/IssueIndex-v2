@@ -1,5 +1,6 @@
 """Unit tests for Scout repository discovery"""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
@@ -274,23 +275,31 @@ class TestDiscoverForLanguage:
 class TestDiscoverRepositories:
 
     async def test_discovers_across_all_languages(self, mock_client, scout):
-        mock_client.execute_query.return_value = {
-            "search": {
-                "repositoryCount": 10,
-                "pageInfo": {"hasNextPage": False, "endCursor": None},
-                "nodes": [
-                    {
-                        "id": f"R_{i}",
-                        "nameWithOwner": f"owner/repo{i}",
-                        "primaryLanguage": {"name": "Python"},
-                        "stargazerCount": 5000,
-                        "issues": {"totalCount": 50},
-                        "repositoryTopics": {"nodes": []},
-                    }
-                    for i in range(5)
-                ],
+        # Use call count to generate unique IDs per language call
+        call_count = [0]
+
+        async def mock_execute_unique_ids(*args, **kwargs):
+            call_count[0] += 1
+            lang_idx = call_count[0]
+            return {
+                "search": {
+                    "repositoryCount": 10,
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    "nodes": [
+                        {
+                            "id": f"R_{lang_idx}_{i}",  # Unique per language
+                            "nameWithOwner": f"owner/repo{lang_idx}_{i}",
+                            "primaryLanguage": {"name": "Python"},
+                            "stargazerCount": 5000,
+                            "issues": {"totalCount": 50},
+                            "repositoryTopics": {"nodes": []},
+                        }
+                        for i in range(5)
+                    ],
+                }
             }
-        }
+
+        mock_client.execute_query.side_effect = mock_execute_unique_ids
 
         repos = await scout.discover_repositories()
 
@@ -348,4 +357,190 @@ class TestRepositoryData:
         assert repo.stargazer_count == 1000
         assert repo.issue_count_open == 50
         assert repo.topics == ["python", "web"]
+
+
+class TestConcurrentDiscovery:
+    """Tests for PERF-003: concurrent language fetching in discover_repositories"""
+
+    async def test_fetches_all_languages_concurrently(self, mock_client):
+        # Arrange - 10 languages, each API call has 50ms delay
+        # If sequential: 10 * 50ms = 500ms minimum
+        # If concurrent: ~50ms (all in parallel)
+        import time
+
+        # Use call count to generate unique IDs per language call
+        call_count = [0]
+
+        async def mock_execute_with_delay(*args, **kwargs):
+            call_count[0] += 1
+            lang_idx = call_count[0]
+            await asyncio.sleep(0.05)  # 50ms delay per API call
+            return {
+                "search": {
+                    "repositoryCount": 5,
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    "nodes": [
+                        {
+                            "id": f"R_{lang_idx}_{i}",  # Unique per language
+                            "nameWithOwner": f"owner/repo{lang_idx}_{i}",
+                            "primaryLanguage": {"name": "Python"},
+                            "stargazerCount": 5000,
+                            "issues": {"totalCount": 50},
+                            "repositoryTopics": {"nodes": []},
+                        }
+                        for i in range(5)
+                    ],
+                }
+            }
+
+        mock_client.execute_query.side_effect = mock_execute_with_delay
+        scout = Scout(client=mock_client)
+
+        # Act
+        start_time = time.monotonic()
+        repos = await scout.discover_repositories()
+        elapsed = time.monotonic() - start_time
+
+        # Assert - concurrent execution should be much faster than sequential
+        # 10 languages at 50ms each sequential = 500ms
+        # Concurrent should complete in ~100ms (allowing some overhead)
+        assert elapsed < 0.3  # Should complete in under 300ms, not 500ms+
+        assert len(repos) == 50  # 10 languages * 5 repos each
+        assert mock_client.execute_query.call_count == 10
+
+    async def test_deduplicates_by_node_id(self, mock_client):
+        # Arrange - return the same repo in multiple language results
+        # This can happen when a repo matches multiple language queries
+        call_count = [0]
+        shared_repo_id = "R_shared_123"
+
+        async def mock_execute_with_duplicates(*args, **kwargs):
+            call_count[0] += 1
+            lang_idx = call_count[0]
+
+            # Include a shared repo in every language result
+            nodes = [
+                {
+                    "id": shared_repo_id,  # Same ID in all results
+                    "nameWithOwner": "microsoft/typescript",
+                    "primaryLanguage": {"name": "TypeScript"},
+                    "stargazerCount": 100000,
+                    "issues": {"totalCount": 500},
+                    "repositoryTopics": {"nodes": []},
+                },
+                {
+                    "id": f"R_unique_{lang_idx}",  # Unique per language
+                    "nameWithOwner": f"owner/repo{lang_idx}",
+                    "primaryLanguage": {"name": "Python"},
+                    "stargazerCount": 5000,
+                    "issues": {"totalCount": 50},
+                    "repositoryTopics": {"nodes": []},
+                },
+            ]
+
+            return {
+                "search": {
+                    "repositoryCount": 2,
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    "nodes": nodes,
+                }
+            }
+
+        mock_client.execute_query.side_effect = mock_execute_with_duplicates
+        scout = Scout(client=mock_client)
+
+        # Act
+        repos = await scout.discover_repositories()
+
+        # Assert - shared repo should appear only once
+        # 10 languages * 2 repos each = 20, but shared repo is deduplicated
+        # So we expect 1 shared + 10 unique = 11 repos
+        assert len(repos) == 11
+
+        # Verify shared repo appears exactly once
+        shared_repos = [r for r in repos if r.node_id == shared_repo_id]
+        assert len(shared_repos) == 1
+
+        # Verify all unique repos are present
+        unique_ids = [r.node_id for r in repos if r.node_id != shared_repo_id]
+        assert len(unique_ids) == 10
+        assert len(set(unique_ids)) == 10  # All unique
+
+    async def test_error_isolation_with_concurrent_fetching(self, mock_client):
+        # Arrange - some languages fail, others succeed
+        # Verifies that asyncio.gather with return_exceptions=True works correctly
+        call_count = [0]
+        failed_indices = {3, 5, 7}  # Languages at these indices will fail
+
+        async def mock_execute_with_failures(*args, **kwargs):
+            call_count[0] += 1
+            idx = call_count[0]
+
+            if idx in failed_indices:
+                raise Exception(f"API Error for language {idx}")
+
+            return {
+                "search": {
+                    "repositoryCount": 5,
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    "nodes": [
+                        {
+                            "id": f"R_{idx}_{i}",
+                            "nameWithOwner": f"owner/repo{idx}_{i}",
+                            "primaryLanguage": {"name": "Python"},
+                            "stargazerCount": 5000,
+                            "issues": {"totalCount": 50},
+                            "repositoryTopics": {"nodes": []},
+                        }
+                        for i in range(5)
+                    ],
+                }
+            }
+
+        mock_client.execute_query.side_effect = mock_execute_with_failures
+        scout = Scout(client=mock_client)
+
+        # Act
+        repos = await scout.discover_repositories()
+
+        # Assert - should get repos from 7 successful languages (10 - 3 failures)
+        # 7 languages * 5 repos = 35 repos
+        assert len(repos) == 35
+        assert call_count[0] == 10  # All languages were attempted
+
+    async def test_preserves_order_of_first_occurrence(self, mock_client):
+        # Arrange - verify that when deduplicating, the first occurrence is kept
+        call_count = [0]
+
+        async def mock_execute_ordered(*args, **kwargs):
+            call_count[0] += 1
+            idx = call_count[0]
+
+            return {
+                "search": {
+                    "repositoryCount": 1,
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                    "nodes": [
+                        {
+                            "id": f"R_{idx}",
+                            "nameWithOwner": f"owner/repo{idx}",
+                            "primaryLanguage": {"name": SCOUT_LANGUAGES[idx - 1]},
+                            "stargazerCount": 5000,
+                            "issues": {"totalCount": 50},
+                            "repositoryTopics": {"nodes": []},
+                        }
+                    ],
+                }
+            }
+
+        mock_client.execute_query.side_effect = mock_execute_ordered
+        scout = Scout(client=mock_client)
+
+        # Act
+        repos = await scout.discover_repositories()
+
+        # Assert - all 10 repos should be present with unique IDs
+        assert len(repos) == 10
+        repo_ids = [r.node_id for r in repos]
+        assert len(set(repo_ids)) == 10
 

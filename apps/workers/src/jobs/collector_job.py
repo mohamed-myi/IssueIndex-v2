@@ -132,7 +132,7 @@ async def run_collector_job() -> dict:
         )
         
         # Gather issues and write to GCS
-        gatherer = Gatherer(client)
+        gatherer = Gatherer(client, max_issues_per_repo=settings.max_issues_per_repo)
         issue_stream = gatherer.harvest_issues(repos)
         
         gcs_path, total = await write_issues_to_gcs(
