@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir \
     -e packages/database \
     -e apps/backend \
     -e apps/workers \
+    google-cloud-aiplatform \
     sentence-transformers \
     einops
 

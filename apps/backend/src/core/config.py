@@ -27,6 +27,8 @@ class Settings(BaseSettings):
 
     redis_url: str = ""
 
+    embedding_mode: str = "nomic"  # "nomic" or "vertex"
+
     reco_flush_secret: str = ""
     reco_events_flush_batch_size: int = 1000
 

@@ -83,6 +83,34 @@ class NomicEmbedder:
         self._executor.shutdown(wait=False)
 
 
+class VertexEmbedder:
+    """Generates 768-dim embeddings using Google Vertex AI text-embedding-004"""
+
+    def __init__(self, project: str, region: str = "us-central1"):
+        from vertexai.language_models import TextEmbeddingModel
+        import vertexai
+
+        vertexai.init(project=project, location=region)
+        self._model = TextEmbeddingModel.from_pretrained("text-embedding-004")
+
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        from vertexai.language_models import TextEmbeddingInput
+
+        if not texts:
+            return []
+
+        # text-embedding-004 supports output_dimensionality to match DB schema
+        inputs = [TextEmbeddingInput(text, "RETRIEVAL_DOCUMENT") for text in texts]
+        embeddings = self._model.get_embeddings(
+            inputs,
+            output_dimensionality=768
+        )
+        return [e.values for e in embeddings]
+
+    def close(self):
+        pass
+
+
 async def embed_issue_stream(
     issues: AsyncIterator[IssueData],
     provider: EmbeddingProvider,

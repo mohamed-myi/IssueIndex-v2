@@ -20,7 +20,7 @@ if str(packages_db) not in sys.path:
     sys.path.insert(0, str(packages_db))
 
 from core.config import get_settings
-from ingestion.embeddings import NomicEmbedder, embed_issue_stream
+from ingestion.embeddings import NomicEmbedder, VertexEmbedder, embed_issue_stream
 from ingestion.gatherer import Gatherer
 from ingestion.github_client import GitHubGraphQLClient
 from ingestion.persistence import StreamingPersistence
@@ -72,7 +72,11 @@ async def run_gatherer_job() -> dict:
             logger.info("Starting streaming pipeline: Gather -> Embed -> Persist")
             
             gatherer = Gatherer(client)
-            embedder = NomicEmbedder()
+            
+            if settings.embedding_mode == "vertex":
+                embedder = VertexEmbedder(project=settings.gcp_project, region=settings.gcp_region)
+            else:
+                embedder = NomicEmbedder()
 
             try:
                 issue_stream = gatherer.harvest_issues(repos)
