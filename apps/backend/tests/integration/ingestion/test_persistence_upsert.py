@@ -61,7 +61,8 @@ CREATE TABLE ingestion.issue (
     title VARCHAR NOT NULL,
     body_text VARCHAR NOT NULL,
     labels TEXT[],
-    embedding vector(768),
+    embedding vector(256),
+    content_hash VARCHAR(64) NOT NULL,
     github_created_at TIMESTAMPTZ NOT NULL,
     state VARCHAR NOT NULL DEFAULT 'open',
     ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -210,10 +211,10 @@ def make_embedded_issue(sample_q_components):
             q_components=sample_q_components,
             state="open",
         )
-        # 768-dim embedding
+        # 256-dim embedding
         return EmbeddedIssue(
             issue=issue,
-            embedding=[0.1] * 768,
+            embedding=[0.1] * 256,
         )
     return _make
 
@@ -512,11 +513,11 @@ class TestQScoreComponents:
 
 
 class TestVectorEmbedding:
-    """Test 768-dim vector storage"""
+    """Test 256-dim vector storage"""
 
     @pytest.mark.asyncio
     async def test_embedding_stored_correctly(self, db_session, make_repository, make_embedded_issue):
-        """768-dim embedding should be stored in vector column"""
+        """256-dim embedding should be stored in vector column"""
         persistence = StreamingPersistence(db_session)
 
         repo = make_repository(node_id="R_vector")
@@ -539,5 +540,5 @@ class TestVectorEmbedding:
         )
         dim = result.scalar()
 
-        assert dim == 768
+        assert dim == 256
 

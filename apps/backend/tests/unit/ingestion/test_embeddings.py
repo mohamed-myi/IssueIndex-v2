@@ -43,7 +43,7 @@ def make_issue(sample_q_components):
 
 @pytest.fixture
 def mock_provider():
-    """Mock embedding provider that returns deterministic 768-dim vectors"""
+    """Mock embedding provider that returns deterministic 256-dim vectors"""
     provider = AsyncMock()
 
     async def embed_batch(texts: list[str]) -> list[list[float]]:
@@ -233,6 +233,7 @@ class TestProviderBatchSize:
 
 
 class TestEmbeddingDimConstant:
-    def test_embedding_dim_is_768(self):
-        assert EMBEDDING_DIM == 768
+    def test_embedding_dim_is_256(self):
+        """Embedding dimension should be 256 for Matryoshka truncation"""
+        assert EMBEDDING_DIM == 256
 

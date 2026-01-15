@@ -64,7 +64,7 @@ def make_embedded_issue(sample_q_components):
         )
         return EmbeddedIssue(
             issue=issue,
-            embedding=[0.1] * 768,
+            embedding=[0.1] * 256,  # 256-dim for Matryoshka truncation
         )
     return _make
 
