@@ -2,10 +2,10 @@
 Single entrypoint for IssueIndex worker jobs.
 
 Usage:
-    JOB_TYPE=gatherer python -m src     # Legacy: full pipeline (slow)
-    JOB_TYPE=collector python -m src    # Job 1: Scout + Gather -> GCS
-    JOB_TYPE=embedder python -m src     # Job 2: GCS -> Vertex AI Batch -> DB
-    JOB_TYPE=janitor python -m src
+    JOB_TYPE=collector python -m src    # Job 1: Scout + Gather -> Pub/Sub
+    JOB_TYPE=embedding python -m src    # Job 2: Pub/Sub -> Nomic MoE -> DB (long-running)
+    JOB_TYPE=janitor python -m src      # Prune low-survival issues
+    JOB_TYPE=reco_flush python -m src   # Flush recommendation events to analytics
 """
 
 import asyncio
@@ -26,7 +26,7 @@ async def main() -> None:
     job_id = setup_logging()
     logger = logging.getLogger(__name__)
     
-    job_type = os.getenv("JOB_TYPE", "gatherer").lower()
+    job_type = os.getenv("JOB_TYPE", "collector").lower()
     
     logger.info(
         f"Starting job",
@@ -35,20 +35,28 @@ async def main() -> None:
 
     try:
         match job_type:
-            case "gatherer":
-                # Legacy full pipeline - kept for backwards compatibility
-                from jobs.gatherer_job import run_gatherer_job
-                result = await run_gatherer_job()
-            
             case "collector":
-                # Job 1: Scout + Gather issues -> Write to GCS -> Trigger embedder
+                # Job 1: Scout + Gather issues -> Publish to Pub/Sub
                 from jobs.collector_job import run_collector_job
                 result = await run_collector_job()
             
-            case "embedder":
-                # Job 2: Read GCS -> Vertex AI Batch Prediction -> Persist to DB
-                from jobs.embedder_job import run_embedder_job
-                result = await run_embedder_job()
+            case "embedding":
+                # Job 2: Pub/Sub -> Local Nomic MoE -> Persist to DB (long-running worker)
+                # Start health server in background thread for Cloud Run health checks
+                import threading
+                import uvicorn
+                from health import app as health_app
+                
+                def run_health_server():
+                    uvicorn.run(health_app, host="0.0.0.0", port=8080, log_level="warning")
+                
+                health_thread = threading.Thread(target=run_health_server, daemon=True)
+                health_thread.start()
+                logger.info("Health server started on port 8080")
+                
+                from jobs.embedding_worker import run_embedding_worker
+                await run_embedding_worker()
+                result = {"status": "shutdown"}
             
             case "janitor":
                 from jobs.janitor_job import run_janitor_job
@@ -76,4 +84,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-
