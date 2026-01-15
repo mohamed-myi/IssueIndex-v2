@@ -54,7 +54,7 @@ dist/
 node_modules/
 .next/
 out/
-.vercel/
+npm-cache/
 
 coverage/
 .nyc_output/
@@ -83,4 +83,5 @@ data/
 *.db
 
 alloydb-auth-proxy
-
+cloud-sql-proxy
+public/mockServiceWorker.js
