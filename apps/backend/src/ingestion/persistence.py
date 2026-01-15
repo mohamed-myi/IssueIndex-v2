@@ -2,21 +2,35 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from .survival_score import calculate_survival_score, days_since
 
 if TYPE_CHECKING:
     from .embeddings import EmbeddedIssue
+    from .gatherer import IssueData
     from .scout import RepositoryData
 
 logger = logging.getLogger(__name__)
+
+
+def compute_content_hash(issue: IssueData) -> str:
+    """
+    Compute SHA256 hash of issue content for idempotency.
+
+    Hash includes node_id, title, and body_text to detect content changes.
+    Same content produces same hash; updated content produces new hash.
+    """
+    content = f"{issue.node_id}:{issue.title}:{issue.body_text}"
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
 class StreamingPersistence:
@@ -36,29 +50,13 @@ class StreamingPersistence:
             return 0
 
         now = datetime.now(UTC)
-        values_list = []
-        params = {}
-
-        for i, repo in enumerate(repos):
-            values_list.append(
-                f"(:node_id_{i}, :full_name_{i}, :primary_language_{i}, "
-                f":issue_velocity_week_{i}, :stargazer_count_{i}, :topics_{i}, :last_scraped_at_{i})"
-            )
-            params[f"node_id_{i}"] = repo.node_id
-            params[f"full_name_{i}"] = repo.full_name
-            params[f"primary_language_{i}"] = repo.primary_language
-            params[f"issue_velocity_week_{i}"] = repo.issue_count_open
-            params[f"stargazer_count_{i}"] = repo.stargazer_count
-            params[f"topics_{i}"] = repo.topics
-            params[f"last_scraped_at_{i}"] = now
-
-        values_sql = ", ".join(values_list)
-
-        query = text(f"""
+        insert_or_update_by_node_id = text("""
             INSERT INTO ingestion.repository
                 (node_id, full_name, primary_language, issue_velocity_week,
                  stargazer_count, topics, last_scraped_at)
-            VALUES {values_sql}
+            VALUES
+                (:node_id, :full_name, :primary_language, :issue_velocity_week,
+                 :stargazer_count, :topics, :last_scraped_at)
             ON CONFLICT (node_id) DO UPDATE SET
                 full_name = EXCLUDED.full_name,
                 primary_language = EXCLUDED.primary_language,
@@ -68,8 +66,39 @@ class StreamingPersistence:
                 last_scraped_at = EXCLUDED.last_scraped_at
         """)
 
-        await self._session.execute(query, params)
-        await self._session.commit()
+        update_by_full_name = text("""
+            UPDATE ingestion.repository SET
+                node_id = :node_id,
+                primary_language = :primary_language,
+                issue_velocity_week = :issue_velocity_week,
+                stargazer_count = :stargazer_count,
+                topics = :topics,
+                last_scraped_at = :last_scraped_at
+            WHERE full_name = :full_name
+        """)
+
+        # Commit per repo so a single constraint violation does not leave the
+        # entire session transaction aborted.
+        for repo in repos:
+            params = {
+                "node_id": repo.node_id,
+                "full_name": repo.full_name,
+                "primary_language": repo.primary_language,
+                "issue_velocity_week": repo.issue_count_open,
+                "stargazer_count": repo.stargazer_count,
+                "topics": repo.topics,
+                "last_scraped_at": now,
+            }
+
+            try:
+                await self._session.execute(insert_or_update_by_node_id, params)
+                await self._session.commit()
+            except IntegrityError:
+                await self._session.rollback()
+                result = await self._session.execute(update_by_full_name, params)
+                await self._session.commit()
+                if (result.rowcount or 0) == 0:
+                    raise
 
         logger.debug(f"Upserted {len(repos)} repositories")
         return len(repos)
@@ -127,7 +156,7 @@ class StreamingPersistence:
         return total
 
     async def _upsert_batch(self, batch: list[EmbeddedIssue]) -> None:
-        """UPSERT batch with survival_score calculation"""
+        """UPSERT batch with survival_score calculation and content_hash for idempotency"""
         if not batch:
             return
 
@@ -138,11 +167,13 @@ class StreamingPersistence:
             issue = item.issue
             days_old = days_since(issue.github_created_at)
             survival = calculate_survival_score(issue.q_score, days_old)
+            content_hash = compute_content_hash(issue)
 
             values_list.append(
                 f"(:node_id_{i}, :repo_id_{i}, :has_code_{i}, :has_template_headers_{i}, "
                 f":tech_stack_weight_{i}, :q_score_{i}, :survival_score_{i}, :title_{i}, "
-                f":body_text_{i}, :labels_{i}, CAST(:embedding_{i} AS vector), :github_created_at_{i}, :state_{i})"
+                f":body_text_{i}, :labels_{i}, CAST(:embedding_{i} AS vector), :content_hash_{i}, "
+                f":github_created_at_{i}, :state_{i})"
             )
 
             params[f"node_id_{i}"] = issue.node_id
@@ -156,6 +187,7 @@ class StreamingPersistence:
             params[f"body_text_{i}"] = issue.body_text
             params[f"labels_{i}"] = issue.labels
             params[f"embedding_{i}"] = str(item.embedding)
+            params[f"content_hash_{i}"] = content_hash
             params[f"github_created_at_{i}"] = issue.github_created_at
             params[f"state_{i}"] = issue.state
 
@@ -164,7 +196,8 @@ class StreamingPersistence:
         query = text(f"""
             INSERT INTO ingestion.issue
                 (node_id, repo_id, has_code, has_template_headers, tech_stack_weight,
-                 q_score, survival_score, title, body_text, labels, embedding, github_created_at, state)
+                 q_score, survival_score, title, body_text, labels, embedding, content_hash,
+                 github_created_at, state)
             VALUES {values_sql}
             ON CONFLICT (node_id) DO UPDATE SET
                 repo_id = EXCLUDED.repo_id,
@@ -177,6 +210,7 @@ class StreamingPersistence:
                 body_text = EXCLUDED.body_text,
                 labels = EXCLUDED.labels,
                 embedding = EXCLUDED.embedding,
+                content_hash = EXCLUDED.content_hash,
                 github_created_at = EXCLUDED.github_created_at,
                 state = EXCLUDED.state
         """)
