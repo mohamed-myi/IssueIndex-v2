@@ -16,6 +16,7 @@ def mock_session():
     session = AsyncMock()
     session.execute = AsyncMock()
     session.commit = AsyncMock()
+    session.rollback = AsyncMock()
     return session
 
 
@@ -104,7 +105,8 @@ class TestUpsertRepositories:
         count = await persistence.upsert_repositories(repos)
 
         assert count == 5
-        mock_session.execute.assert_called_once()
+        assert mock_session.execute.call_count == len(repos)
+        assert mock_session.commit.call_count == len(repos)
 
     async def test_returns_zero_for_empty_list(self, persistence, mock_session):
         count = await persistence.upsert_repositories([])
@@ -118,10 +120,10 @@ class TestUpsertRepositories:
         await persistence.upsert_repositories([repo])
 
         call_args = mock_session.execute.call_args[0][1]
-        assert call_args["node_id_0"] == "R_test"
-        assert call_args["full_name_0"] == "test/repo"
-        assert call_args["primary_language_0"] == "Python"
-        assert call_args["stargazer_count_0"] == 1000
+        assert call_args["node_id"] == "R_test"
+        assert call_args["full_name"] == "test/repo"
+        assert call_args["primary_language"] == "Python"
+        assert call_args["stargazer_count"] == 1000
 
 
 class TestPersistStream:
