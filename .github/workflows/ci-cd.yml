@@ -25,7 +25,6 @@ jobs:
   test:
     name: Run Tests
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.skip_tests != 'true' }}
 
     services:
       postgres:
@@ -56,13 +55,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Skip tests
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip_tests == 'true' }}
+        run: echo "Skipping lint and tests due to workflow_dispatch input skip_tests=true"
+
       - name: Set up Python
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
 
       - name: Install dependencies
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
         run: |
           pip install --upgrade pip
           pip install ruff
@@ -72,12 +77,14 @@ jobs:
           pip install -e "apps/backend[dev]"
 
       - name: Lint with ruff
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
         run: |
           ruff check apps/backend/src --output-format=github
           ruff check packages/database/src --output-format=github
           ruff check packages/shared/src --output-format=github
 
       - name: Run unit tests
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test
           REDIS_URL: redis://localhost:6379
@@ -92,6 +99,7 @@ jobs:
           pytest tests/unit -v --tb=short
 
       - name: Run integration tests
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test
           REDIS_URL: redis://localhost:6379
@@ -178,7 +186,7 @@ jobs:
             --image=${{ env.REGISTRY }}/api:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --set-secrets="DATABASE_URL=database-url:latest" \
-            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},EMBEDDING_MODE=vertex"
+            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},EMBEDDING_MODE=nomic"
 
       - name: Deploy embed worker service
         run: |
@@ -186,7 +194,7 @@ jobs:
             --image=${{ env.REGISTRY }}/worker-embed:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --set-secrets="DATABASE_URL=database-url:latest" \
-            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},EMBEDDING_MODE=vertex"
+            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},EMBEDDING_MODE=nomic"
 
       - name: Deploy resume worker service
         run: |
@@ -194,15 +202,20 @@ jobs:
             --image=${{ env.REGISTRY }}/worker-resume:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --set-secrets="DATABASE_URL=database-url:latest" \
-            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},EMBEDDING_MODE=vertex"
+            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},EMBEDDING_MODE=nomic"
 
-      - name: Update gatherer job (legacy)
+      - name: Deploy embedding worker service
         run: |
-          gcloud run jobs update issueindex-gatherer \
+          gcloud run deploy issueindex-embedding-worker \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --set-secrets="DATABASE_URL=database-url:latest,GIT_TOKEN=github-token:latest" \
-            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},GCP_PROJECT=${{ env.PROJECT_ID }},EMBEDDING_MODE=vertex"
+            --memory=4Gi \
+            --cpu=2 \
+            --min-instances=0 \
+            --max-instances=10 \
+            --timeout=600s \
+            --set-env-vars="JOB_TYPE=embedding,PUBSUB_PROJECT=${{ env.PROJECT_ID }}" \
+            --set-secrets="DATABASE_URL=database-url:latest"
 
       - name: Update collector job
         run: |
@@ -210,15 +223,7 @@ jobs:
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --set-secrets="DATABASE_URL=database-url:latest,GIT_TOKEN=github-token:latest" \
-            --set-env-vars="JOB_TYPE=collector,GCS_BUCKET=${{ secrets.GCS_BUCKET }},GCP_PROJECT=${{ env.PROJECT_ID }},GCP_REGION=${{ env.REGION }},FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }}"
-
-      - name: Update embedder job
-        run: |
-          gcloud run jobs update issueindex-embedder \
-            --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
-            --region=${{ env.REGION }} \
-            --set-secrets="DATABASE_URL=database-url:latest" \
-            --set-env-vars="JOB_TYPE=embedder,GCS_BUCKET=${{ secrets.GCS_BUCKET }},GCP_PROJECT=${{ env.PROJECT_ID }},GCP_REGION=${{ env.REGION }},FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }}"
+            --set-env-vars="JOB_TYPE=collector,PUBSUB_PROJECT=${{ env.PROJECT_ID }}"
 
       - name: Update janitor job
         run: |
@@ -255,9 +260,8 @@ jobs:
           echo "- issueindex-api" >> $GITHUB_STEP_SUMMARY
           echo "- issueindex-worker-embed" >> $GITHUB_STEP_SUMMARY
           echo "- issueindex-worker-resume" >> $GITHUB_STEP_SUMMARY
+          echo "- issueindex-embedding-worker" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Jobs Updated:" >> $GITHUB_STEP_SUMMARY
-          echo "- issueindex-gatherer (legacy)" >> $GITHUB_STEP_SUMMARY
-          echo "- issueindex-collector (Job 1: Scout + Gather → GCS)" >> $GITHUB_STEP_SUMMARY
-          echo "- issueindex-embedder (Job 2: GCS → Vertex AI Batch → DB)" >> $GITHUB_STEP_SUMMARY
+          echo "- issueindex-collector" >> $GITHUB_STEP_SUMMARY
           echo "- issueindex-janitor" >> $GITHUB_STEP_SUMMARY
