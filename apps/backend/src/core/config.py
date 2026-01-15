@@ -53,15 +53,21 @@ class Settings(BaseSettings):
     embed_worker_url: str = ""
     resume_worker_url: str = ""
 
-    # GCS config for split ingestion pipeline
-    gcs_bucket: str = ""  # Bucket for storing issue JSONL files (e.g., "issueindex-data")
-
     # Performance optimizations
     gatherer_concurrency: int = 10  # Max concurrent repo fetches
     max_issues_per_repo: int = 100  # Cap issues per repository (reduced for rate limits)
 
-    # GCS writer performance settings
-    gcs_buffer_flush_threshold: int = 5000  # Issues before flush to GCS to prevent OOM
+    # Pub/Sub config for event-driven ingestion
+    pubsub_project: str = ""
+    pubsub_issues_topic: str = "issueindex-issues"
+    pubsub_profiles_topic: str = "issueindex-profiles"
+    pubsub_dlq_topic: str = "issueindex-dlq"
+
+    # Embedding config for local Nomic MoE model
+    embedding_model: str = "nomic-embed-text-v2-moe"
+    embedding_dim: int = 256  # Matryoshka truncation from 768 to 256
+    embedding_batch_size: int = 25
+    max_concurrent_embeddings: int = 4  # Prevent OOM on constrained instances
 
     model_config = SettingsConfigDict(
         env_file=".env.local",
