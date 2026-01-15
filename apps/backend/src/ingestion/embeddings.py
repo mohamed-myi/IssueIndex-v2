@@ -7,14 +7,15 @@ import logging
 from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from .gatherer import IssueData
 
 logger = logging.getLogger(__name__)
 
-EMBEDDING_DIM: int = 768
+# Changed from 768 to 256 for Matryoshka truncation with nomic-embed-text-v2-moe
+EMBEDDING_DIM: int = 256
 
 
 @dataclass
@@ -23,10 +24,29 @@ class EmbeddedIssue:
     embedding: list[float]
 
 
+@runtime_checkable
 class EmbeddingProvider(Protocol):
     """Protocol for embedding providers; enables mock injection in tests"""
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Backward-compatible batch embedding method"""
+        ...
+
+
+class DocumentQueryEmbedder(Protocol):
+    """
+    Extended protocol for embedders that support document/query prefixing.
+
+    The Nomic MoE model requires different prefixes for documents and queries
+    to optimize retrieval performance.
+    """
+
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        """Embed documents with search_document prefix for indexing"""
+        ...
+
+    async def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        """Embed queries with search_query prefix for retrieval"""
         ...
 
 
@@ -83,38 +103,6 @@ class NomicEmbedder:
         self._executor.shutdown(wait=False)
 
 
-class VertexEmbedder:
-    """Generates 768-dim embeddings using Google Vertex AI text-embedding-004"""
-
-    # Vertex AI text-embedding-004 has a 20K token limit per request.
-    # With ~1000 tokens per issue (4000 char body), batch of 10 stays under limit.
-    BATCH_SIZE: int = 10
-
-    def __init__(self, project: str, region: str = "us-central1"):
-        import vertexai
-        from vertexai.language_models import TextEmbeddingModel
-
-        vertexai.init(project=project, location=region)
-        self._model = TextEmbeddingModel.from_pretrained("text-embedding-004")
-
-    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        from vertexai.language_models import TextEmbeddingInput
-
-        if not texts:
-            return []
-
-        # text-embedding-004 supports output_dimensionality to match DB schema
-        inputs = [TextEmbeddingInput(text, "RETRIEVAL_DOCUMENT") for text in texts]
-        embeddings = self._model.get_embeddings(
-            inputs,
-            output_dimensionality=768
-        )
-        return [e.values for e in embeddings]
-
-    def close(self):
-        pass
-
-
 async def embed_issue_stream(
     issues: AsyncIterator[IssueData],
     provider: EmbeddingProvider,
@@ -126,7 +114,7 @@ async def embed_issue_stream(
 
     Uses provider.BATCH_SIZE if available, otherwise defaults to 25.
     """
-    # Use provider-specific batch size to respect API limits (e.g. Vertex AI 20K tokens)
+    # Use provider-specific batch size to respect per-request limits.
     effective_batch_size = batch_size or getattr(provider, "BATCH_SIZE", 25)
     batch: list[IssueData] = []
     total_embedded = 0
