@@ -30,7 +30,7 @@ COPY apps/backend/src apps/backend/src
 # - /app/packages/shared/src: for "from constants" direct imports
 ENV PYTHONPATH=/app/apps/backend:/app/packages/database/src:/app/packages/shared/src
 ENV PORT=8080
-ENV EMBEDDING_MODE=vertex
+ENV EMBEDDING_MODE=nomic
 
 # Run with uvicorn
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080"]

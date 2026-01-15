@@ -28,8 +28,8 @@ RUN pip install --no-cache-dir \
     sentence-transformers \
     einops
 
-# Pre-download embedding model
-RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('nomic-ai/nomic-embed-text-v1.5', trust_remote_code=True)"
+# Pre-download embedding model (nomic-embed-text-v2-moe for 256-dim Matryoshka truncation)
+RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('nomic-ai/nomic-embed-text-v2-moe', trust_remote_code=True)"
 
 # Copy source code
 COPY packages/shared/src packages/shared/src
