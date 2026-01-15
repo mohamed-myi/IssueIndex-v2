@@ -212,7 +212,7 @@ class TestDiscoverForLanguage:
                         "issues": {"totalCount": 50},
                         "repositoryTopics": {"nodes": []},
                     }
-                    for i in range(50)
+                    for i in range(20)
                 ],
             }
         }
@@ -221,7 +221,7 @@ class TestDiscoverForLanguage:
 
         repos = await scout._discover_for_language("Python")
 
-        assert len(repos) == 50
+        assert len(repos) == 20
         assert mock_client.execute_query.call_count == 1
 
     async def test_stops_when_no_more_pages(self, mock_client, scout):
