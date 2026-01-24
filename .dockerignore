@@ -1,0 +1,64 @@
+# Python / Build artifacts
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/pip-log.txt
+**/pip-delete-this-directory.txt
+
+# Virtual environments
+**/.venv
+**/venv
+**/ENV
+**/.env
+
+# IDE / Editor
+**/.idea
+**/.vscode
+**/*.swp
+**/*.swo
+
+# Testing / Caching
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.coverage
+**/htmlcov
+**/.tox
+
+# macOS
+**/.DS_Store
+
+# Git
+**/.git
+**/.gitignore
+
+# Local config files
+.env
+.env.*
+!.env.example
+
+# Test files
+**/tests
+
+# Documentation
+**/*.md
+!**/README.md
+
+# Temporary files
+**/tmp
+**/*.tmp
+**/*.log
+
+# npm
+**/node_modules
+**/npm-debug.log
+
+# Jupyter
+**/.ipynb_checkpoints
+
+# Build outputs
+**/dist
+**/build
+**/*.egg-info

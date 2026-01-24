@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies for Docling
+# Install system dependencies for Docling + model compilation
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     build-essential \
@@ -15,12 +15,16 @@ COPY packages/shared packages/shared
 COPY packages/database packages/database
 COPY apps/backend apps/backend
 
-# Install dependencies
+# Install CPU-only PyTorch first to avoid 4GB+ CUDA packages
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Install dependencies (includes sentence-transformers for embeddings)
 RUN pip install --no-cache-dir \
     -e packages/shared \
     -e packages/database \
     -e "apps/backend[resume]" \
-    google-cloud-aiplatform
+    google-cloud-aiplatform \
+    sentence-transformers
 
 # Pre-download GLiNER model
 RUN python3 -c "from gliner import GLiNER; GLiNER.from_pretrained('urchade/gliner_base')"
