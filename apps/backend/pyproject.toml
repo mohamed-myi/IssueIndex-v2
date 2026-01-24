@@ -59,7 +59,7 @@ resume = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["gim_backend"]
 
 [tool.hatch.metadata]
 allow-direct-references = true

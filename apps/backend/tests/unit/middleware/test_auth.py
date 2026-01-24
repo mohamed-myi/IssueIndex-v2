@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 @pytest.fixture(autouse=True)
@@ -23,7 +24,7 @@ def mock_settings():
         "SESSION_REMEMBER_ME_DAYS": "7",
         "SESSION_DEFAULT_HOURS": "24",
     }):
-        from src.core.config import get_settings
+        from gim_backend.core.config import get_settings
         get_settings.cache_clear()
         yield
         get_settings.cache_clear()
@@ -44,7 +45,7 @@ def mock_request():
 @pytest.fixture
 def valid_ctx():
     """Creates a valid RequestContext with fingerprint and metadata."""
-    from src.middleware.context import RequestContext
+    from gim_backend.middleware.context import RequestContext
     return RequestContext(
         fingerprint_raw="test-fingerprint",
         fingerprint_hash="a" * 64,
@@ -58,10 +59,12 @@ def valid_ctx():
     )
 
 
+
+
 @pytest.fixture
 def mock_db():
     """Creates a mock AsyncSession."""
-    db = AsyncMock()
+    db = MagicMock(spec=AsyncSession)
     db.get = AsyncMock()
     db.commit = AsyncMock()
     return db
@@ -98,8 +101,8 @@ class TestFingerprintGating:
         """Validates fingerprint gating with various inputs."""
         from fastapi import HTTPException
 
-        from src.middleware.auth import require_fingerprint
-        from src.middleware.context import RequestContext
+        from gim_backend.middleware.auth import require_fingerprint
+        from gim_backend.middleware.context import RequestContext
 
         ctx = RequestContext(
             fingerprint_raw="raw-value" if fingerprint_hash else None,
@@ -129,7 +132,7 @@ class TestSessionValidation:
         """No session cookie = not authenticated."""
         from fastapi import HTTPException
 
-        from src.middleware.auth import get_current_session
+        from gim_backend.middleware.auth import get_current_session
 
         mock_request.cookies = {}
 
@@ -142,12 +145,12 @@ class TestSessionValidation:
         """Session ID not in database = invalid session."""
         from fastapi import HTTPException
 
-        from src.core.cookies import SESSION_COOKIE_NAME
-        from src.middleware.auth import get_current_session
+        from gim_backend.core.cookies import SESSION_COOKIE_NAME
+        from gim_backend.middleware.auth import get_current_session
 
         mock_request.cookies = {SESSION_COOKIE_NAME: str(uuid4())}
 
-        with patch("src.middleware.auth.get_session_by_id", new_callable=AsyncMock) as mock_get:
+        with patch("gim_backend.middleware.auth.get_session_by_id", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = None
 
             with pytest.raises(HTTPException) as exc:
@@ -165,12 +168,12 @@ class TestRiskBasedValidation:
 
     async def test_low_risk_allows_request(self, mock_request, valid_ctx, mock_db, mock_session):
         """Matching metadata = low risk score; request allowed."""
-        from src.core.cookies import SESSION_COOKIE_NAME
-        from src.middleware.auth import get_current_session
+        from gim_backend.core.cookies import SESSION_COOKIE_NAME
+        from gim_backend.middleware.auth import get_current_session
 
         mock_request.cookies = {SESSION_COOKIE_NAME: str(mock_session.id)}
 
-        with patch("src.middleware.auth.get_session_by_id", new_callable=AsyncMock) as mock_get:
+        with patch("gim_backend.middleware.auth.get_session_by_id", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_session
 
             result = await get_current_session(mock_request, valid_ctx, mock_db)
@@ -180,9 +183,9 @@ class TestRiskBasedValidation:
         """Country mismatch = 0.8 risk score = session killed."""
         from fastapi import HTTPException
 
-        from src.core.cookies import SESSION_COOKIE_NAME
-        from src.middleware.auth import get_current_session
-        from src.middleware.context import RequestContext
+        from gim_backend.core.cookies import SESSION_COOKIE_NAME
+        from gim_backend.middleware.auth import get_current_session
+        from gim_backend.middleware.context import RequestContext
 
         ctx = RequestContext(
             fingerprint_raw="test",
@@ -198,9 +201,9 @@ class TestRiskBasedValidation:
 
         mock_request.cookies = {SESSION_COOKIE_NAME: str(mock_session.id)}
 
-        with patch("src.middleware.auth.get_session_by_id", new_callable=AsyncMock) as mock_get, \
-             patch("src.middleware.auth.invalidate_session", new_callable=AsyncMock) as mock_invalidate, \
-             patch("src.middleware.auth.log_audit_event"):
+        with patch("gim_backend.middleware.auth.get_session_by_id", new_callable=AsyncMock) as mock_get, \
+             patch("gim_backend.middleware.auth.invalidate_session", new_callable=AsyncMock) as mock_invalidate, \
+             patch("gim_backend.middleware.auth.log_audit_event"):
             mock_get.return_value = mock_session
 
             with pytest.raises(HTTPException) as exc:
@@ -212,9 +215,9 @@ class TestRiskBasedValidation:
 
     async def test_medium_risk_logs_deviation(self, mock_request, mock_db, mock_session):
         """OS mismatch + UA mismatch = 0.5 risk; allows but logs."""
-        from src.core.cookies import SESSION_COOKIE_NAME
-        from src.middleware.auth import get_current_session
-        from src.middleware.context import RequestContext
+        from gim_backend.core.cookies import SESSION_COOKIE_NAME
+        from gim_backend.middleware.auth import get_current_session
+        from gim_backend.middleware.context import RequestContext
 
         ctx = RequestContext(
             fingerprint_raw="test",
@@ -230,8 +233,8 @@ class TestRiskBasedValidation:
 
         mock_request.cookies = {SESSION_COOKIE_NAME: str(mock_session.id)}
 
-        with patch("src.middleware.auth.get_session_by_id", new_callable=AsyncMock) as mock_get, \
-             patch("src.middleware.auth._log_and_update_deviation", new_callable=AsyncMock) as mock_log:
+        with patch("gim_backend.middleware.auth.get_session_by_id", new_callable=AsyncMock) as mock_get, \
+             patch("gim_backend.middleware.auth._log_and_update_deviation", new_callable=AsyncMock) as mock_log:
             mock_get.return_value = mock_session
 
             result = await get_current_session(mock_request, ctx, mock_db)
@@ -256,8 +259,8 @@ class TestMaliciousInput:
         """All malicious cookie values should safely return 401 before DB query."""
         from fastapi import HTTPException
 
-        from src.core.cookies import SESSION_COOKIE_NAME
-        from src.middleware.auth import get_current_session
+        from gim_backend.core.cookies import SESSION_COOKIE_NAME
+        from gim_backend.middleware.auth import get_current_session
 
         mock_request.cookies = {SESSION_COOKIE_NAME: malicious_cookie}
 
@@ -272,7 +275,7 @@ class TestCookieSyncMiddleware:
 
     async def test_injects_cookie_on_success_response(self):
         """Cookie injected when session refreshed and response is success."""
-        from src.middleware.auth import session_cookie_sync_middleware
+        from gim_backend.middleware.auth import session_cookie_sync_middleware
 
         mock_request = MagicMock()
         mock_request.state = MagicMock()
@@ -283,7 +286,7 @@ class TestCookieSyncMiddleware:
         mock_response.status_code = 200
         mock_call_next = AsyncMock(return_value=mock_response)
 
-        with patch("src.middleware.auth.create_session_cookie") as mock_cookie:
+        with patch("gim_backend.middleware.auth.create_session_cookie") as mock_cookie:
             await session_cookie_sync_middleware(mock_request, mock_call_next)
 
             mock_cookie.assert_called_once()
@@ -291,7 +294,7 @@ class TestCookieSyncMiddleware:
     @pytest.mark.parametrize("status_code", [302, 307])
     async def test_injects_cookie_on_redirect_responses(self, status_code):
         """Cookie must be injected on redirect responses for OAuth flow."""
-        from src.middleware.auth import session_cookie_sync_middleware
+        from gim_backend.middleware.auth import session_cookie_sync_middleware
 
         mock_request = MagicMock()
         mock_request.state = MagicMock()
@@ -302,14 +305,14 @@ class TestCookieSyncMiddleware:
         mock_response.status_code = status_code
         mock_call_next = AsyncMock(return_value=mock_response)
 
-        with patch("src.middleware.auth.create_session_cookie") as mock_cookie:
+        with patch("gim_backend.middleware.auth.create_session_cookie") as mock_cookie:
             await session_cookie_sync_middleware(mock_request, mock_call_next)
 
             mock_cookie.assert_called_once()
 
     async def test_does_not_inject_cookie_on_error_response(self):
         """No cookie injection on error (prevents session fixation on failure)."""
-        from src.middleware.auth import session_cookie_sync_middleware
+        from gim_backend.middleware.auth import session_cookie_sync_middleware
 
         mock_request = MagicMock()
         mock_request.state = MagicMock()
@@ -320,7 +323,7 @@ class TestCookieSyncMiddleware:
         mock_response.status_code = 401
         mock_call_next = AsyncMock(return_value=mock_response)
 
-        with patch("src.middleware.auth.create_session_cookie") as mock_cookie:
+        with patch("gim_backend.middleware.auth.create_session_cookie") as mock_cookie:
             await session_cookie_sync_middleware(mock_request, mock_call_next)
 
             mock_cookie.assert_not_called()

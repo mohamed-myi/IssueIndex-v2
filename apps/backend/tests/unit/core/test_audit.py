@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from io import StringIO
 from uuid import uuid4
 
-from src.core.audit import AuditEvent, log_audit_event
+from gim_backend.core.audit import AuditEvent, log_audit_event
 
 
 class LogCapture:

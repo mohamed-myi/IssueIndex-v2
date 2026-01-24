@@ -13,7 +13,7 @@ Focus areas:
 import fakeredis.aioredis
 import pytest
 
-from src.middleware.rate_limit import (
+from gim_backend.middleware.rate_limit import (
     RedisRateLimiter,
     _build_compound_key,
 )

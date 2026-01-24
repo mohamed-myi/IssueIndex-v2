@@ -15,7 +15,7 @@ COPY apps/backend/pyproject.toml apps/backend/README.md apps/backend/
 COPY packages/database/pyproject.toml packages/database/README.md packages/database/
 COPY packages/shared/pyproject.toml packages/shared/README.md packages/shared/
 
-# Install dependencies with resume parsing models and Vertex AI client
+# Install dependencies
 RUN pip install --no-cache-dir \
     -e packages/shared \
     -e packages/database \
@@ -26,12 +26,11 @@ RUN pip install --no-cache-dir \
 RUN python3 -c "from gliner import GLiNER; GLiNER.from_pretrained('urchade/gliner_base')"
 
 # Copy source code
-COPY packages/shared/src packages/shared/src
-COPY packages/database/src packages/database/src
-COPY apps/backend/src apps/backend/src
+COPY packages/shared/gim_shared packages/shared/gim_shared
+COPY packages/database/gim_database packages/database/gim_database
+COPY apps/backend/gim_backend apps/backend/gim_backend
 
-ENV PYTHONPATH=/app/apps/backend:/app/packages/database/src:/app/packages/shared/src
 ENV PORT=8080
 ENV EMBEDDING_MODE=nomic
 
-CMD ["uvicorn", "src.workers.resume_worker:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "gim_backend.workers.resume_worker:app", "--host", "0.0.0.0", "--port", "8080"]

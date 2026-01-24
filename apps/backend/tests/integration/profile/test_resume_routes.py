@@ -5,9 +5,9 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
-from src.middleware.auth import require_auth
-from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+from gim_backend.main import app
+from gim_backend.middleware.auth import require_auth
+from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
 @pytest.fixture(autouse=True)
@@ -70,10 +70,10 @@ class TestPostResume:
 
     def test_returns_400_for_invalid_format(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_resume.initiate_resume_processing",
+            "gim_backend.api.routes.profile_resume.initiate_resume_processing",
             new_callable=AsyncMock,
         ) as mock_initiate:
-            from src.services.resume_parsing_service import UnsupportedFormatError
+            from gim_backend.services.resume_parsing_service import UnsupportedFormatError
             mock_initiate.side_effect = UnsupportedFormatError("Please upload a PDF or DOCX file")
 
             response = authenticated_client.post(
@@ -85,7 +85,7 @@ class TestPostResume:
         assert "PDF or DOCX" in response.json()["detail"]
 
     def test_returns_413_for_large_file(self, authenticated_client, mock_user):
-        from src.services.resume_parsing_service import MAX_FILE_SIZE
+        from gim_backend.services.resume_parsing_service import MAX_FILE_SIZE
 
         large_content = b"x" * (MAX_FILE_SIZE + 1)
 
@@ -99,7 +99,7 @@ class TestPostResume:
 
     def test_successful_upload_returns_202_accepted(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_resume.initiate_resume_processing",
+            "gim_backend.api.routes.profile_resume.initiate_resume_processing",
             new_callable=AsyncMock,
         ) as mock_initiate:
             mock_initiate.return_value = {
@@ -121,7 +121,7 @@ class TestPostResume:
 
     def test_accepts_docx_file(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_resume.initiate_resume_processing",
+            "gim_backend.api.routes.profile_resume.initiate_resume_processing",
             new_callable=AsyncMock,
         ) as mock_initiate:
             mock_initiate.return_value = {
@@ -146,7 +146,7 @@ class TestGetResume:
 
     def test_returns_404_when_not_populated(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_resume.get_resume_data",
+            "gim_backend.api.routes.profile_resume.get_resume_data",
             new_callable=AsyncMock,
         ) as mock_get:
             mock_get.return_value = None
@@ -158,7 +158,7 @@ class TestGetResume:
 
     def test_returns_data_when_populated(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_resume.get_resume_data",
+            "gim_backend.api.routes.profile_resume.get_resume_data",
             new_callable=AsyncMock,
         ) as mock_get:
             mock_get.return_value = {
@@ -186,7 +186,7 @@ class TestDeleteResume:
 
     def test_returns_404_when_no_data(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_resume.delete_resume",
+            "gim_backend.api.routes.profile_resume.delete_resume",
             new_callable=AsyncMock,
         ) as mock_delete:
             mock_delete.return_value = False
@@ -198,7 +198,7 @@ class TestDeleteResume:
 
     def test_successfully_deletes_data(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_resume.delete_resume",
+            "gim_backend.api.routes.profile_resume.delete_resume",
             new_callable=AsyncMock,
         ) as mock_delete:
             mock_delete.return_value = True
@@ -217,7 +217,7 @@ class TestAsyncProcessingFlow:
     def test_upload_returns_job_id_for_polling(self, authenticated_client, mock_user):
         """Verifies that upload returns job_id for status polling."""
         with patch(
-            "src.api.routes.profile_resume.initiate_resume_processing",
+            "gim_backend.api.routes.profile_resume.initiate_resume_processing",
             new_callable=AsyncMock,
         ) as mock_initiate:
             mock_initiate.return_value = {
@@ -239,7 +239,7 @@ class TestAsyncProcessingFlow:
     def test_get_resume_shows_processing_status(self, authenticated_client, mock_user):
         """Verifies GET endpoint can show in-progress status."""
         with patch(
-            "src.api.routes.profile_resume.get_resume_data",
+            "gim_backend.api.routes.profile_resume.get_resume_data",
             new_callable=AsyncMock,
         ) as mock_get:
             mock_get.return_value = {
@@ -262,10 +262,10 @@ class TestErrorMessages:
 
     def test_unsupported_format_message(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_resume.initiate_resume_processing",
+            "gim_backend.api.routes.profile_resume.initiate_resume_processing",
             new_callable=AsyncMock,
         ) as mock_initiate:
-            from src.services.resume_parsing_service import UnsupportedFormatError
+            from gim_backend.services.resume_parsing_service import UnsupportedFormatError
             mock_initiate.side_effect = UnsupportedFormatError("Please upload a PDF or DOCX file")
 
             response = authenticated_client.post(
@@ -277,7 +277,7 @@ class TestErrorMessages:
         assert "PDF or DOCX" in response.json()["detail"]
 
     def test_file_too_large_message(self, authenticated_client, mock_user):
-        from src.services.resume_parsing_service import MAX_FILE_SIZE
+        from gim_backend.services.resume_parsing_service import MAX_FILE_SIZE
 
         large_content = b"x" * (MAX_FILE_SIZE + 1)
 
@@ -295,7 +295,7 @@ class TestFileValidation:
 
     def test_accepts_pdf_content_type(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_resume.initiate_resume_processing",
+            "gim_backend.api.routes.profile_resume.initiate_resume_processing",
             new_callable=AsyncMock,
         ) as mock_initiate:
             mock_initiate.return_value = {
@@ -313,7 +313,7 @@ class TestFileValidation:
 
     def test_accepts_docx_content_type(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_resume.initiate_resume_processing",
+            "gim_backend.api.routes.profile_resume.initiate_resume_processing",
             new_callable=AsyncMock,
         ) as mock_initiate:
             mock_initiate.return_value = {
@@ -335,7 +335,7 @@ class TestFileSizeLimit:
     """Tests for 5MB file size limit."""
 
     def test_rejects_file_just_over_limit(self, authenticated_client, mock_user):
-        from src.services.resume_parsing_service import MAX_FILE_SIZE
+        from gim_backend.services.resume_parsing_service import MAX_FILE_SIZE
 
         content = b"x" * (MAX_FILE_SIZE + 1)
 
@@ -347,10 +347,10 @@ class TestFileSizeLimit:
         assert response.status_code == 413
 
     def test_accepts_file_at_limit(self, authenticated_client, mock_user):
-        from src.services.resume_parsing_service import MAX_FILE_SIZE
+        from gim_backend.services.resume_parsing_service import MAX_FILE_SIZE
 
         with patch(
-            "src.api.routes.profile_resume.initiate_resume_processing",
+            "gim_backend.api.routes.profile_resume.initiate_resume_processing",
             new_callable=AsyncMock,
         ) as mock_initiate:
             mock_initiate.return_value = {

@@ -1,7 +1,7 @@
 import os
-import sys
 from pathlib import Path
 
+import pytest
 from dotenv import load_dotenv
 
 # Load .env.local from project root before setting any defaults.
@@ -16,18 +16,6 @@ except PermissionError:
     pass
 load_dotenv(project_root / ".env")
 
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-
-# Add database package source to path for models imports
-database_src = project_root / "packages" / "database" / "src"
-if str(database_src) not in sys.path:
-    sys.path.insert(0, str(database_src))
-
-# Add shared package source to path for constants imports
-shared_src = project_root / "packages" / "shared" / "src"
-if str(shared_src) not in sys.path:
-    sys.path.insert(0, str(shared_src))
 os.environ.setdefault("FINGERPRINT_SECRET", "test_fingerprint_secret_for_testing_only_32chars")
 os.environ.setdefault("JWT_SECRET_KEY", "test_jwt_secret_key_for_testing")
 os.environ.setdefault("GITHUB_CLIENT_ID", "test_github_client_id")
@@ -39,10 +27,9 @@ os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/tes
 os.environ["REDIS_URL"] = ""  # Force in-memory rate limiting for tests
 
 # Order matters: import base models first, then those with relationships.
-import pytest  # noqa: E402
-from models.identity import LinkedAccount, Session, User  # noqa: E402, F401
-from models.persistence import BookmarkedIssue, PersonalNote  # noqa: E402, F401
-from models.profiles import UserProfile  # noqa: E402, F401
+from gim_database.models.identity import LinkedAccount, Session, User  # noqa: E402, F401
+from gim_database.models.persistence import BookmarkedIssue, PersonalNote  # noqa: E402, F401
+from gim_database.models.profiles import UserProfile  # noqa: E402, F401
 
 
 @pytest.fixture(autouse=True)
@@ -52,8 +39,8 @@ async def reset_global_state():
     1. 'Event loop is closed' errors (from stale Redis clients)
     2. State leakage between tests
     """
-    from src.core.redis import close_redis, reset_redis_for_testing
-    from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+    from gim_backend.core.redis import close_redis, reset_redis_for_testing
+    from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
     # Clean before
     reset_redis_for_testing()

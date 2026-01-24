@@ -2,9 +2,9 @@
 Unit tests for taxonomy service.
 """
 
-from constants import PROFILE_LANGUAGES, STACK_AREAS
+from gim_shared.constants import PROFILE_LANGUAGES, STACK_AREAS
 
-from src.services.taxonomy_service import (
+from gim_backend.services.taxonomy_service import (
     StackAreaInfo,
     get_languages,
     get_stack_areas,

@@ -1,20 +1,14 @@
 """Unit tests for onboarding service step tracking and state transitions."""
-import sys
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
-project_root = Path(__file__).resolve().parent.parent.parent.parent.parent
-database_src = project_root / "packages" / "database" / "src"
-if str(database_src) not in sys.path:
-    sys.path.insert(0, str(database_src))
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 @pytest.fixture
 def mock_db():
-    db = AsyncMock()
+    db = MagicMock(spec=AsyncSession)
     db.add = MagicMock()
     db.commit = AsyncMock()
     db.refresh = AsyncMock()
@@ -39,7 +33,7 @@ class TestCompletedSteps:
     """Tests for step completion detection logic."""
 
     def test_completed_steps_empty_when_no_data(self, mock_profile):
-        from src.services.onboarding_service import _get_completed_steps
+        from gim_backend.services.onboarding_service import _get_completed_steps
 
         mock_profile.onboarding_status = "not_started"
         mock_profile.intent_text = None
@@ -52,7 +46,7 @@ class TestCompletedSteps:
         assert steps == []
 
     def test_completed_steps_includes_welcome_when_in_progress(self, mock_profile):
-        from src.services.onboarding_service import _get_completed_steps
+        from gim_backend.services.onboarding_service import _get_completed_steps
 
         mock_profile.onboarding_status = "in_progress"
 
@@ -61,7 +55,7 @@ class TestCompletedSteps:
         assert "welcome" in steps
 
     def test_completed_steps_includes_welcome_when_completed(self, mock_profile):
-        from src.services.onboarding_service import _get_completed_steps
+        from gim_backend.services.onboarding_service import _get_completed_steps
 
         mock_profile.onboarding_status = "completed"
 
@@ -70,7 +64,7 @@ class TestCompletedSteps:
         assert "welcome" in steps
 
     def test_completed_steps_includes_welcome_when_skipped(self, mock_profile):
-        from src.services.onboarding_service import _get_completed_steps
+        from gim_backend.services.onboarding_service import _get_completed_steps
 
         mock_profile.onboarding_status = "skipped"
 
@@ -79,7 +73,7 @@ class TestCompletedSteps:
         assert "welcome" in steps
 
     def test_completed_steps_includes_intent_when_populated(self, mock_profile):
-        from src.services.onboarding_service import _get_completed_steps
+        from gim_backend.services.onboarding_service import _get_completed_steps
 
         mock_profile.onboarding_status = "in_progress"
         mock_profile.intent_text = "I want to contribute to open source"
@@ -89,7 +83,7 @@ class TestCompletedSteps:
         assert "intent" in steps
 
     def test_completed_steps_includes_github_when_populated(self, mock_profile):
-        from src.services.onboarding_service import _get_completed_steps
+        from gim_backend.services.onboarding_service import _get_completed_steps
 
         mock_profile.onboarding_status = "in_progress"
         mock_profile.github_username = "octocat"
@@ -99,7 +93,7 @@ class TestCompletedSteps:
         assert "github" in steps
 
     def test_completed_steps_includes_resume_when_populated(self, mock_profile):
-        from src.services.onboarding_service import _get_completed_steps
+        from gim_backend.services.onboarding_service import _get_completed_steps
 
         mock_profile.onboarding_status = "in_progress"
         mock_profile.resume_skills = ["Python", "FastAPI"]
@@ -109,7 +103,7 @@ class TestCompletedSteps:
         assert "resume" in steps
 
     def test_completed_steps_includes_preferences_when_languages_set(self, mock_profile):
-        from src.services.onboarding_service import _get_completed_steps
+        from gim_backend.services.onboarding_service import _get_completed_steps
 
         mock_profile.onboarding_status = "in_progress"
         mock_profile.preferred_languages = ["Python", "TypeScript"]
@@ -119,7 +113,7 @@ class TestCompletedSteps:
         assert "preferences" in steps
 
     def test_all_steps_completed_when_all_populated(self, mock_profile):
-        from src.services.onboarding_service import ALL_STEPS, _get_completed_steps
+        from gim_backend.services.onboarding_service import ALL_STEPS, _get_completed_steps
 
         mock_profile.onboarding_status = "in_progress"
         mock_profile.intent_text = "I want to contribute"
@@ -136,14 +130,14 @@ class TestAvailableSteps:
     """Tests for available steps calculation."""
 
     def test_available_steps_returns_all_when_none_completed(self):
-        from src.services.onboarding_service import ALL_STEPS, _get_available_steps
+        from gim_backend.services.onboarding_service import ALL_STEPS, _get_available_steps
 
         available = _get_available_steps([])
 
         assert set(available) == set(ALL_STEPS)
 
     def test_available_steps_excludes_completed(self):
-        from src.services.onboarding_service import _get_available_steps
+        from gim_backend.services.onboarding_service import _get_available_steps
 
         completed = ["welcome", "intent"]
         available = _get_available_steps(completed)
@@ -155,7 +149,7 @@ class TestAvailableSteps:
         assert "preferences" in available
 
     def test_available_steps_empty_when_all_completed(self):
-        from src.services.onboarding_service import ALL_STEPS, _get_available_steps
+        from gim_backend.services.onboarding_service import ALL_STEPS, _get_available_steps
 
         available = _get_available_steps(ALL_STEPS)
 
@@ -166,7 +160,7 @@ class TestCanComplete:
     """Tests for can_complete calculation."""
 
     def test_can_complete_false_when_no_sources(self, mock_profile):
-        from src.services.onboarding_service import _can_complete
+        from gim_backend.services.onboarding_service import _can_complete
 
         mock_profile.intent_text = None
         mock_profile.resume_skills = None
@@ -177,7 +171,7 @@ class TestCanComplete:
         assert result is False
 
     def test_can_complete_true_with_intent_only(self, mock_profile):
-        from src.services.onboarding_service import _can_complete
+        from gim_backend.services.onboarding_service import _can_complete
 
         mock_profile.intent_text = "I want to contribute"
         mock_profile.resume_skills = None
@@ -188,7 +182,7 @@ class TestCanComplete:
         assert result is True
 
     def test_can_complete_true_with_resume_only(self, mock_profile):
-        from src.services.onboarding_service import _can_complete
+        from gim_backend.services.onboarding_service import _can_complete
 
         mock_profile.intent_text = None
         mock_profile.resume_skills = ["Python", "FastAPI"]
@@ -199,7 +193,7 @@ class TestCanComplete:
         assert result is True
 
     def test_can_complete_true_with_github_only(self, mock_profile):
-        from src.services.onboarding_service import _can_complete
+        from gim_backend.services.onboarding_service import _can_complete
 
         mock_profile.intent_text = None
         mock_profile.resume_skills = None
@@ -210,7 +204,7 @@ class TestCanComplete:
         assert result is True
 
     def test_can_complete_true_with_all_sources(self, mock_profile):
-        from src.services.onboarding_service import _can_complete
+        from gim_backend.services.onboarding_service import _can_complete
 
         mock_profile.intent_text = "I want to contribute"
         mock_profile.resume_skills = ["Python"]
@@ -225,7 +219,7 @@ class TestComputeOnboardingState:
     """Tests for the composite state computation."""
 
     def test_compute_state_returns_all_fields(self, mock_profile):
-        from src.services.onboarding_service import compute_onboarding_state
+        from gim_backend.services.onboarding_service import compute_onboarding_state
 
         state = compute_onboarding_state(mock_profile)
 
@@ -235,7 +229,7 @@ class TestComputeOnboardingState:
         assert hasattr(state, "can_complete")
 
     def test_compute_state_not_started_profile(self, mock_profile):
-        from src.services.onboarding_service import compute_onboarding_state
+        from gim_backend.services.onboarding_service import compute_onboarding_state
 
         mock_profile.onboarding_status = "not_started"
 
@@ -247,7 +241,7 @@ class TestComputeOnboardingState:
         assert state.can_complete is False
 
     def test_compute_state_in_progress_with_intent(self, mock_profile):
-        from src.services.onboarding_service import compute_onboarding_state
+        from gim_backend.services.onboarding_service import compute_onboarding_state
 
         mock_profile.onboarding_status = "in_progress"
         mock_profile.intent_text = "I want to contribute"
@@ -267,7 +261,7 @@ class TestCompleteOnboarding:
 
     @pytest.mark.asyncio
     async def test_complete_raises_when_no_sources(self, mock_db, mock_profile):
-        from src.services.onboarding_service import (
+        from gim_backend.services.onboarding_service import (
             CannotCompleteOnboardingError,
             complete_onboarding,
         )
@@ -278,7 +272,7 @@ class TestCompleteOnboarding:
         mock_profile.onboarding_status = "not_started"
 
         with patch(
-            "src.services.onboarding_service._get_or_create_profile",
+            "gim_backend.services.onboarding_service._get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -287,13 +281,13 @@ class TestCompleteOnboarding:
 
     @pytest.mark.asyncio
     async def test_complete_succeeds_with_intent(self, mock_db, mock_profile):
-        from src.services.onboarding_service import complete_onboarding
+        from gim_backend.services.onboarding_service import complete_onboarding
 
         mock_profile.intent_text = "I want to contribute"
         mock_profile.onboarding_status = "in_progress"
 
         with patch(
-            "src.services.onboarding_service._get_or_create_profile",
+            "gim_backend.services.onboarding_service._get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -305,7 +299,7 @@ class TestCompleteOnboarding:
 
     @pytest.mark.asyncio
     async def test_complete_raises_when_already_completed(self, mock_db, mock_profile):
-        from src.services.onboarding_service import (
+        from gim_backend.services.onboarding_service import (
             OnboardingAlreadyCompletedError,
             complete_onboarding,
         )
@@ -314,7 +308,7 @@ class TestCompleteOnboarding:
         mock_profile.onboarding_status = "completed"
 
         with patch(
-            "src.services.onboarding_service._get_or_create_profile",
+            "gim_backend.services.onboarding_service._get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -323,7 +317,7 @@ class TestCompleteOnboarding:
 
     @pytest.mark.asyncio
     async def test_complete_raises_when_already_skipped(self, mock_db, mock_profile):
-        from src.services.onboarding_service import (
+        from gim_backend.services.onboarding_service import (
             OnboardingAlreadyCompletedError,
             complete_onboarding,
         )
@@ -332,7 +326,7 @@ class TestCompleteOnboarding:
         mock_profile.onboarding_status = "skipped"
 
         with patch(
-            "src.services.onboarding_service._get_or_create_profile",
+            "gim_backend.services.onboarding_service._get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -345,7 +339,7 @@ class TestSkipOnboarding:
 
     @pytest.mark.asyncio
     async def test_skip_succeeds_without_sources(self, mock_db, mock_profile):
-        from src.services.onboarding_service import skip_onboarding
+        from gim_backend.services.onboarding_service import skip_onboarding
 
         mock_profile.intent_text = None
         mock_profile.resume_skills = None
@@ -353,7 +347,7 @@ class TestSkipOnboarding:
         mock_profile.onboarding_status = "not_started"
 
         with patch(
-            "src.services.onboarding_service._get_or_create_profile",
+            "gim_backend.services.onboarding_service._get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -365,7 +359,7 @@ class TestSkipOnboarding:
 
     @pytest.mark.asyncio
     async def test_skip_raises_when_already_completed(self, mock_db, mock_profile):
-        from src.services.onboarding_service import (
+        from gim_backend.services.onboarding_service import (
             OnboardingAlreadyCompletedError,
             skip_onboarding,
         )
@@ -373,7 +367,7 @@ class TestSkipOnboarding:
         mock_profile.onboarding_status = "completed"
 
         with patch(
-            "src.services.onboarding_service._get_or_create_profile",
+            "gim_backend.services.onboarding_service._get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -382,7 +376,7 @@ class TestSkipOnboarding:
 
     @pytest.mark.asyncio
     async def test_skip_raises_when_already_skipped(self, mock_db, mock_profile):
-        from src.services.onboarding_service import (
+        from gim_backend.services.onboarding_service import (
             OnboardingAlreadyCompletedError,
             skip_onboarding,
         )
@@ -390,7 +384,7 @@ class TestSkipOnboarding:
         mock_profile.onboarding_status = "skipped"
 
         with patch(
-            "src.services.onboarding_service._get_or_create_profile",
+            "gim_backend.services.onboarding_service._get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -403,7 +397,7 @@ class TestMarkOnboardingInProgress:
 
     @pytest.mark.asyncio
     async def test_transitions_from_not_started(self, mock_db, mock_profile):
-        from src.services.onboarding_service import mark_onboarding_in_progress
+        from gim_backend.services.onboarding_service import mark_onboarding_in_progress
 
         mock_profile.onboarding_status = "not_started"
 
@@ -413,7 +407,7 @@ class TestMarkOnboardingInProgress:
 
     @pytest.mark.asyncio
     async def test_does_not_transition_from_in_progress(self, mock_db, mock_profile):
-        from src.services.onboarding_service import mark_onboarding_in_progress
+        from gim_backend.services.onboarding_service import mark_onboarding_in_progress
 
         mock_profile.onboarding_status = "in_progress"
 
@@ -423,7 +417,7 @@ class TestMarkOnboardingInProgress:
 
     @pytest.mark.asyncio
     async def test_does_not_transition_from_completed(self, mock_db, mock_profile):
-        from src.services.onboarding_service import mark_onboarding_in_progress
+        from gim_backend.services.onboarding_service import mark_onboarding_in_progress
 
         mock_profile.onboarding_status = "completed"
 
@@ -433,7 +427,7 @@ class TestMarkOnboardingInProgress:
 
     @pytest.mark.asyncio
     async def test_does_not_transition_from_skipped(self, mock_db, mock_profile):
-        from src.services.onboarding_service import mark_onboarding_in_progress
+        from gim_backend.services.onboarding_service import mark_onboarding_in_progress
 
         mock_profile.onboarding_status = "skipped"
 
@@ -448,13 +442,13 @@ class TestStartOnboarding:
 
     @pytest.mark.asyncio
     async def test_start_transitions_not_started_to_in_progress(self, mock_db, mock_profile):
-        from src.services.onboarding_service import start_onboarding
+        from gim_backend.services.onboarding_service import start_onboarding
 
         mock_profile.onboarding_status = "not_started"
         mock_profile.onboarding_completed_at = None
 
         with patch(
-            "src.services.onboarding_service._get_or_create_profile",
+            "gim_backend.services.onboarding_service._get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -466,13 +460,13 @@ class TestStartOnboarding:
 
     @pytest.mark.asyncio
     async def test_start_restarts_from_skipped(self, mock_db, mock_profile):
-        from src.services.onboarding_service import start_onboarding
+        from gim_backend.services.onboarding_service import start_onboarding
 
         mock_profile.onboarding_status = "skipped"
         mock_profile.onboarding_completed_at = "2026-01-01T00:00:00Z"
 
         with patch(
-            "src.services.onboarding_service._get_or_create_profile",
+            "gim_backend.services.onboarding_service._get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -485,12 +479,12 @@ class TestStartOnboarding:
 
     @pytest.mark.asyncio
     async def test_start_noop_when_already_in_progress(self, mock_db, mock_profile):
-        from src.services.onboarding_service import start_onboarding
+        from gim_backend.services.onboarding_service import start_onboarding
 
         mock_profile.onboarding_status = "in_progress"
 
         with patch(
-            "src.services.onboarding_service._get_or_create_profile",
+            "gim_backend.services.onboarding_service._get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -501,12 +495,12 @@ class TestStartOnboarding:
 
     @pytest.mark.asyncio
     async def test_start_raises_when_completed(self, mock_db, mock_profile):
-        from src.services.onboarding_service import OnboardingAlreadyCompletedError, start_onboarding
+        from gim_backend.services.onboarding_service import OnboardingAlreadyCompletedError, start_onboarding
 
         mock_profile.onboarding_status = "completed"
 
         with patch(
-            "src.services.onboarding_service._get_or_create_profile",
+            "gim_backend.services.onboarding_service._get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -518,7 +512,7 @@ class TestAnyOrderCompletion:
     """Tests verifying any-order completion works correctly."""
 
     def test_github_before_intent_shows_github_completed(self, mock_profile):
-        from src.services.onboarding_service import _get_completed_steps
+        from gim_backend.services.onboarding_service import _get_completed_steps
 
         mock_profile.onboarding_status = "in_progress"
         mock_profile.github_username = "octocat"
@@ -530,7 +524,7 @@ class TestAnyOrderCompletion:
         assert "intent" not in steps
 
     def test_resume_before_intent_shows_resume_completed(self, mock_profile):
-        from src.services.onboarding_service import _get_completed_steps
+        from gim_backend.services.onboarding_service import _get_completed_steps
 
         mock_profile.onboarding_status = "in_progress"
         mock_profile.resume_skills = ["Python", "FastAPI"]
@@ -542,7 +536,7 @@ class TestAnyOrderCompletion:
         assert "intent" not in steps
 
     def test_can_complete_with_github_only_no_intent(self, mock_profile):
-        from src.services.onboarding_service import _can_complete
+        from gim_backend.services.onboarding_service import _can_complete
 
         mock_profile.github_username = "octocat"
         mock_profile.intent_text = None

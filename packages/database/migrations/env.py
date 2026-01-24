@@ -1,6 +1,5 @@
 import asyncio
 import os
-import sys
 from logging.config import fileConfig
 
 from sqlalchemy import pool
@@ -12,8 +11,8 @@ from dotenv import load_dotenv
 from alembic import context
 from pgvector.sqlalchemy import Vector
 
-# Add src directory to path for model imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+# Import all models so SQLModel.metadata is populated for migrations
+from gim_database.models import identity, ingestion, persistence, profiles  # noqa: F401
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
 load_dotenv(os.path.join(project_root, '.env.local'))

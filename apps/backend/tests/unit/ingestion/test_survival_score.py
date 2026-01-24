@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 
-from src.ingestion.survival_score import (
+from gim_backend.ingestion.survival_score import (
     BASE_QUALITY,
     GRACE_PERIOD,
     GRAVITY,

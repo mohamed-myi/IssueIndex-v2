@@ -2,11 +2,12 @@
 Unit tests for stats service.
 """
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.services.stats_service import (
+from gim_backend.services.stats_service import (
     STATS_CACHE_KEY,
     STATS_CACHE_TTL,
     PlatformStats,
@@ -24,10 +25,13 @@ class MockScalarResult:
         return self._value
 
 
+
+
+
 @pytest.fixture
 def mock_db():
     """Mock AsyncSession."""
-    db = AsyncMock()
+    db = MagicMock(spec=AsyncSession)
     return db
 
 
@@ -117,7 +121,7 @@ class TestGetPlatformStats:
             ]
         )
 
-        with patch("src.services.stats_service.get_redis", return_value=None):
+        with patch("gim_backend.services.stats_service.get_redis", return_value=None):
             result = await get_platform_stats(mock_db)
 
         assert result.total_issues == 100
@@ -135,7 +139,7 @@ class TestGetPlatformStats:
         }
         mock_redis.hgetall = AsyncMock(return_value=cached_data)
 
-        with patch("src.services.stats_service.get_redis", return_value=mock_redis):
+        with patch("gim_backend.services.stats_service.get_redis", return_value=mock_redis):
             result = await get_platform_stats(mock_db)
 
         assert result.total_issues == 500
@@ -156,7 +160,7 @@ class TestGetPlatformStats:
             ]
         )
 
-        with patch("src.services.stats_service.get_redis", return_value=mock_redis):
+        with patch("gim_backend.services.stats_service.get_redis", return_value=mock_redis):
             await get_platform_stats(mock_db)
 
         # Verify cache was written
@@ -176,7 +180,7 @@ class TestGetPlatformStats:
             ]
         )
 
-        with patch("src.services.stats_service.get_redis", return_value=mock_redis):
+        with patch("gim_backend.services.stats_service.get_redis", return_value=mock_redis):
             result = await get_platform_stats(mock_db)
 
         # Should still return valid stats from DB
@@ -196,7 +200,7 @@ class TestGetPlatformStats:
             ]
         )
 
-        with patch("src.services.stats_service.get_redis", return_value=mock_redis):
+        with patch("gim_backend.services.stats_service.get_redis", return_value=mock_redis):
             result = await get_platform_stats(mock_db)
 
         # Should still return valid stats

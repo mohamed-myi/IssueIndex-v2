@@ -11,12 +11,12 @@ try:
 except ImportError:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
 
-from src.ingestion.embeddings import (
+from gim_backend.ingestion.embeddings import (
     EmbeddedIssue,
     embed_issue_stream,
 )
-from src.ingestion.gatherer import IssueData
-from src.ingestion.quality_gate import QScoreComponents
+from gim_backend.ingestion.gatherer import IssueData
+from gim_backend.ingestion.quality_gate import QScoreComponents
 
 # Skip entire module if sentence-transformers not installed
 pytestmark = pytest.mark.skipif(

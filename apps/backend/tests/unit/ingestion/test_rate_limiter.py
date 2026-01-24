@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.ingestion.rate_limiter import (
+from gim_backend.ingestion.rate_limiter import (
     InMemoryCostLimiter,
     RedisCostLimiter,
     create_cost_limiter,

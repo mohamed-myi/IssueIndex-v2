@@ -4,10 +4,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.api.routes.auth import STATE_COOKIE_NAME
-from src.core.oauth import OAuthToken, UserProfile
-from src.main import app
-from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+from gim_backend.api.routes.auth import STATE_COOKIE_NAME
+from gim_backend.core.oauth import OAuthToken, UserProfile
+from gim_backend.main import app
+from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
 @pytest.fixture(autouse=True)
@@ -152,12 +152,12 @@ class TestCallbackSuccessFlow:
     @pytest.fixture
     def mock_oauth_flow(self):
         """Mock all OAuth dependencies for success flow."""
-        with patch("src.api.routes.auth.exchange_code_for_token") as mock_exchange, \
-             patch("src.api.routes.auth.fetch_user_profile") as mock_profile, \
-             patch("src.api.routes.auth.upsert_user") as mock_upsert, \
-             patch("src.api.routes.auth.create_session") as mock_session, \
-             patch("src.api.routes.auth.get_db") as mock_db, \
-             patch("src.api.routes.auth.get_http_client") as mock_client:
+        with patch("gim_backend.api.routes.auth.exchange_code_for_token") as mock_exchange, \
+             patch("gim_backend.api.routes.auth.fetch_user_profile") as mock_profile, \
+             patch("gim_backend.api.routes.auth.upsert_user") as mock_upsert, \
+             patch("gim_backend.api.routes.auth.create_session") as mock_session, \
+             patch("gim_backend.api.routes.auth.get_db") as mock_db, \
+             patch("gim_backend.api.routes.auth.get_http_client") as mock_client:
 
             # Configure mock returns
             mock_exchange.return_value = OAuthToken(

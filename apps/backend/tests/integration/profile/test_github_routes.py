@@ -5,9 +5,9 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
-from src.middleware.auth import require_auth
-from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+from gim_backend.main import app
+from gim_backend.middleware.auth import require_auth
+from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
 @pytest.fixture(autouse=True)
@@ -68,10 +68,10 @@ class TestPostGitHub:
 
     def test_returns_400_when_no_github_connected(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.initiate_github_fetch",
+            "gim_backend.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
         ) as mock_initiate:
-            from src.core.errors import GitHubNotConnectedError
+            from gim_backend.core.errors import GitHubNotConnectedError
             mock_initiate.side_effect = GitHubNotConnectedError(
                 "No GitHub account connected. Please connect GitHub first at /auth/connect/github"
             )
@@ -83,10 +83,10 @@ class TestPostGitHub:
 
     def test_returns_400_when_token_revoked(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.initiate_github_fetch",
+            "gim_backend.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
         ) as mock_initiate:
-            from src.core.errors import GitHubNotConnectedError
+            from gim_backend.core.errors import GitHubNotConnectedError
             mock_initiate.side_effect = GitHubNotConnectedError(
                 "Please reconnect your GitHub account"
             )
@@ -98,7 +98,7 @@ class TestPostGitHub:
 
     def test_successful_initiate_returns_202_accepted(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.initiate_github_fetch",
+            "gim_backend.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
         ) as mock_initiate:
             mock_initiate.return_value = {
@@ -121,7 +121,7 @@ class TestGetGitHub:
 
     def test_returns_404_when_not_populated(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.get_github_data",
+            "gim_backend.api.routes.profile_github.get_github_data",
             new_callable=AsyncMock,
         ) as mock_get:
             mock_get.return_value = None
@@ -133,7 +133,7 @@ class TestGetGitHub:
 
     def test_returns_data_when_populated(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.get_github_data",
+            "gim_backend.api.routes.profile_github.get_github_data",
             new_callable=AsyncMock,
         ) as mock_get:
             mock_get.return_value = {
@@ -164,10 +164,10 @@ class TestRefreshGitHub:
 
     def test_returns_429_when_too_soon(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.initiate_github_fetch",
+            "gim_backend.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
         ) as mock_initiate:
-            from src.core.errors import RefreshRateLimitError
+            from gim_backend.core.errors import RefreshRateLimitError
             mock_initiate.side_effect = RefreshRateLimitError(1800)
 
             response = authenticated_client.post("/profile/github/refresh")
@@ -177,7 +177,7 @@ class TestRefreshGitHub:
 
     def test_allows_refresh_after_cooldown_returns_202(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.initiate_github_fetch",
+            "gim_backend.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
         ) as mock_initiate:
             mock_initiate.return_value = {
@@ -199,7 +199,7 @@ class TestDeleteGitHub:
 
     def test_returns_404_when_no_data(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.delete_github",
+            "gim_backend.api.routes.profile_github.delete_github",
             new_callable=AsyncMock,
         ) as mock_delete:
             mock_delete.return_value = False
@@ -211,7 +211,7 @@ class TestDeleteGitHub:
 
     def test_successfully_deletes_data(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.delete_github",
+            "gim_backend.api.routes.profile_github.delete_github",
             new_callable=AsyncMock,
         ) as mock_delete:
             mock_delete.return_value = True
@@ -230,7 +230,7 @@ class TestAsyncProcessingFlow:
     def test_initiate_returns_job_id_for_polling(self, authenticated_client, mock_user):
         """Verifies that initiate returns job_id for status polling."""
         with patch(
-            "src.api.routes.profile_github.initiate_github_fetch",
+            "gim_backend.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
         ) as mock_initiate:
             mock_initiate.return_value = {
@@ -249,7 +249,7 @@ class TestAsyncProcessingFlow:
     def test_get_github_shows_processing_status(self, authenticated_client, mock_user):
         """Verifies GET endpoint can show in-progress status."""
         with patch(
-            "src.api.routes.profile_github.get_github_data",
+            "gim_backend.api.routes.profile_github.get_github_data",
             new_callable=AsyncMock,
         ) as mock_get:
             mock_get.return_value = {
@@ -275,10 +275,10 @@ class TestErrorMessages:
 
     def test_oauth_revoked_message(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.initiate_github_fetch",
+            "gim_backend.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
         ) as mock_initiate:
-            from src.core.errors import GitHubNotConnectedError
+            from gim_backend.core.errors import GitHubNotConnectedError
             mock_initiate.side_effect = GitHubNotConnectedError("Please reconnect your GitHub account")
 
             response = authenticated_client.post("/profile/github")
@@ -288,10 +288,10 @@ class TestErrorMessages:
 
     def test_refresh_rate_limit_shows_minutes(self, authenticated_client, mock_user):
         with patch(
-            "src.api.routes.profile_github.initiate_github_fetch",
+            "gim_backend.api.routes.profile_github.initiate_github_fetch",
             new_callable=AsyncMock,
         ) as mock_initiate:
-            from src.core.errors import RefreshRateLimitError
+            from gim_backend.core.errors import RefreshRateLimitError
             mock_initiate.side_effect = RefreshRateLimitError(1800)
 
             response = authenticated_client.post("/profile/github/refresh")

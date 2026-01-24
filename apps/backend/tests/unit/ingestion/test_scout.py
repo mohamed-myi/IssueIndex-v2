@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src.ingestion.scout import SCOUT_LANGUAGES, RepositoryData, Scout
+from gim_backend.ingestion.scout import SCOUT_LANGUAGES, RepositoryData, Scout
 
 
 @pytest.fixture

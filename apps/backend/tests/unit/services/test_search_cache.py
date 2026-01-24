@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.services.search_cache import (
+from gim_backend.services.search_cache import (
     CACHE_PREFIX,
     CACHE_TTL_SECONDS,
     CONTEXT_PREFIX,
@@ -19,7 +19,7 @@ from src.services.search_cache import (
     cache_search_context,
     get_cached_search_context,
 )
-from src.services.search_service import (
+from gim_backend.services.search_service import (
     SearchFilters,
     SearchRequest,
     SearchResponse,
@@ -269,7 +269,7 @@ class TestSearchContextCaching:
     async def test_cache_search_context_writes_expected_key_and_payload(self):
         fake_redis = _FakeRedis()
 
-        with patch("src.services.search_cache.get_redis", new=AsyncMock(return_value=fake_redis)):
+        with patch("gim_backend.services.search_cache.get_redis", new=AsyncMock(return_value=fake_redis)):
             search_id = uuid4()
             await cache_search_context(
                 search_id=search_id,
@@ -306,7 +306,7 @@ class TestSearchContextCaching:
             "page_size": 20,
         }))
 
-        with patch("src.services.search_cache.get_redis", new=AsyncMock(return_value=fake_redis)):
+        with patch("gim_backend.services.search_cache.get_redis", new=AsyncMock(return_value=fake_redis)):
             ctx = await get_cached_search_context(search_id)
 
         assert ctx is not None
@@ -315,7 +315,7 @@ class TestSearchContextCaching:
 
     @pytest.mark.asyncio
     async def test_get_cached_search_context_returns_none_when_redis_unavailable(self):
-        with patch("src.services.search_cache.get_redis", new=AsyncMock(return_value=None)):
+        with patch("gim_backend.services.search_cache.get_redis", new=AsyncMock(return_value=None)):
             ctx = await get_cached_search_context(uuid4())
         assert ctx is None
 

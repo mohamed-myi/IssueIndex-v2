@@ -39,7 +39,7 @@ class TestRiskScoring:
 
     def test_matching_metadata_returns_zero_score(self, mock_session, mock_ctx):
         """All matching = 0.0 risk score."""
-        from src.services.risk_assessment import assess_session_risk
+        from gim_backend.services.risk_assessment import assess_session_risk
 
         result = assess_session_risk(mock_session, mock_ctx)
 
@@ -50,7 +50,7 @@ class TestRiskScoring:
 
     def test_country_change_triggers_reauthentication(self, mock_session, mock_ctx):
         """Country mismatch = 0.8; exceeds 0.7 threshold."""
-        from src.services.risk_assessment import assess_session_risk
+        from gim_backend.services.risk_assessment import assess_session_risk
 
         mock_ctx.country_code = "RU"
 
@@ -62,7 +62,7 @@ class TestRiskScoring:
 
     def test_os_and_ua_mismatch_medium_risk(self, mock_session, mock_ctx):
         """OS + UA mismatch = 0.3 + 0.2 = 0.5; medium risk."""
-        from src.services.risk_assessment import assess_session_risk
+        from gim_backend.services.risk_assessment import assess_session_risk
 
         mock_ctx.os_family = "Windows"
         mock_ctx.ua_family = "Firefox"
@@ -76,7 +76,7 @@ class TestRiskScoring:
 
     def test_asn_change_only_low_risk(self, mock_session, mock_ctx):
         """ASN change alone = 0.2; below 0.3 threshold."""
-        from src.services.risk_assessment import assess_session_risk
+        from gim_backend.services.risk_assessment import assess_session_risk
 
         mock_ctx.asn = "AS7922"
 
@@ -88,7 +88,7 @@ class TestRiskScoring:
 
     def test_all_mismatches_cumulative(self, mock_session, mock_ctx):
         """All mismatches = 0.1 + 0.3 + 0.2 + 0.2 + 0.8 = 1.6"""
-        from src.services.risk_assessment import assess_session_risk
+        from gim_backend.services.risk_assessment import assess_session_risk
 
         mock_ctx.fingerprint_hash = "b" * 64
         mock_ctx.os_family = "Windows"
@@ -108,7 +108,7 @@ class TestLogThrottling:
 
     def test_first_deviation_should_log(self, mock_session, mock_ctx):
         """No previous log = should log."""
-        from src.services.risk_assessment import assess_session_risk
+        from gim_backend.services.risk_assessment import assess_session_risk
 
         mock_ctx.os_family = "Windows"
         mock_session.deviation_logged_at = None
@@ -119,7 +119,7 @@ class TestLogThrottling:
 
     def test_recent_deviation_throttled(self, mock_session, mock_ctx):
         """Logged 1 hour ago = should NOT log."""
-        from src.services.risk_assessment import assess_session_risk
+        from gim_backend.services.risk_assessment import assess_session_risk
 
         mock_ctx.os_family = "Windows"
         mock_session.deviation_logged_at = datetime.now(UTC) - timedelta(hours=1)
@@ -130,7 +130,7 @@ class TestLogThrottling:
 
     def test_old_deviation_logs_again(self, mock_session, mock_ctx):
         """Logged 5 hours ago = should log again."""
-        from src.services.risk_assessment import assess_session_risk
+        from gim_backend.services.risk_assessment import assess_session_risk
 
         mock_ctx.os_family = "Windows"
         mock_session.deviation_logged_at = datetime.now(UTC) - timedelta(hours=5)
@@ -145,7 +145,7 @@ class TestNullSafety:
 
     def test_null_session_metadata_no_mismatch(self, mock_session, mock_ctx):
         """None in session = not a mismatch."""
-        from src.services.risk_assessment import assess_session_risk
+        from gim_backend.services.risk_assessment import assess_session_risk
 
         mock_session.os_family = None
         mock_session.country_code = None
@@ -156,7 +156,7 @@ class TestNullSafety:
 
     def test_null_context_metadata_no_mismatch(self, mock_session, mock_ctx):
         """None in context = not a mismatch."""
-        from src.services.risk_assessment import assess_session_risk
+        from gim_backend.services.risk_assessment import assess_session_risk
 
         mock_ctx.os_family = None
         mock_ctx.country_code = None
@@ -167,7 +167,7 @@ class TestNullSafety:
 
     def test_case_insensitive_comparison(self, mock_session, mock_ctx):
         """Comparison should be case-insensitive."""
-        from src.services.risk_assessment import assess_session_risk
+        from gim_backend.services.risk_assessment import assess_session_risk
 
         mock_session.os_family = "mac os x"
         mock_ctx.os_family = "Mac OS X"

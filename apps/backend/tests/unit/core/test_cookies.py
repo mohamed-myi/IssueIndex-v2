@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 from fastapi import Response
 
-from src.core.cookies import (
+from gim_backend.core.cookies import (
     LOGIN_FLOW_COOKIE_NAME,
     SESSION_COOKIE_NAME,
     clear_session_cookie,
@@ -84,7 +84,7 @@ class TestSessionCookieSecurityAttributes:
     def test_httponly_always_set(self):
         """HttpOnly prevents XSS cookie theft - must ALWAYS be True."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
-            from src.core.config import get_settings
+            from gim_backend.core.config import get_settings
             get_settings.cache_clear()
 
             response = Response()
@@ -99,7 +99,7 @@ class TestSessionCookieSecurityAttributes:
     def test_samesite_lax_enforced(self):
         """SameSite=Lax prevents CSRF - must be exactly 'lax' or 'Lax'."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
-            from src.core.config import get_settings
+            from gim_backend.core.config import get_settings
             get_settings.cache_clear()
 
             response = Response()
@@ -115,7 +115,7 @@ class TestSessionCookieSecurityAttributes:
     def test_secure_true_in_production(self):
         """Secure=True in production prevents cookie over HTTP."""
         with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
-            from src.core.config import get_settings
+            from gim_backend.core.config import get_settings
             get_settings.cache_clear()
 
             response = Response()
@@ -130,7 +130,7 @@ class TestSessionCookieSecurityAttributes:
     def test_secure_false_in_development(self):
         """Secure=False in development allows localhost testing."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
-            from src.core.config import get_settings
+            from gim_backend.core.config import get_settings
             get_settings.cache_clear()
 
             response = Response()
@@ -146,7 +146,7 @@ class TestSessionCookieSecurityAttributes:
     def test_path_is_root(self):
         """Path=/ ensures cookie sent on all routes."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
-            from src.core.config import get_settings
+            from gim_backend.core.config import get_settings
             get_settings.cache_clear()
 
             response = Response()
@@ -166,7 +166,7 @@ class TestSessionCookieExpiration:
     def test_expires_set_when_provided(self):
         """When expires_at is provided, cookie expires at that timestamp."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
-            from src.core.config import get_settings
+            from gim_backend.core.config import get_settings
             get_settings.cache_clear()
 
             response = Response()
@@ -182,7 +182,7 @@ class TestSessionCookieExpiration:
     def test_session_cookie_when_no_expires(self):
         """No expires_at = session cookie (dies when browser closes)."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
-            from src.core.config import get_settings
+            from gim_backend.core.config import get_settings
             get_settings.cache_clear()
 
             response = Response()
@@ -202,7 +202,7 @@ class TestClearSessionCookie:
     def test_clear_uses_same_security_attributes(self):
         """Deletion must use matching attributes or cookie won't be cleared."""
         with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
-            from src.core.config import get_settings
+            from gim_backend.core.config import get_settings
             get_settings.cache_clear()
 
             response = Response()
@@ -224,7 +224,7 @@ class TestLoginFlowCookie:
     def test_max_age_is_300_seconds(self):
         """Login flow cookie expires in 5 minutes - prevents stale flows."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
-            from src.core.config import get_settings
+            from gim_backend.core.config import get_settings
             get_settings.cache_clear()
 
             response = Response()
@@ -240,7 +240,7 @@ class TestLoginFlowCookie:
     def test_httponly_protects_flow_id(self):
         """Flow ID is security-sensitive - must be HttpOnly."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
-            from src.core.config import get_settings
+            from gim_backend.core.config import get_settings
             get_settings.cache_clear()
 
             response = Response()

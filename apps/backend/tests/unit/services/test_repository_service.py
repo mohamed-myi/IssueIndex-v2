@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.services.repository_service import (
+from gim_backend.services.repository_service import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
     RepositoryItem,

@@ -6,9 +6,9 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
-from src.middleware.auth import require_auth
-from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+from gim_backend.main import app
+from gim_backend.middleware.auth import require_auth
+from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
 @pytest.fixture(autouse=True)
@@ -109,9 +109,9 @@ class TestIntentValidation:
         assert response.status_code == 422
 
     def test_invalid_language_returns_400_with_detail(self, authenticated_client):
-        from src.services.profile_service import InvalidTaxonomyValueError
+        from gim_backend.services.profile_service import InvalidTaxonomyValueError
 
-        with patch("src.api.routes.profile.create_intent_service") as mock_create:
+        with patch("gim_backend.api.routes.profile.create_intent_service") as mock_create:
             mock_create.side_effect = InvalidTaxonomyValueError(
                 field="language", invalid_value="Cobol", valid_options=["Python"]
             )
@@ -126,9 +126,9 @@ class TestIntentValidation:
             assert "Cobol" in response.json()["detail"]
 
     def test_invalid_stack_area_returns_400_with_detail(self, authenticated_client):
-        from src.services.profile_service import InvalidTaxonomyValueError
+        from gim_backend.services.profile_service import InvalidTaxonomyValueError
 
-        with patch("src.api.routes.profile.create_intent_service") as mock_create:
+        with patch("gim_backend.api.routes.profile.create_intent_service") as mock_create:
             mock_create.side_effect = InvalidTaxonomyValueError(
                 field="stack_area", invalid_value="hacking", valid_options=["backend"]
             )
@@ -159,7 +159,7 @@ class TestPreferencesValidation:
         assert response.status_code == 422
 
     def test_accepts_boundary_threshold_0(self, authenticated_client):
-        with patch("src.api.routes.profile.update_preferences_service") as mock_update:
+        with patch("gim_backend.api.routes.profile.update_preferences_service") as mock_update:
             mock_profile = MagicMock()
             mock_profile.preferred_languages = []
             mock_profile.preferred_topics = []
@@ -172,7 +172,7 @@ class TestPreferencesValidation:
             assert response.status_code == 200
 
     def test_accepts_boundary_threshold_1(self, authenticated_client):
-        with patch("src.api.routes.profile.update_preferences_service") as mock_update:
+        with patch("gim_backend.api.routes.profile.update_preferences_service") as mock_update:
             mock_profile = MagicMock()
             mock_profile.preferred_languages = []
             mock_profile.preferred_topics = []
@@ -189,9 +189,9 @@ class TestConflictHandling:
     """Tests idempotency and conflict scenarios."""
 
     def test_create_intent_returns_409_when_exists(self, authenticated_client):
-        from src.services.profile_service import IntentAlreadyExistsError
+        from gim_backend.services.profile_service import IntentAlreadyExistsError
 
-        with patch("src.api.routes.profile.create_intent_service") as mock_create:
+        with patch("gim_backend.api.routes.profile.create_intent_service") as mock_create:
             mock_create.side_effect = IntentAlreadyExistsError("Intent already exists")
 
             response = authenticated_client.post("/profile/intent", json={
@@ -202,16 +202,16 @@ class TestConflictHandling:
             assert response.status_code == 409
 
     def test_get_intent_returns_404_when_missing(self, authenticated_client):
-        with patch("src.api.routes.profile.get_intent_service") as mock_get:
+        with patch("gim_backend.api.routes.profile.get_intent_service") as mock_get:
             mock_get.return_value = None
 
             response = authenticated_client.get("/profile/intent")
             assert response.status_code == 404
 
     def test_update_intent_returns_404_when_missing(self, authenticated_client):
-        from src.services.profile_service import IntentNotFoundError
+        from gim_backend.services.profile_service import IntentNotFoundError
 
-        with patch("src.api.routes.profile.update_intent_service") as mock_update:
+        with patch("gim_backend.api.routes.profile.update_intent_service") as mock_update:
             mock_update.side_effect = IntentNotFoundError("No intent exists")
 
             response = authenticated_client.patch("/profile/intent", json={
@@ -220,7 +220,7 @@ class TestConflictHandling:
             assert response.status_code == 404
 
     def test_delete_intent_returns_404_when_missing(self, authenticated_client):
-        with patch("src.api.routes.profile.delete_intent_service") as mock_delete:
+        with patch("gim_backend.api.routes.profile.delete_intent_service") as mock_delete:
             mock_delete.return_value = False
 
             response = authenticated_client.delete("/profile/intent")
@@ -231,7 +231,7 @@ class TestResponseStructure:
     """Verifies API response shapes match specification."""
 
     def test_get_profile_returns_complete_structure(self, authenticated_client, mock_user):
-        with patch("src.api.routes.profile.get_full_profile") as mock_get:
+        with patch("gim_backend.api.routes.profile.get_full_profile") as mock_get:
             mock_get.return_value = {
                 "user_id": str(mock_user.id),
                 "optimization_percent": 50,
@@ -271,7 +271,7 @@ class TestResponseStructure:
             assert data["preferences"]["min_heat_threshold"] == 0.6
 
     def test_create_intent_returns_201(self, authenticated_client):
-        with patch("src.api.routes.profile.create_intent_service") as mock_create:
+        with patch("gim_backend.api.routes.profile.create_intent_service") as mock_create:
             mock_profile = MagicMock()
             mock_profile.preferred_languages = ["Python"]
             mock_profile.intent_stack_areas = ["backend"]
@@ -294,7 +294,7 @@ class TestPutIntent:
     """Integration tests for PUT /profile/intent."""
 
     def test_returns_201_when_created(self, authenticated_client):
-        from models.profiles import UserProfile
+        from gim_database.models.profiles import UserProfile
 
         mock_profile = MagicMock(spec=UserProfile)
         mock_profile.preferred_languages = ["Python"]
@@ -305,7 +305,7 @@ class TestPutIntent:
         mock_profile.updated_at = datetime.now(UTC)
 
         with patch(
-            "src.api.routes.profile.put_intent_service",
+            "gim_backend.api.routes.profile.put_intent_service",
             return_value=(mock_profile, True),
         ):
             response = authenticated_client.put("/profile/intent", json={
@@ -319,7 +319,7 @@ class TestPutIntent:
         assert response.json()["languages"] == ["Python"]
 
     def test_returns_200_when_replaced(self, authenticated_client):
-        from models.profiles import UserProfile
+        from gim_database.models.profiles import UserProfile
 
         mock_profile = MagicMock(spec=UserProfile)
         mock_profile.preferred_languages = ["Python"]
@@ -330,7 +330,7 @@ class TestPutIntent:
         mock_profile.updated_at = datetime.now(UTC)
 
         with patch(
-            "src.api.routes.profile.put_intent_service",
+            "gim_backend.api.routes.profile.put_intent_service",
             return_value=(mock_profile, False),
         ):
             response = authenticated_client.put("/profile/intent", json={
@@ -358,7 +358,7 @@ class TestProcessingStatus:
         mock_profile.combined_vector = None
 
         with patch(
-            "src.api.routes.profile.get_or_create_profile",
+            "gim_backend.api.routes.profile.get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -382,7 +382,7 @@ class TestProcessingStatus:
         mock_profile.combined_vector = None
 
         with patch(
-            "src.api.routes.profile.get_or_create_profile",
+            "gim_backend.api.routes.profile.get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -403,7 +403,7 @@ class TestProcessingStatus:
         mock_profile.combined_vector = None
 
         with patch(
-            "src.api.routes.profile.get_or_create_profile",
+            "gim_backend.api.routes.profile.get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -424,7 +424,7 @@ class TestProcessingStatus:
         mock_profile.combined_vector = [0.2] * 768
 
         with patch(
-            "src.api.routes.profile.get_or_create_profile",
+            "gim_backend.api.routes.profile.get_or_create_profile",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -441,7 +441,7 @@ class TestPatchSemantics:
     """Tests partial update behavior for PATCH endpoints."""
 
     def test_patch_intent_updates_only_provided_field(self, authenticated_client):
-        with patch("src.api.routes.profile.update_intent_service") as mock_update:
+        with patch("gim_backend.api.routes.profile.update_intent_service") as mock_update:
             mock_profile = MagicMock()
             mock_profile.preferred_languages = ["Python"]
             mock_profile.intent_stack_areas = ["backend"]
@@ -461,7 +461,7 @@ class TestPatchSemantics:
             assert call_kwargs["_experience_level_provided"] is True
 
     def test_patch_intent_distinguishes_null_from_omitted(self, authenticated_client):
-        with patch("src.api.routes.profile.update_intent_service") as mock_update:
+        with patch("gim_backend.api.routes.profile.update_intent_service") as mock_update:
             mock_profile = MagicMock()
             mock_profile.preferred_languages = ["Python"]
             mock_profile.intent_stack_areas = ["backend"]
@@ -480,7 +480,7 @@ class TestPatchSemantics:
             assert call_kwargs["experience_level"] is None
 
     def test_patch_preferences_updates_only_provided_field(self, authenticated_client):
-        with patch("src.api.routes.profile.update_preferences_service") as mock_update:
+        with patch("gim_backend.api.routes.profile.update_preferences_service") as mock_update:
             mock_profile = MagicMock()
             mock_profile.preferred_languages = ["Python"]
             mock_profile.preferred_topics = []
@@ -501,7 +501,7 @@ class TestDeleteBehavior:
     """Tests deletion semantics for profile and intent."""
 
     def test_delete_profile_returns_deleted_status(self, authenticated_client):
-        with patch("src.api.routes.profile.delete_profile_service") as mock_delete:
+        with patch("gim_backend.api.routes.profile.delete_profile_service") as mock_delete:
             mock_delete.return_value = True
 
             response = authenticated_client.delete("/profile")
@@ -511,7 +511,7 @@ class TestDeleteBehavior:
             assert data["deleted"] is True
 
     def test_delete_profile_indicates_no_data_cleared(self, authenticated_client):
-        with patch("src.api.routes.profile.delete_profile_service") as mock_delete:
+        with patch("gim_backend.api.routes.profile.delete_profile_service") as mock_delete:
             mock_delete.return_value = False
 
             response = authenticated_client.delete("/profile")
@@ -521,7 +521,7 @@ class TestDeleteBehavior:
             assert data["deleted"] is False
 
     def test_delete_intent_returns_deleted_status(self, authenticated_client):
-        with patch("src.api.routes.profile.delete_intent_service") as mock_delete:
+        with patch("gim_backend.api.routes.profile.delete_intent_service") as mock_delete:
             mock_delete.return_value = True
 
             response = authenticated_client.delete("/profile/intent")
@@ -537,7 +537,7 @@ class TestVectorGeneration:
     def test_create_intent_generates_intent_vector(self, authenticated_client):
         mock_vector = [0.1] * 768
 
-        with patch("src.api.routes.profile.create_intent_service") as mock_create:
+        with patch("gim_backend.api.routes.profile.create_intent_service") as mock_create:
             mock_profile = MagicMock()
             mock_profile.preferred_languages = ["Python"]
             mock_profile.intent_stack_areas = ["backend"]
@@ -558,7 +558,7 @@ class TestVectorGeneration:
             assert data["vector_status"] == "ready"
 
     def test_create_intent_generates_combined_vector_when_intent_only(self, authenticated_client):
-        with patch("src.api.routes.profile.get_full_profile") as mock_get:
+        with patch("gim_backend.api.routes.profile.get_full_profile") as mock_get:
             mock_get.return_value = {
                 "user_id": str(uuid4()),
                 "optimization_percent": 50,
@@ -598,7 +598,7 @@ class TestVectorGeneration:
     def test_update_intent_regenerates_vector_when_text_changes(self, authenticated_client):
         mock_vector = [0.2] * 768
 
-        with patch("src.api.routes.profile.update_intent_service") as mock_update:
+        with patch("gim_backend.api.routes.profile.update_intent_service") as mock_update:
             mock_profile = MagicMock()
             mock_profile.preferred_languages = ["Python"]
             mock_profile.intent_stack_areas = ["backend"]
@@ -619,7 +619,7 @@ class TestVectorGeneration:
     def test_update_intent_regenerates_vector_when_stack_areas_change(self, authenticated_client):
         mock_vector = [0.3] * 768
 
-        with patch("src.api.routes.profile.update_intent_service") as mock_update:
+        with patch("gim_backend.api.routes.profile.update_intent_service") as mock_update:
             mock_profile = MagicMock()
             mock_profile.preferred_languages = ["Python"]
             mock_profile.intent_stack_areas = ["frontend", "backend"]
@@ -638,7 +638,7 @@ class TestVectorGeneration:
             assert data["vector_status"] == "ready"
 
     def test_delete_intent_recalculates_combined_vector(self, authenticated_client):
-        with patch("src.api.routes.profile.delete_intent_service") as mock_delete:
+        with patch("gim_backend.api.routes.profile.delete_intent_service") as mock_delete:
             mock_delete.return_value = True
 
             response = authenticated_client.delete("/profile/intent")
@@ -647,7 +647,7 @@ class TestVectorGeneration:
             mock_delete.assert_called_once()
 
     def test_combined_vector_becomes_none_when_all_sources_deleted(self, authenticated_client):
-        with patch("src.api.routes.profile.get_full_profile") as mock_get:
+        with patch("gim_backend.api.routes.profile.get_full_profile") as mock_get:
             mock_get.return_value = {
                 "user_id": str(uuid4()),
                 "optimization_percent": 0,
@@ -679,7 +679,7 @@ class TestIsCalculatingFlag:
     """Verifies is_calculating flag state transitions."""
 
     def test_profile_shows_calculating_state(self, authenticated_client):
-        with patch("src.api.routes.profile.get_full_profile") as mock_get:
+        with patch("gim_backend.api.routes.profile.get_full_profile") as mock_get:
             mock_get.return_value = {
                 "user_id": str(uuid4()),
                 "optimization_percent": 50,
@@ -716,7 +716,7 @@ class TestIsCalculatingFlag:
             assert data["is_calculating"] is True
 
     def test_profile_shows_not_calculating_after_completion(self, authenticated_client):
-        with patch("src.api.routes.profile.get_full_profile") as mock_get:
+        with patch("gim_backend.api.routes.profile.get_full_profile") as mock_get:
             mock_get.return_value = {
                 "user_id": str(uuid4()),
                 "optimization_percent": 50,

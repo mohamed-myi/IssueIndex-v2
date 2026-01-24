@@ -2,12 +2,12 @@
 
 import json
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.ingestion.pubsub_consumer import IssueEmbeddingConsumer
+from gim_backend.ingestion.pubsub_consumer import IssueEmbeddingConsumer
 
 
 @pytest.fixture
@@ -62,7 +62,7 @@ class TestProcessMessage:
     ):
         """Should generate 256-dim embedding for message"""
         factory, mock_session = mock_session_factory
-        
+
         # Not a duplicate
         mock_result = MagicMock()
         mock_result.scalar.return_value = None
@@ -89,7 +89,7 @@ class TestProcessMessage:
     ):
         """Should skip processing if content_hash already exists"""
         factory, mock_session = mock_session_factory
-        
+
         # Simulate existing record with same content_hash
         mock_result = MagicMock()
         mock_result.scalar.return_value = 1  # Record exists
@@ -112,7 +112,7 @@ class TestProcessMessage:
     ):
         """Should return False if embedding generation fails"""
         factory, mock_session = mock_session_factory
-        
+
         # Not a duplicate
         mock_result = MagicMock()
         mock_result.scalar.return_value = None
@@ -177,14 +177,14 @@ class TestPersistIssue:
     ):
         """Should execute INSERT query on successful processing"""
         factory, mock_session = mock_session_factory
-        
+
         # First call for idempotency check (no duplicate)
         mock_check_result = MagicMock()
         mock_check_result.scalar.return_value = None
-        
+
         # Second call for insert (no return value needed)
         mock_insert_result = MagicMock()
-        
+
         mock_session.execute.side_effect = [mock_check_result, mock_insert_result]
 
         consumer = IssueEmbeddingConsumer(
@@ -205,7 +205,7 @@ class TestPersistIssue:
     ):
         """Should persist Q-score components correctly"""
         factory, mock_session = mock_session_factory
-        
+
         mock_check_result = MagicMock()
         mock_check_result.scalar.return_value = None
         mock_insert_result = MagicMock()
@@ -233,7 +233,7 @@ class TestPersistIssue:
     ):
         """Should calculate and persist survival_score"""
         factory, mock_session = mock_session_factory
-        
+
         mock_check_result = MagicMock()
         mock_check_result.scalar.return_value = None
         mock_insert_result = MagicMock()
@@ -265,7 +265,7 @@ class TestAlreadyProcessed:
     ):
         """Should return True if record with same hash exists"""
         factory, mock_session = mock_session_factory
-        
+
         mock_result = MagicMock()
         mock_result.scalar.return_value = 1
         mock_session.execute.return_value = mock_result
@@ -285,7 +285,7 @@ class TestAlreadyProcessed:
     ):
         """Should return False if no record with hash exists"""
         factory, mock_session = mock_session_factory
-        
+
         mock_result = MagicMock()
         mock_result.scalar.return_value = None
         mock_session.execute.return_value = mock_result
@@ -309,7 +309,7 @@ class TestDatetimeParsing:
     ):
         """Should correctly parse ISO datetime strings"""
         factory, mock_session = mock_session_factory
-        
+
         mock_check_result = MagicMock()
         mock_check_result.scalar.return_value = None
         mock_insert_result = MagicMock()
@@ -336,7 +336,7 @@ class TestDatetimeParsing:
     ):
         """Should handle Z suffix in datetime strings"""
         factory, mock_session = mock_session_factory
-        
+
         mock_check_result = MagicMock()
         mock_check_result.scalar.return_value = None
         mock_insert_result = MagicMock()

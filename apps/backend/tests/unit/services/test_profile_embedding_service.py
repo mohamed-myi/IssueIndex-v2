@@ -8,7 +8,7 @@ import pytest
 class TestFormatIntentText:
 
     def test_formats_stack_areas_and_text(self):
-        from src.services.profile_embedding_service import format_intent_text
+        from gim_backend.services.profile_embedding_service import format_intent_text
 
         result = format_intent_text(
             stack_areas=["backend", "data_engineering"],
@@ -18,7 +18,7 @@ class TestFormatIntentText:
         assert result == "backend, data_engineering. I want to contribute to async Python libraries"
 
     def test_formats_single_stack_area(self):
-        from src.services.profile_embedding_service import format_intent_text
+        from gim_backend.services.profile_embedding_service import format_intent_text
 
         result = format_intent_text(
             stack_areas=["frontend"],
@@ -28,7 +28,7 @@ class TestFormatIntentText:
         assert result == "frontend. Looking for React component bugs"
 
     def test_handles_empty_stack_areas(self):
-        from src.services.profile_embedding_service import format_intent_text
+        from gim_backend.services.profile_embedding_service import format_intent_text
 
         result = format_intent_text(
             stack_areas=[],
@@ -38,7 +38,7 @@ class TestFormatIntentText:
         assert result == "I want to work on open source"
 
     def test_handles_only_stack_areas(self):
-        from src.services.profile_embedding_service import format_intent_text
+        from gim_backend.services.profile_embedding_service import format_intent_text
 
         result = format_intent_text(
             stack_areas=["backend", "devops"],
@@ -48,7 +48,7 @@ class TestFormatIntentText:
         assert result == "backend, devops"
 
     def test_handles_empty_inputs(self):
-        from src.services.profile_embedding_service import format_intent_text
+        from gim_backend.services.profile_embedding_service import format_intent_text
 
         result = format_intent_text(stack_areas=[], text="")
 
@@ -58,7 +58,7 @@ class TestFormatIntentText:
 class TestL2Normalization:
 
     def test_normalizes_to_unit_vector(self):
-        from src.services.profile_embedding_service import _l2_normalize
+        from gim_backend.services.profile_embedding_service import _l2_normalize
 
         vector = [3.0, 4.0]
         result = _l2_normalize(vector)
@@ -67,7 +67,7 @@ class TestL2Normalization:
         assert abs(magnitude - 1.0) < 1e-10
 
     def test_preserves_direction(self):
-        from src.services.profile_embedding_service import _l2_normalize
+        from gim_backend.services.profile_embedding_service import _l2_normalize
 
         vector = [3.0, 4.0]
         result = _l2_normalize(vector)
@@ -76,7 +76,7 @@ class TestL2Normalization:
         assert abs(result[1] - 0.8) < 1e-10
 
     def test_handles_zero_vector(self):
-        from src.services.profile_embedding_service import _l2_normalize
+        from gim_backend.services.profile_embedding_service import _l2_normalize
 
         vector = [0.0, 0.0, 0.0]
         result = _l2_normalize(vector)
@@ -84,7 +84,7 @@ class TestL2Normalization:
         assert result == [0.0, 0.0, 0.0]
 
     def test_handles_large_dimension_vector(self):
-        from src.services.profile_embedding_service import _l2_normalize
+        from gim_backend.services.profile_embedding_service import _l2_normalize
 
         vector = [1.0] * 768
         result = _l2_normalize(vector)
@@ -97,11 +97,11 @@ class TestGenerateIntentVector:
 
     @pytest.mark.asyncio
     async def test_generates_vector_from_stack_and_text(self):
-        from src.services.profile_embedding_service import generate_intent_vector
+        from gim_backend.services.profile_embedding_service import generate_intent_vector
 
         mock_vector = [0.1] * 768
 
-        with patch("src.services.profile_embedding_service.embed_query", new_callable=AsyncMock) as mock_embed:
+        with patch("gim_backend.services.profile_embedding_service.embed_query", new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = mock_vector
 
             result = await generate_intent_vector(
@@ -116,9 +116,9 @@ class TestGenerateIntentVector:
 
     @pytest.mark.asyncio
     async def test_returns_none_on_embedding_failure(self):
-        from src.services.profile_embedding_service import generate_intent_vector
+        from gim_backend.services.profile_embedding_service import generate_intent_vector
 
-        with patch("src.services.profile_embedding_service.embed_query", new_callable=AsyncMock) as mock_embed:
+        with patch("gim_backend.services.profile_embedding_service.embed_query", new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = None
 
             result = await generate_intent_vector(
@@ -130,9 +130,9 @@ class TestGenerateIntentVector:
 
     @pytest.mark.asyncio
     async def test_returns_none_for_empty_input(self):
-        from src.services.profile_embedding_service import generate_intent_vector
+        from gim_backend.services.profile_embedding_service import generate_intent_vector
 
-        with patch("src.services.profile_embedding_service.embed_query", new_callable=AsyncMock) as mock_embed:
+        with patch("gim_backend.services.profile_embedding_service.embed_query", new_callable=AsyncMock) as mock_embed:
             result = await generate_intent_vector(stack_areas=[], text="")
 
             mock_embed.assert_not_called()
@@ -150,7 +150,7 @@ class TestCalculateCombinedVector:
 
     @pytest.mark.asyncio
     async def test_returns_none_when_no_sources(self):
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         result = await calculate_combined_vector(
             intent_vector=None,
@@ -162,7 +162,7 @@ class TestCalculateCombinedVector:
 
     @pytest.mark.asyncio
     async def test_intent_only_returns_normalized_intent(self):
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         intent = self._create_mock_vector(2.0)
 
@@ -178,7 +178,7 @@ class TestCalculateCombinedVector:
 
     @pytest.mark.asyncio
     async def test_resume_only_returns_normalized_resume(self):
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         resume = self._create_mock_vector(3.0)
 
@@ -194,7 +194,7 @@ class TestCalculateCombinedVector:
 
     @pytest.mark.asyncio
     async def test_github_only_returns_normalized_github(self):
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         github = self._create_mock_vector(4.0)
 
@@ -210,7 +210,7 @@ class TestCalculateCombinedVector:
 
     @pytest.mark.asyncio
     async def test_intent_plus_resume_uses_correct_weights(self):
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         intent = [1.0, 0.0, 0.0]
         resume = [0.0, 1.0, 0.0]
@@ -234,7 +234,7 @@ class TestCalculateCombinedVector:
 
     @pytest.mark.asyncio
     async def test_intent_plus_github_uses_correct_weights(self):
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         intent = [1.0, 0.0, 0.0]
         github = [0.0, 1.0, 0.0]
@@ -258,7 +258,7 @@ class TestCalculateCombinedVector:
 
     @pytest.mark.asyncio
     async def test_resume_plus_github_uses_correct_weights(self):
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         resume = [1.0, 0.0, 0.0]
         github = [0.0, 1.0, 0.0]
@@ -282,7 +282,7 @@ class TestCalculateCombinedVector:
 
     @pytest.mark.asyncio
     async def test_all_three_uses_correct_weights(self):
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         intent = [1.0, 0.0, 0.0]
         resume = [0.0, 1.0, 0.0]
@@ -309,7 +309,7 @@ class TestCalculateCombinedVector:
 
     @pytest.mark.asyncio
     async def test_combined_vector_is_unit_vector_768dim(self):
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         intent = self._create_mock_vector(1.5, 768)
         resume = self._create_mock_vector(2.5, 768)
@@ -331,7 +331,7 @@ class TestCalculateCombinedVector:
 class TestWeightedSum:
 
     def test_computes_weighted_sum(self):
-        from src.services.profile_embedding_service import _weighted_sum
+        from gim_backend.services.profile_embedding_service import _weighted_sum
 
         v1 = [1.0, 0.0]
         v2 = [0.0, 1.0]
@@ -342,7 +342,7 @@ class TestWeightedSum:
         assert abs(result[1] - 0.4) < 1e-10
 
     def test_returns_empty_for_no_inputs(self):
-        from src.services.profile_embedding_service import _weighted_sum
+        from gim_backend.services.profile_embedding_service import _weighted_sum
 
         result = _weighted_sum([])
 

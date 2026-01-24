@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.ingestion.gatherer import (
+from gim_backend.ingestion.gatherer import (
     BODY_TRUNCATE_LENGTH,
     Gatherer,
     IssueData,
 )
-from src.ingestion.quality_gate import QScoreComponents
-from src.ingestion.scout import RepositoryData
+from gim_backend.ingestion.quality_gate import QScoreComponents
+from gim_backend.ingestion.scout import RepositoryData
 
 
 @pytest.fixture
@@ -779,7 +779,7 @@ class TestConcurrentHarvesting:
                 }
             }
 
-        repo_call_idx = [0]
+
 
         async def mock_execute_multi_issues(*args, **kwargs):
             variables = kwargs.get("variables", args[1] if len(args) > 1 else {})

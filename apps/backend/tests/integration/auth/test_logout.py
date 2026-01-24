@@ -1,7 +1,7 @@
 
 from fastapi.testclient import TestClient
 
-from src.main import app
+from gim_backend.main import app
 
 
 class TestLogout:

@@ -7,7 +7,7 @@ and edge case handling.
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from src.services.search_service import (
+from gim_backend.services.search_service import (
     CANDIDATE_LIMIT,
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
@@ -248,7 +248,7 @@ class TestStage2StateEnforcement:
     def test_stage2_filters_open_issues(self):
         import inspect
 
-        from src.services import search_service
+        from gim_backend.services import search_service
 
         src = inspect.getsource(search_service._execute_stage2)
         assert "i.state = 'open'" in src

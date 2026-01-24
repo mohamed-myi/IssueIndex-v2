@@ -1,19 +1,12 @@
 """Unit tests for Cloud Tasks service."""
-import sys
-from pathlib import Path
 from uuid import uuid4
-
-project_root = Path(__file__).resolve().parent.parent.parent.parent.parent
-database_src = project_root / "packages" / "database" / "src"
-if str(database_src) not in sys.path:
-    sys.path.insert(0, str(database_src))
 
 
 class TestCloudTasksClientMockMode:
     """Tests for Cloud Tasks client in mock mode."""
 
     async def test_enqueue_resume_task_returns_job_id(self):
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             get_cloud_tasks_client,
             reset_client_for_testing,
         )
@@ -37,7 +30,7 @@ class TestCloudTasksClientMockMode:
         reset_client_for_testing()
 
     async def test_enqueue_github_task_returns_job_id(self):
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             get_cloud_tasks_client,
             reset_client_for_testing,
         )
@@ -56,7 +49,7 @@ class TestCloudTasksClientMockMode:
         reset_client_for_testing()
 
     async def test_mock_tasks_are_stored(self):
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             get_cloud_tasks_client,
             reset_client_for_testing,
         )
@@ -83,7 +76,7 @@ class TestCloudTasksClientMockMode:
         reset_client_for_testing()
 
     async def test_cancel_user_tasks_removes_all_user_tasks(self):
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             get_cloud_tasks_client,
             reset_client_for_testing,
         )
@@ -113,7 +106,7 @@ class TestCloudTasksClientMockMode:
         reset_client_for_testing()
 
     async def test_cancel_user_tasks_returns_zero_when_no_tasks(self):
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             get_cloud_tasks_client,
             reset_client_for_testing,
         )
@@ -130,7 +123,7 @@ class TestCloudTasksClientMockMode:
         reset_client_for_testing()
 
     async def test_clear_mock_tasks(self):
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             get_cloud_tasks_client,
             reset_client_for_testing,
         )
@@ -154,7 +147,7 @@ class TestConvenienceFunctions:
     """Tests for module-level convenience functions."""
 
     async def test_enqueue_resume_task_function(self):
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             enqueue_resume_task,
             reset_client_for_testing,
         )
@@ -173,7 +166,7 @@ class TestConvenienceFunctions:
         reset_client_for_testing()
 
     async def test_enqueue_github_task_function(self):
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             enqueue_github_task,
             reset_client_for_testing,
         )
@@ -188,7 +181,7 @@ class TestConvenienceFunctions:
         reset_client_for_testing()
 
     async def test_cancel_user_tasks_function(self):
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             cancel_user_tasks,
             enqueue_resume_task,
             reset_client_for_testing,
@@ -210,7 +203,7 @@ class TestTaskPayloads:
     """Tests for task payload structure."""
 
     async def test_resume_task_payload_contains_required_fields(self):
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             get_cloud_tasks_client,
             reset_client_for_testing,
         )
@@ -245,7 +238,7 @@ class TestTaskPayloads:
         reset_client_for_testing()
 
     async def test_github_task_payload_contains_required_fields(self):
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             get_cloud_tasks_client,
             reset_client_for_testing,
         )

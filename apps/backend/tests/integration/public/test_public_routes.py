@@ -8,8 +8,8 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
-from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+from gim_backend.main import app
+from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
 @pytest.fixture(autouse=True)
@@ -68,7 +68,7 @@ class TestTrendingRoute:
     def test_trending_returns_200_without_auth(self, client):
         """Trending endpoint works without authentication."""
         with patch(
-            "src.api.routes.public._get_trending_feed",
+            "gim_backend.api.routes.public._get_trending_feed",
             return_value=_FeedResponse(count=5),
         ):
             response = client.get("/feed/trending")
@@ -78,7 +78,7 @@ class TestTrendingRoute:
     def test_trending_returns_expected_structure(self, client):
         """Response has expected fields."""
         with patch(
-            "src.api.routes.public._get_trending_feed",
+            "gim_backend.api.routes.public._get_trending_feed",
             return_value=_FeedResponse(count=3),
         ):
             response = client.get("/feed/trending")
@@ -91,7 +91,7 @@ class TestTrendingRoute:
     def test_trending_results_have_expected_fields(self, client):
         """Each result has expected issue fields."""
         with patch(
-            "src.api.routes.public._get_trending_feed",
+            "gim_backend.api.routes.public._get_trending_feed",
             return_value=_FeedResponse(count=1),
         ):
             response = client.get("/feed/trending")
@@ -110,7 +110,7 @@ class TestTrendingRoute:
     def test_trending_limit_is_10(self, client):
         """Public endpoint has limit of 10."""
         with patch(
-            "src.api.routes.public._get_trending_feed",
+            "gim_backend.api.routes.public._get_trending_feed",
             return_value=_FeedResponse(count=10),
         ):
             response = client.get("/feed/trending")
@@ -121,7 +121,7 @@ class TestTrendingRoute:
     def test_trending_returns_empty_for_empty_db(self, client):
         """Returns empty results gracefully."""
         with patch(
-            "src.api.routes.public._get_trending_feed",
+            "gim_backend.api.routes.public._get_trending_feed",
             return_value=_FeedResponse(count=0, total=0),
         ):
             response = client.get("/feed/trending")
@@ -138,7 +138,7 @@ class TestStatsRoute:
     def test_stats_returns_200_without_auth(self, client):
         """Stats endpoint works without authentication."""
         with patch(
-            "src.api.routes.public.get_platform_stats",
+            "gim_backend.api.routes.public.get_platform_stats",
             return_value=_PlatformStats(),
         ):
             response = client.get("/stats")
@@ -148,7 +148,7 @@ class TestStatsRoute:
     def test_stats_returns_expected_fields(self, client):
         """Response has all required fields."""
         with patch(
-            "src.api.routes.public.get_platform_stats",
+            "gim_backend.api.routes.public.get_platform_stats",
             return_value=_PlatformStats(),
         ):
             response = client.get("/stats")
@@ -162,7 +162,7 @@ class TestStatsRoute:
     def test_stats_returns_correct_values(self, client):
         """Response contains correct stat values."""
         with patch(
-            "src.api.routes.public.get_platform_stats",
+            "gim_backend.api.routes.public.get_platform_stats",
             return_value=_PlatformStats(),
         ):
             response = client.get("/stats")
@@ -178,7 +178,7 @@ class TestStatsRoute:
         stats.indexed_at = None
 
         with patch(
-            "src.api.routes.public.get_platform_stats",
+            "gim_backend.api.routes.public.get_platform_stats",
             return_value=stats,
         ):
             response = client.get("/stats")

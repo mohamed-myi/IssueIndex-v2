@@ -1,0 +1,149 @@
+"""
+Feed API route for personalized issue recommendations.
+Uses combined_vector for similarity; falls back to trending when no profile.
+"""
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, Query
+from gim_database.models.identity import Session, User
+from pydantic import BaseModel, Field
+from sqlmodel.ext.asyncio.session import AsyncSession
+
+from gim_backend.api.dependencies import get_db
+from gim_backend.middleware.auth import require_auth
+from gim_backend.services.feed_service import (
+    DEFAULT_PAGE_SIZE,
+    MAX_PAGE_SIZE,
+    get_feed,
+)
+from gim_backend.services.recommendation_event_service import (
+    generate_recommendation_batch_id,
+    store_recommendation_batch_context,
+)
+
+router = APIRouter()
+
+class WhyThisItemOutput(BaseModel):
+    entity: str
+    score: float
+
+
+class FeedItemOutput(BaseModel):
+    """Single issue in the feed."""
+    node_id: str
+    title: str
+    body_preview: str
+    labels: list[str]
+    q_score: float
+    repo_name: str
+    primary_language: str | None
+    github_created_at: str
+    similarity_score: float | None = Field(
+        default=None,
+        description="Cosine similarity to user profile; null for trending feed",
+    )
+    why_this: list[WhyThisItemOutput] | None = Field(
+        default=None,
+        description="Top explanation entities with raw scores; present for personalized feed only.",
+    )
+
+
+class FeedResponse(BaseModel):
+    """Paginated feed response with personalization metadata."""
+    recommendation_batch_id: str = Field(
+        description="Server generated identifier for logging impressions and clicks for this response.",
+    )
+    results: list[FeedItemOutput]
+    total: int
+    page: int
+    page_size: int
+    has_more: bool
+    is_personalized: bool = Field(
+        description="True if results are based on user profile; false for trending",
+    )
+    profile_cta: str | None = Field(
+        default=None,
+        description="Call to action message when showing trending feed",
+    )
+
+
+@router.get("", response_model=FeedResponse)
+async def get_feed_route(
+    page: int = Query(default=1, ge=1, description="Page number"),
+    page_size: int = Query(
+        default=DEFAULT_PAGE_SIZE,
+        ge=1,
+        le=MAX_PAGE_SIZE,
+        description="Results per page",
+    ),
+    auth: tuple[User, Session] = Depends(require_auth),
+    db: AsyncSession = Depends(get_db),
+) -> FeedResponse:
+    """
+    Returns personalized issue recommendations based on user profile.
+
+    When the user has a combined_vector (from intent, resume, or GitHub data),
+    issues are ranked by vector similarity with preference filters applied.
+
+    When no profile data exists, returns trending issues (high quality, recent)
+    with a call to action to complete the profile.
+
+    Pagination:
+        page: 1-indexed page number
+        page_size: results per page (max 50)
+
+    Response includes:
+        is_personalized: true if using profile-based ranking
+        profile_cta: message shown when using trending fallback
+        similarity_score: cosine similarity for personalized results (null for trending)
+    """
+    user, _ = auth
+
+    feed = await get_feed(
+        db=db,
+        user_id=user.id,
+        page=page,
+        page_size=page_size,
+    )
+
+    recommendation_batch_id = generate_recommendation_batch_id()
+    served_at = datetime.now(UTC)
+    issue_node_ids = [item.node_id for item in feed.results]
+    await store_recommendation_batch_context(
+        recommendation_batch_id=recommendation_batch_id,
+        issue_node_ids=issue_node_ids,
+        page=feed.page,
+        page_size=feed.page_size,
+        is_personalized=feed.is_personalized,
+        served_at=served_at,
+    )
+
+    return FeedResponse(
+        recommendation_batch_id=str(recommendation_batch_id),
+        results=[
+            FeedItemOutput(
+                node_id=item.node_id,
+                title=item.title,
+                body_preview=item.body_preview,
+                labels=item.labels,
+                q_score=item.q_score,
+                repo_name=item.repo_name,
+                primary_language=item.primary_language,
+                github_created_at=item.github_created_at.isoformat(),
+                similarity_score=item.similarity_score,
+                why_this=(
+                    [WhyThisItemOutput(entity=w.entity, score=w.score) for w in item.why_this]
+                    if feed.is_personalized and item.why_this
+                    else None
+                ),
+            )
+            for item in feed.results
+        ],
+        total=feed.total,
+        page=feed.page,
+        page_size=feed.page_size,
+        has_more=feed.has_more,
+        is_personalized=feed.is_personalized,
+        profile_cta=feed.profile_cta,
+    )
+

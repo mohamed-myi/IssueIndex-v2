@@ -4,9 +4,10 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.core.errors import BookmarkAlreadyExistsError
-from src.services.bookmark_service import (
+from gim_backend.core.errors import BookmarkAlreadyExistsError
+from gim_backend.services.bookmark_service import (
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
     create_bookmark,
@@ -25,10 +26,10 @@ from src.services.bookmark_service import (
 
 @pytest.fixture
 def mock_db():
-    db = AsyncMock()
+    db = MagicMock(spec=AsyncSession)
     db.exec = AsyncMock()
     db.add = MagicMock()
-    db.delete = AsyncMock()
+    db.delete = MagicMock()
     db.commit = AsyncMock()
     db.refresh = AsyncMock()
     return db

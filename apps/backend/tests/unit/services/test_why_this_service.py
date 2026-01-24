@@ -1,4 +1,4 @@
-from src.services.why_this_service import compute_why_this
+from gim_backend.services.why_this_service import compute_why_this
 
 
 class _Profile:

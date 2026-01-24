@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
+from gim_backend.main import app
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ class TestRepositoriesEndpointIsPublic:
 
     def test_returns_200_without_auth(self, client):
         """Should not require authentication."""
-        with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
+        with patch("gim_backend.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
 
             response = client.get("/repositories")
@@ -36,7 +36,7 @@ class TestListRepositories:
         mock_repo.primary_language = "JavaScript"
         mock_repo.issue_count = 1250
 
-        with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
+        with patch("gim_backend.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = [mock_repo]
 
             response = client.get("/repositories")
@@ -48,7 +48,7 @@ class TestListRepositories:
 
     def test_filters_by_language(self, client):
         """Should pass language filter to service."""
-        with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
+        with patch("gim_backend.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
 
             client.get("/repositories?language=Python")
@@ -59,7 +59,7 @@ class TestListRepositories:
 
     def test_filters_by_search_query(self, client):
         """Should pass search query to service."""
-        with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
+        with patch("gim_backend.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
 
             client.get("/repositories?q=react")
@@ -70,7 +70,7 @@ class TestListRepositories:
 
     def test_respects_limit_parameter(self, client):
         """Should pass limit to service."""
-        with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
+        with patch("gim_backend.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
 
             client.get("/repositories?limit=25")
@@ -85,7 +85,7 @@ class TestListRepositories:
 
     def test_handles_empty_result(self, client):
         """Should return empty list when no repos match."""
-        with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
+        with patch("gim_backend.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
 
             response = client.get("/repositories")
@@ -99,7 +99,7 @@ class TestSQLSafety:
 
     def test_wildcard_percent_is_safe(self, client):
         """Should treat % as literal string, not SQL wildcard."""
-        with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
+        with patch("gim_backend.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
 
             # This should not match every repo
@@ -111,7 +111,7 @@ class TestSQLSafety:
 
     def test_wildcard_underscore_is_safe(self, client):
         """Should treat _ as literal string, not SQL wildcard."""
-        with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
+        with patch("gim_backend.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
 
             response = client.get("/repositories?q=_")
@@ -121,7 +121,7 @@ class TestSQLSafety:
 
     def test_sql_injection_is_safe(self, client):
         """Should treat SQL injection attempts as literal strings."""
-        with patch("src.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
+        with patch("gim_backend.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
             mock_list.return_value = []
 
             response = client.get("/repositories?q='; DROP TABLE--")

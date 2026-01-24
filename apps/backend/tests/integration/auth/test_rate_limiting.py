@@ -6,8 +6,8 @@ Tests the rate limiting behavior through the full HTTP request cycle.
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
-from src.middleware.rate_limit import (
+from gim_backend.main import app
+from gim_backend.middleware.rate_limit import (
     reset_rate_limiter,
     reset_rate_limiter_instance,
 )

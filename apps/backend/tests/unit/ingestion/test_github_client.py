@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from src.ingestion.github_client import (
+from gim_backend.ingestion.github_client import (
     GitHubAPIError,
     GitHubAuthError,
     GitHubGraphQLClient,

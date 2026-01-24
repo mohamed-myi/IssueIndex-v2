@@ -29,8 +29,8 @@ TEST_USER_UUID_2 = UUID("00000000-0000-0000-0000-000000000002")
 # Skip if no real database URL
 pytestmark = [
     pytest.mark.skipif(
-        not REAL_DATABASE_URL or "localhost" in REAL_DATABASE_URL,
-        reason="Real DATABASE_URL not set - skipping production DB tests"
+        not REAL_DATABASE_URL or "localhost" in REAL_DATABASE_URL or "127.0.0.1" in REAL_DATABASE_URL,
+        reason="Real DATABASE_URL not set or points to localhost - skipping production DB tests"
     ),
 ]
 

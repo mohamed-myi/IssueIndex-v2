@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.services.search_service import (
+from gim_backend.services.search_service import (
     SearchFilters,
     SearchRequest,
     hybrid_search,
@@ -138,8 +138,8 @@ async def db_session(async_engine):
     async with async_session_factory() as session:
         # Clean any leftover test data before yielding
         try:
-            await session.execute(text("DELETE FROM ingestion.issue WHERE node_id LIKE 'issue_%'"))
-            await session.execute(text("DELETE FROM ingestion.repository WHERE node_id LIKE 'repo_%'"))
+            await session.exec(text("DELETE FROM ingestion.issue WHERE node_id LIKE 'issue_%'"))
+            await session.exec(text("DELETE FROM ingestion.repository WHERE node_id LIKE 'repo_%'"))
             await session.commit()
         except Exception:
             await session.rollback()
@@ -149,8 +149,8 @@ async def db_session(async_engine):
         # Clean up after test
         try:
             await session.rollback()
-            await session.execute(text("DELETE FROM ingestion.issue WHERE node_id LIKE 'issue_%'"))
-            await session.execute(text("DELETE FROM ingestion.repository WHERE node_id LIKE 'repo_%'"))
+            await session.exec(text("DELETE FROM ingestion.issue WHERE node_id LIKE 'issue_%'"))
+            await session.exec(text("DELETE FROM ingestion.repository WHERE node_id LIKE 'repo_%'"))
             await session.commit()
         except Exception:
             pass
@@ -160,7 +160,7 @@ async def db_session(async_engine):
 async def seeded_db(db_session):
     """Seeds database with test data."""
     # Insert test repository
-    await db_session.execute(text("""
+    await db_session.exec(text("""
         INSERT INTO ingestion.repository (node_id, full_name, primary_language, stargazer_count)
         VALUES
             ('repo_1', 'test/python-repo', 'Python', 1000),
@@ -171,7 +171,7 @@ async def seeded_db(db_session):
     # Insert test issues with embeddings
     embedding_str = "[" + ",".join(str(x) for x in SAMPLE_EMBEDDING) + "]"
 
-    await db_session.execute(text(f"""
+    await db_session.exec(text(f"""
         INSERT INTO ingestion.issue
         (node_id, repo_id, title, body_text, labels, q_score, embedding, github_created_at)
         VALUES
@@ -198,7 +198,7 @@ class TestHybridSearchIntegration:
     async def test_search_returns_results(self, seeded_db):
         """Basic search should return matching results."""
         # Mock embed_query to return consistent embedding
-        with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
+        with patch('gim_backend.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
 
             request = SearchRequest(query="Python error")
@@ -211,7 +211,7 @@ class TestHybridSearchIntegration:
     @pytest.mark.asyncio
     async def test_search_with_language_filter(self, seeded_db):
         """Language filter should restrict results."""
-        with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
+        with patch('gim_backend.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
 
             request = SearchRequest(
@@ -227,7 +227,7 @@ class TestHybridSearchIntegration:
     @pytest.mark.asyncio
     async def test_search_with_label_filter(self, seeded_db):
         """Label filter should restrict results."""
-        with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
+        with patch('gim_backend.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
 
             request = SearchRequest(
@@ -243,7 +243,7 @@ class TestHybridSearchIntegration:
     @pytest.mark.asyncio
     async def test_search_empty_results_with_strict_filter(self, seeded_db):
         """Strict filter with no matches should return empty results."""
-        with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
+        with patch('gim_backend.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
 
             request = SearchRequest(
@@ -258,7 +258,7 @@ class TestHybridSearchIntegration:
     @pytest.mark.asyncio
     async def test_search_pagination(self, seeded_db):
         """Pagination should work correctly."""
-        with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
+        with patch('gim_backend.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
 
             # First page
@@ -279,7 +279,7 @@ class TestHybridSearchIntegration:
     @pytest.mark.asyncio
     async def test_rrf_scores_are_positive(self, seeded_db):
         """RRF scores should be positive for matched results."""
-        with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
+        with patch('gim_backend.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
 
             request = SearchRequest(query="Python async")
@@ -291,7 +291,7 @@ class TestHybridSearchIntegration:
     @pytest.mark.asyncio
     async def test_results_ordered_by_rrf_score(self, seeded_db):
         """Results should be ordered by RRF score descending."""
-        with patch('src.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
+        with patch('gim_backend.services.search_service.embed_query', new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = SAMPLE_EMBEDDING
 
             request = SearchRequest(query="Python error")
@@ -317,7 +317,7 @@ class TestSearchWithRealEmbeddings:
         """
         # This test uses real embeddings - skip if model not available
         try:
-            from src.services.embedding_service import reset_embedder_for_testing
+            from gim_backend.services.embedding_service import reset_embedder_for_testing
             reset_embedder_for_testing()
         except ImportError:
             pytest.skip("sentence-transformers not installed")

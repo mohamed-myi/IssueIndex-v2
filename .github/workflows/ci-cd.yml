@@ -185,24 +185,24 @@ jobs:
           gcloud run services update issueindex-api \
             --image=${{ env.REGISTRY }}/api:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --set-secrets="DATABASE_URL=database-url:latest" \
-            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }},EMBEDDING_MODE=nomic"
+            --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest,GOOGLE_CLIENT_ID=google-client-id:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest" \
+            --set-env-vars="EMBEDDING_MODE=nomic"
 
       - name: Deploy embed worker service
         run: |
           gcloud run services update issueindex-worker-embed \
             --image=${{ env.REGISTRY }}/worker-embed:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --set-secrets="DATABASE_URL=database-url:latest" \
-            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},EMBEDDING_MODE=nomic"
+            --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest" \
+            --set-env-vars="EMBEDDING_MODE=nomic"
 
       - name: Deploy resume worker service
         run: |
           gcloud run services update issueindex-worker-resume \
             --image=${{ env.REGISTRY }}/worker-resume:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --set-secrets="DATABASE_URL=database-url:latest" \
-            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }},EMBEDDING_MODE=nomic"
+            --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest" \
+            --set-env-vars="EMBEDDING_MODE=nomic"
 
       - name: Deploy embedding worker service
         run: |
@@ -230,8 +230,8 @@ jobs:
           gcloud run jobs update issueindex-janitor \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --set-secrets="DATABASE_URL=database-url:latest" \
-            --set-env-vars="FINGERPRINT_SECRET=${{ secrets.FINGERPRINT_SECRET }},FERNET_KEY=${{ secrets.FERNET_KEY }}"
+            --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest" \
+            --set-env-vars="JOB_TYPE=janitor"
 
       - name: Verify API deployment
         run: |

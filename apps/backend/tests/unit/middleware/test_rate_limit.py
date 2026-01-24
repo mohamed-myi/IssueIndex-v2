@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from src.middleware.rate_limit import (
+from gim_backend.middleware.rate_limit import (
     InMemoryRateLimiter,
     reset_rate_limiter,
 )

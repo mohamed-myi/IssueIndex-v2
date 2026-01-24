@@ -2,12 +2,22 @@
 
 import sys
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-# Mock external dependencies before importing
-sys.modules["ingestion"] = MagicMock()
-sys.modules["ingestion.janitor"] = MagicMock()
-sys.modules["session"] = MagicMock()
+# Remove global sys.modules patching
+# sys.modules["ingestion"] = MagicMock()
+# sys.modules["ingestion.janitor"] = MagicMock()
+# sys.modules["session"] = MagicMock()
+
+@pytest.fixture(autouse=True)
+def mock_dependencies():
+    """Mock external dependencies for all tests in this module"""
+    with patch.dict(sys.modules, {
+        "ingestion": MagicMock(),
+        "ingestion.janitor": MagicMock(),
+        "session": MagicMock()
+    }):
+        yield
 
 
 class TestJanitorJobExecution:

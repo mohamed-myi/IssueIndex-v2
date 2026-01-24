@@ -4,9 +4,9 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
-from src.middleware.auth import require_auth
-from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+from gim_backend.main import app
+from gim_backend.middleware.auth import require_auth
+from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
 @pytest.fixture(autouse=True)
@@ -67,14 +67,14 @@ class _Feed:
 
 
 def test_feed_includes_why_this_only_when_personalized(authenticated_client):
-    with patch("src.api.routes.feed.get_feed", return_value=_Feed(is_personalized=True)):
+    with patch("gim_backend.api.routes.feed.get_feed", return_value=_Feed(is_personalized=True)):
         resp = authenticated_client.get("/feed")
     assert resp.status_code == 200
     payload = resp.json()
     assert "recommendation_batch_id" in payload
     assert payload["results"][0]["why_this"][0]["entity"] == "Python"
 
-    with patch("src.api.routes.feed.get_feed", return_value=_Feed(is_personalized=False)):
+    with patch("gim_backend.api.routes.feed.get_feed", return_value=_Feed(is_personalized=False)):
         resp2 = authenticated_client.get("/feed")
     assert resp2.status_code == 200
     payload2 = resp2.json()

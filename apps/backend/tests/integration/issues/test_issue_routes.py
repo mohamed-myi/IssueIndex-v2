@@ -6,8 +6,8 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
-from src.middleware.auth import require_auth
+from gim_backend.main import app
+from gim_backend.middleware.auth import require_auth
 
 
 @pytest.fixture
@@ -75,7 +75,7 @@ class TestGetIssueDetail:
         mock_issue.github_created_at = datetime(2026, 1, 5, 10, 0, 0, tzinfo=UTC)
         mock_issue.state = "open"
 
-        with patch("src.api.routes.issues.get_issue_by_node_id", new_callable=AsyncMock) as mock_get:
+        with patch("gim_backend.api.routes.issues.get_issue_by_node_id", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = mock_issue
 
             response = authenticated_client.get("/issues/I_abc123")
@@ -88,7 +88,7 @@ class TestGetIssueDetail:
 
     def test_returns_404_when_not_found(self, authenticated_client):
         """Should return 404 when issue doesn't exist."""
-        with patch("src.api.routes.issues.get_issue_by_node_id", new_callable=AsyncMock) as mock_get:
+        with patch("gim_backend.api.routes.issues.get_issue_by_node_id", new_callable=AsyncMock) as mock_get:
             mock_get.return_value = None
 
             response = authenticated_client.get("/issues/I_nonexistent")
@@ -108,7 +108,7 @@ class TestGetSimilarIssues:
         similar1.repo_name = "org/repo"
         similar1.similarity_score = 0.95
 
-        with patch("src.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
+        with patch("gim_backend.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
             mock_similar.return_value = [similar1]
 
             response = authenticated_client.get("/issues/I_source/similar")
@@ -121,7 +121,7 @@ class TestGetSimilarIssues:
 
     def test_returns_empty_list_when_no_embedding(self, authenticated_client):
         """Should return empty list when source has no embedding."""
-        with patch("src.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
+        with patch("gim_backend.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
             mock_similar.return_value = []
 
             response = authenticated_client.get("/issues/I_noembedding/similar")
@@ -131,7 +131,7 @@ class TestGetSimilarIssues:
 
     def test_returns_404_when_source_not_found(self, authenticated_client):
         """Should return 404 when source issue doesn't exist."""
-        with patch("src.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
+        with patch("gim_backend.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
             mock_similar.return_value = None
 
             response = authenticated_client.get("/issues/I_nonexistent/similar")
@@ -140,7 +140,7 @@ class TestGetSimilarIssues:
 
     def test_respects_limit_parameter(self, authenticated_client):
         """Should pass limit parameter to service."""
-        with patch("src.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
+        with patch("gim_backend.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
             mock_similar.return_value = []
 
             authenticated_client.get("/issues/I_source/similar?limit=3")
@@ -151,7 +151,7 @@ class TestGetSimilarIssues:
 
     def test_validates_limit_max(self, authenticated_client):
         """Should reject limit above max."""
-        with patch("src.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
+        with patch("gim_backend.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
             mock_similar.return_value = []
 
             response = authenticated_client.get("/issues/I_source/similar?limit=100")

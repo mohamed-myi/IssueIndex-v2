@@ -5,16 +5,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.ingestion.embeddings import EmbeddedIssue
-from src.ingestion.gatherer import IssueData
-from src.ingestion.quality_gate import QScoreComponents
-from src.ingestion.scout import RepositoryData
+from gim_backend.ingestion.embeddings import EmbeddedIssue
+from gim_backend.ingestion.gatherer import IssueData
+from gim_backend.ingestion.quality_gate import QScoreComponents
+from gim_backend.ingestion.scout import RepositoryData
 
 
 @pytest.fixture
 def mock_session():
     session = AsyncMock()
-    session.execute = AsyncMock()
+    session.exec = AsyncMock()
     session.commit = AsyncMock()
     session.rollback = AsyncMock()
     return session
@@ -35,7 +35,7 @@ def persistence(mock_session, monkeypatch):
     monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio.session", MagicMock())
 
     # Import here after mocks are set up
-    from src.ingestion.persistence import StreamingPersistence
+    from gim_backend.ingestion.persistence import StreamingPersistence
     return StreamingPersistence(session=mock_session)
 
 
@@ -96,7 +96,7 @@ class TestUpsertRepositories:
         count = await persistence.upsert_repositories([repo])
 
         assert count == 1
-        mock_session.execute.assert_called_once()
+        mock_session.exec.assert_called_once()
         mock_session.commit.assert_called_once()
 
     async def test_upserts_multiple_repos(self, persistence, mock_session, make_repository):
@@ -105,21 +105,21 @@ class TestUpsertRepositories:
         count = await persistence.upsert_repositories(repos)
 
         assert count == 5
-        assert mock_session.execute.call_count == len(repos)
+        assert mock_session.exec.call_count == len(repos)
         assert mock_session.commit.call_count == len(repos)
 
     async def test_returns_zero_for_empty_list(self, persistence, mock_session):
         count = await persistence.upsert_repositories([])
 
         assert count == 0
-        mock_session.execute.assert_not_called()
+        mock_session.exec.assert_not_called()
 
     async def test_passes_correct_params(self, persistence, mock_session, make_repository):
         repo = make_repository(node_id="R_test", full_name="test/repo")
 
         await persistence.upsert_repositories([repo])
 
-        call_args = mock_session.execute.call_args[0][1]
+        call_args = mock_session.exec.call_args[1]["params"]
         assert call_args["node_id"] == "R_test"
         assert call_args["full_name"] == "test/repo"
         assert call_args["primary_language"] == "Python"
@@ -134,7 +134,7 @@ class TestPersistStream:
         count = await persistence.persist_stream(single_issue())
 
         assert count == 1
-        mock_session.execute.assert_called_once()
+        mock_session.exec.assert_called_once()
         mock_session.commit.assert_called()
 
     async def test_batches_at_50(self, persistence, mock_session, make_embedded_issue):
@@ -145,7 +145,7 @@ class TestPersistStream:
         count = await persistence.persist_stream(issue_stream())
 
         assert count == 50
-        assert mock_session.execute.call_count == 1
+        assert mock_session.exec.call_count == 1
 
     async def test_two_batches_for_75_issues(self, persistence, mock_session, make_embedded_issue):
         async def issue_stream():
@@ -155,7 +155,7 @@ class TestPersistStream:
         count = await persistence.persist_stream(issue_stream())
 
         assert count == 75
-        assert mock_session.execute.call_count == 2
+        assert mock_session.exec.call_count == 2
 
     async def test_handles_empty_stream(self, persistence, mock_session):
         async def empty_stream():
@@ -165,7 +165,7 @@ class TestPersistStream:
         count = await persistence.persist_stream(empty_stream())
 
         assert count == 0
-        mock_session.execute.assert_not_called()
+        mock_session.exec.assert_not_called()
 
 
 class TestSurvivalScoreInjection:
@@ -176,7 +176,7 @@ class TestSurvivalScoreInjection:
 
         await persistence.persist_stream(single_issue())
 
-        call_args = mock_session.execute.call_args[0][1]
+        call_args = mock_session.exec.call_args[1]["params"]
         assert "survival_score_0" in call_args
         assert call_args["survival_score_0"] > 0
 
@@ -192,7 +192,7 @@ class TestSurvivalScoreInjection:
 
             await persistence.persist_stream(single_issue())
 
-            params = mock_session.execute.call_args[0][1]
+            params = mock_session.exec.call_args[1]["params"]
             survival_scores.append(params["survival_score_0"])
 
         assert survival_scores[1] > survival_scores[0]  # 0.9 > 0.3
@@ -206,7 +206,7 @@ class TestQScoreComponents:
 
         await persistence.persist_stream(single_issue())
 
-        call_args = mock_session.execute.call_args[0][1]
+        call_args = mock_session.exec.call_args[1]["params"]
         assert "has_code_0" in call_args
         assert "has_template_headers_0" in call_args
         assert "tech_stack_weight_0" in call_args
@@ -223,7 +223,7 @@ class TestEmbeddingStorage:
 
         await persistence.persist_stream(single_issue())
 
-        call_args = mock_session.execute.call_args[0][1]
+        call_args = mock_session.exec.call_args[1]["params"]
         embedding_param = call_args["embedding_0"]
         # Should be string representation of list for ::vector cast
         assert isinstance(embedding_param, str)
@@ -238,7 +238,7 @@ class TestStateStorage:
 
         await persistence.persist_stream(single_issue())
 
-        call_args = mock_session.execute.call_args[0][1]
+        call_args = mock_session.exec.call_args[1]["params"]
         assert "state_0" in call_args
         assert call_args["state_0"] == "open"
 
@@ -249,5 +249,5 @@ class TestStateStorage:
 
         await persistence.persist_stream(single_issue())
 
-        call_args = mock_session.execute.call_args[0][1]
+        call_args = mock_session.exec.call_args[1]["params"]
         assert call_args["state_0"] == "closed"

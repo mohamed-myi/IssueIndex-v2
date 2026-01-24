@@ -5,11 +5,11 @@ import time
 
 import pytest
 
-from src.ingestion.github_client import (
+from gim_backend.ingestion.github_client import (
     GitHubAuthError,
     GitHubGraphQLClient,
 )
-from src.ingestion.rate_limiter import InMemoryCostLimiter
+from gim_backend.ingestion.rate_limiter import InMemoryCostLimiter
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("GIT_TOKEN"),

@@ -10,8 +10,8 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
-from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+from gim_backend.main import app
+from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
 @pytest.fixture(autouse=True)
@@ -53,10 +53,10 @@ class TestGetMeEndpointAuthenticated:
     @pytest.fixture
     def mock_auth_flow(self):
         """Mock authentication to return a user"""
-        with patch("src.api.routes.auth.get_request_context") as mock_ctx, \
-             patch("src.api.routes.auth.get_current_session") as mock_session, \
-             patch("src.api.routes.auth.get_current_user") as mock_user, \
-             patch("src.api.routes.auth.get_db") as mock_db:
+        with patch("gim_backend.api.routes.auth.get_request_context") as mock_ctx, \
+             patch("gim_backend.api.routes.auth.get_current_session") as mock_session, \
+             patch("gim_backend.api.routes.auth.get_current_user") as mock_user, \
+             patch("gim_backend.api.routes.auth.get_db") as mock_db:
 
             context = MagicMock()
             context.ip_address = "127.0.0.1"
@@ -113,11 +113,11 @@ class TestGetLinkedAccountsAuthenticated:
     @pytest.fixture
     def mock_auth_and_accounts(self):
         """Mock authentication and linked accounts service"""
-        with patch("src.api.routes.auth.get_request_context") as mock_ctx, \
-             patch("src.api.routes.auth.get_current_session") as mock_session, \
-             patch("src.api.routes.auth.get_current_user") as mock_user, \
-             patch("src.api.routes.auth.list_linked_accounts") as mock_list, \
-             patch("src.api.routes.auth.get_db") as mock_db:
+        with patch("gim_backend.api.routes.auth.get_request_context") as mock_ctx, \
+             patch("gim_backend.api.routes.auth.get_current_session") as mock_session, \
+             patch("gim_backend.api.routes.auth.get_current_user") as mock_user, \
+             patch("gim_backend.api.routes.auth.list_linked_accounts") as mock_list, \
+             patch("gim_backend.api.routes.auth.get_db") as mock_db:
 
             context = MagicMock()
             mock_ctx.return_value = context
@@ -175,12 +175,12 @@ class TestDeleteAccountAuthenticated:
     @pytest.fixture
     def mock_auth_and_cascade(self):
         """Mock authentication and cascade deletion"""
-        with patch("src.api.routes.auth.get_request_context") as mock_ctx, \
-             patch("src.api.routes.auth.get_current_session") as mock_session, \
-             patch("src.api.routes.auth.get_current_user") as mock_user, \
-             patch("src.api.routes.auth.delete_user_cascade") as mock_cascade, \
-             patch("src.api.routes.auth.log_audit_event"), \
-             patch("src.api.routes.auth.get_db") as mock_db:
+        with patch("gim_backend.api.routes.auth.get_request_context") as mock_ctx, \
+             patch("gim_backend.api.routes.auth.get_current_session") as mock_session, \
+             patch("gim_backend.api.routes.auth.get_current_user") as mock_user, \
+             patch("gim_backend.api.routes.auth.delete_user_cascade") as mock_cascade, \
+             patch("gim_backend.api.routes.auth.log_audit_event"), \
+             patch("gim_backend.api.routes.auth.get_db") as mock_db:
 
             context = MagicMock()
             context.ip_address = "127.0.0.1"
@@ -194,7 +194,7 @@ class TestDeleteAccountAuthenticated:
             user.id = uuid4()
             mock_user.return_value = user
 
-            from src.services.session_service import CascadeDeletionResult
+            from gim_backend.services.session_service import CascadeDeletionResult
             mock_cascade.return_value = CascadeDeletionResult(
                 tables_affected=["users", "sessions"],
                 total_rows=2,
@@ -220,8 +220,8 @@ class TestPostDeleteAccess:
 
     def test_deleted_user_gets_401_on_me(self, client):
         """After deletion, accessing /auth/me with old session returns 401"""
-        with patch("src.api.routes.auth.get_request_context") as mock_ctx, \
-             patch("src.api.routes.auth.get_current_session") as mock_session:
+        with patch("gim_backend.api.routes.auth.get_request_context") as mock_ctx, \
+             patch("gim_backend.api.routes.auth.get_current_session") as mock_session:
 
             context = MagicMock()
             mock_ctx.return_value = context
@@ -238,13 +238,13 @@ class TestGDPRZombieCheck:
     @pytest.fixture
     def mock_full_flow(self):
         """Mock complete user creation flow"""
-        with patch("src.api.routes.auth.get_request_context") as mock_ctx, \
-             patch("src.api.routes.auth.get_current_session") as mock_session, \
-             patch("src.api.routes.auth.get_current_user") as mock_user, \
-             patch("src.api.routes.auth.delete_user_cascade") as mock_cascade, \
-             patch("src.api.routes.auth.upsert_user") as mock_upsert, \
-             patch("src.api.routes.auth.log_audit_event"), \
-             patch("src.api.routes.auth.get_db") as mock_db:
+        with patch("gim_backend.api.routes.auth.get_request_context") as mock_ctx, \
+             patch("gim_backend.api.routes.auth.get_current_session") as mock_session, \
+             patch("gim_backend.api.routes.auth.get_current_user") as mock_user, \
+             patch("gim_backend.api.routes.auth.delete_user_cascade") as mock_cascade, \
+             patch("gim_backend.api.routes.auth.upsert_user") as mock_upsert, \
+             patch("gim_backend.api.routes.auth.log_audit_event"), \
+             patch("gim_backend.api.routes.auth.get_db") as mock_db:
 
             context = MagicMock()
             context.ip_address = "127.0.0.1"
@@ -259,7 +259,7 @@ class TestGDPRZombieCheck:
             user.github_username = "octocat"
             mock_user.return_value = user
 
-            from src.services.session_service import CascadeDeletionResult
+            from gim_backend.services.session_service import CascadeDeletionResult
             mock_cascade.return_value = CascadeDeletionResult(
                 tables_affected=["users"],
                 total_rows=1,

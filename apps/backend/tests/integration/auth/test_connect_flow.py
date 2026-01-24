@@ -10,10 +10,10 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from src.api.routes.auth import CONNECT_STATE_COOKIE_NAME
-from src.core.oauth import OAuthToken, UserProfile
-from src.main import app
-from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+from gim_backend.api.routes.auth import CONNECT_STATE_COOKIE_NAME
+from gim_backend.core.oauth import OAuthToken, UserProfile
+from gim_backend.main import app
+from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
 @pytest.fixture(autouse=True)
@@ -34,8 +34,8 @@ def client():
 @pytest.fixture
 def mock_authenticated_session():
     """Mock an authenticated session for connect flow tests."""
-    with patch("src.api.routes.auth.get_current_session") as mock_session, \
-         patch("src.api.routes.auth.get_current_user") as mock_user:
+    with patch("gim_backend.api.routes.auth.get_current_session") as mock_session, \
+         patch("gim_backend.api.routes.auth.get_current_user") as mock_user:
 
         session = MagicMock()
         session.id = uuid4()
@@ -72,7 +72,7 @@ class TestConnectGitHubEndpoint:
 
     def test_connect_requires_authentication(self, client):
         """Verify connect redirects unauthenticated users to login."""
-        with patch("src.api.routes.auth.get_current_session") as mock_session:
+        with patch("gim_backend.api.routes.auth.get_current_session") as mock_session:
             mock_session.side_effect = Exception("Not authenticated")
 
             response = client.get("/auth/connect/github")
@@ -122,7 +122,7 @@ class TestConnectGitHubCallbackEndpoint:
 
     def test_callback_requires_authentication(self, client):
         """Verify callback redirects unauthenticated users."""
-        with patch("src.api.routes.auth.get_current_session") as mock_session:
+        with patch("gim_backend.api.routes.auth.get_current_session") as mock_session:
             mock_session.side_effect = Exception("Not authenticated")
 
             response = client.get(
@@ -141,11 +141,11 @@ class TestConnectCallbackSuccessFlow:
     @pytest.fixture
     def mock_connect_flow(self, mock_authenticated_session):
         """Mock all OAuth and storage dependencies for success flow."""
-        with patch("src.api.routes.auth.exchange_code_for_token") as mock_exchange, \
-             patch("src.api.routes.auth.fetch_user_profile") as mock_profile, \
-             patch("src.api.routes.auth.store_linked_account") as mock_store, \
-             patch("src.api.routes.auth.get_db") as mock_db, \
-             patch("src.api.routes.auth.get_http_client") as mock_client:
+        with patch("gim_backend.api.routes.auth.exchange_code_for_token") as mock_exchange, \
+             patch("gim_backend.api.routes.auth.fetch_user_profile") as mock_profile, \
+             patch("gim_backend.api.routes.auth.store_linked_account") as mock_store, \
+             patch("gim_backend.api.routes.auth.get_db") as mock_db, \
+             patch("gim_backend.api.routes.auth.get_http_client") as mock_client:
 
             mock_exchange.return_value = OAuthToken(
                 access_token="gho_test_token_for_profile",
@@ -232,7 +232,7 @@ class TestDisconnectGitHubEndpoint:
 
     def test_disconnect_requires_authentication(self, client):
         """Verify disconnect returns 401 for unauthenticated users."""
-        with patch("src.api.routes.auth.get_current_session") as mock_session:
+        with patch("gim_backend.api.routes.auth.get_current_session") as mock_session:
             mock_session.side_effect = Exception("Not authenticated")
 
             response = client.delete("/auth/connect/github")
@@ -241,8 +241,8 @@ class TestDisconnectGitHubEndpoint:
 
     def test_disconnect_returns_404_when_not_connected(self, client, mock_authenticated_session):
         """Verify 404 when no GitHub account is connected."""
-        with patch("src.api.routes.auth.mark_revoked") as mock_revoke, \
-             patch("src.api.routes.auth.get_db") as mock_db:
+        with patch("gim_backend.api.routes.auth.mark_revoked") as mock_revoke, \
+             patch("gim_backend.api.routes.auth.get_db") as mock_db:
 
             mock_revoke.return_value = False  # No account found
 
@@ -256,8 +256,8 @@ class TestDisconnectGitHubEndpoint:
 
     def test_disconnect_success(self, client, mock_authenticated_session):
         """Verify successful disconnect returns confirmation."""
-        with patch("src.api.routes.auth.mark_revoked") as mock_revoke, \
-             patch("src.api.routes.auth.get_db") as mock_db:
+        with patch("gim_backend.api.routes.auth.mark_revoked") as mock_revoke, \
+             patch("gim_backend.api.routes.auth.get_db") as mock_db:
 
             mock_revoke.return_value = True
 
@@ -278,7 +278,7 @@ class TestConnectStatusEndpoint:
 
     def test_status_requires_authentication(self, client):
         """Verify status returns 401 for unauthenticated users."""
-        with patch("src.api.routes.auth.get_current_session") as mock_session:
+        with patch("gim_backend.api.routes.auth.get_current_session") as mock_session:
             mock_session.side_effect = Exception("Not authenticated")
 
             response = client.get("/auth/connect/status")
@@ -287,8 +287,8 @@ class TestConnectStatusEndpoint:
 
     def test_status_returns_not_connected(self, client, mock_authenticated_session):
         """Verify status shows not connected when no account linked."""
-        with patch("src.api.routes.auth.get_active_linked_account") as mock_get, \
-             patch("src.api.routes.auth.get_db") as mock_db:
+        with patch("gim_backend.api.routes.auth.get_active_linked_account") as mock_get, \
+             patch("gim_backend.api.routes.auth.get_db") as mock_db:
 
             mock_get.return_value = None
 
@@ -305,8 +305,8 @@ class TestConnectStatusEndpoint:
 
     def test_status_returns_connected(self, client, mock_authenticated_session):
         """Verify status shows connected with account details."""
-        with patch("src.api.routes.auth.get_active_linked_account") as mock_get, \
-             patch("src.api.routes.auth.get_db") as mock_db:
+        with patch("gim_backend.api.routes.auth.get_active_linked_account") as mock_get, \
+             patch("gim_backend.api.routes.auth.get_db") as mock_db:
 
             mock_account = MagicMock()
             mock_account.provider_user_id = "testuser"

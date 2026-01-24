@@ -37,7 +37,7 @@ def janitor(mock_session, monkeypatch):
     monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio.session", mock_sqlmodel_ext_asyncio_session)
 
     # Now import Janitor
-    from src.ingestion.janitor import Janitor
+    from gim_backend.ingestion.janitor import Janitor
     return Janitor(session=mock_session)
 
 
@@ -223,7 +223,7 @@ class TestEdgeCases:
         monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio", MagicMock())
         monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio.session", MagicMock())
 
-        from src.ingestion.janitor import Janitor
+        from gim_backend.ingestion.janitor import Janitor
         janitor = Janitor(session=mock_session)
         janitor.PRUNE_PERCENTILE = 0.3  # Custom 30%
 

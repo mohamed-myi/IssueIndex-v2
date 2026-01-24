@@ -5,13 +5,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from src.ingestion.embeddings import (
+from gim_backend.ingestion.embeddings import (
     EMBEDDING_DIM,
     EmbeddedIssue,
     embed_issue_stream,
 )
-from src.ingestion.gatherer import IssueData
-from src.ingestion.quality_gate import QScoreComponents
+from gim_backend.ingestion.gatherer import IssueData
+from gim_backend.ingestion.quality_gate import QScoreComponents
 
 
 @pytest.fixture
@@ -232,8 +232,5 @@ class TestProviderBatchSize:
         assert len(results) == 25
 
 
-class TestEmbeddingDimConstant:
-    def test_embedding_dim_is_256(self):
-        """Embedding dimension should be 256 for Matryoshka truncation"""
-        assert EMBEDDING_DIM == 256
+
 

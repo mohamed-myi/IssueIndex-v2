@@ -1,7 +1,7 @@
 """Integration tests for Cloud SQL pgvector and Pub/Sub infrastructure validation"""
 
 import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -115,7 +115,7 @@ async def db_session(async_connection_url, setup_schema_256):
         yield session
 
         # Cleanup: delete all rows after test
-        await session.execute(text("DELETE FROM ingestion.issue_256"))
+        await session.exec(text("DELETE FROM ingestion.issue_256"))
         await session.commit()
 
     await engine.dispose()
@@ -127,7 +127,7 @@ class TestCloudSQLPgvectorExtension:
     @pytest.mark.asyncio
     async def test_pgvector_extension_installed(self, db_session):
         """Verify pgvector extension is installed"""
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
         )
         version = result.scalar()
@@ -137,7 +137,7 @@ class TestCloudSQLPgvectorExtension:
     @pytest.mark.asyncio
     async def test_pgvector_version_supports_hnsw(self, db_session):
         """Verify pgvector version supports HNSW indexes (requires 0.5.0+)"""
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("SELECT extversion FROM pg_extension WHERE extname = 'vector'")
         )
         version = result.scalar()
@@ -157,12 +157,12 @@ class TestCloudSQLVectorOperations:
         """Verify 256-dim vector can be inserted"""
         embedding = [0.1] * 256
 
-        await db_session.execute(
+        await db_session.exec(
             text("""
                 INSERT INTO ingestion.issue_256 (node_id, title, body_text, embedding)
                 VALUES (:node_id, :title, :body_text, :embedding)
             """),
-            {
+            params={
                 "node_id": "I_test_insert",
                 "title": "Test issue",
                 "body_text": "Test body",
@@ -172,9 +172,9 @@ class TestCloudSQLVectorOperations:
         await db_session.commit()
 
         # Verify insertion
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("SELECT vector_dims(embedding) FROM ingestion.issue_256 WHERE node_id = :id"),
-            {"id": "I_test_insert"},
+            params={"id": "I_test_insert"},
         )
         dim = result.scalar()
 
@@ -187,12 +187,12 @@ class TestCloudSQLVectorOperations:
         updated_embedding = [0.9] * 256
 
         # Insert initial
-        await db_session.execute(
+        await db_session.exec(
             text("""
                 INSERT INTO ingestion.issue_256 (node_id, title, body_text, embedding)
                 VALUES (:node_id, :title, :body_text, :embedding)
             """),
-            {
+            params={
                 "node_id": "I_test_update",
                 "title": "Test issue",
                 "body_text": "Test body",
@@ -202,13 +202,13 @@ class TestCloudSQLVectorOperations:
         await db_session.commit()
 
         # Update embedding
-        await db_session.execute(
+        await db_session.exec(
             text("""
                 UPDATE ingestion.issue_256
                 SET embedding = :embedding
                 WHERE node_id = :node_id
             """),
-            {
+            params={
                 "node_id": "I_test_update",
                 "embedding": str(updated_embedding),
             },
@@ -216,13 +216,13 @@ class TestCloudSQLVectorOperations:
         await db_session.commit()
 
         # Verify update by checking distance to the updated vector is ~0
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("""
                 SELECT embedding <-> :embedding AS dist
                 FROM ingestion.issue_256
                 WHERE node_id = :id
             """),
-            {"id": "I_test_update", "embedding": str(updated_embedding)},
+            params={"id": "I_test_update", "embedding": str(updated_embedding)},
         )
         dist = result.scalar()
 
@@ -240,12 +240,12 @@ class TestCloudSQLVectorOperations:
         ]
 
         for node_id, emb in vectors:
-            await db_session.execute(
+            await db_session.exec(
                 text("""
                     INSERT INTO ingestion.issue_256 (node_id, title, body_text, embedding)
                     VALUES (:node_id, :title, :body_text, :embedding)
                 """),
-                {
+                params={
                     "node_id": node_id,
                     "title": f"Issue {node_id}",
                     "body_text": "Test body",
@@ -257,16 +257,16 @@ class TestCloudSQLVectorOperations:
         # Query for nearest neighbors to [1, 0, 0, ...]
         query_vector = [1.0] + [0.0] * 255
 
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("""
                 SELECT node_id, 1 - (embedding <=> :query) as similarity
                 FROM ingestion.issue_256
                 ORDER BY embedding <=> :query
                 LIMIT 2
             """),
-            {"query": str(query_vector)},
+            params={"query": str(query_vector)},
         )
-        rows = result.fetchall()
+        rows = result.all()
 
         # First result should be I_sim_1 (exact match)
         assert rows[0][0] == "I_sim_1"
@@ -275,12 +275,12 @@ class TestCloudSQLVectorOperations:
     @pytest.mark.asyncio
     async def test_content_hash_idempotency_column(self, db_session):
         """Verify content_hash column exists for idempotency checks"""
-        await db_session.execute(
+        await db_session.exec(
             text("""
                 INSERT INTO ingestion.issue_256 (node_id, title, body_text, content_hash)
                 VALUES (:node_id, :title, :body_text, :content_hash)
             """),
-            {
+            params={
                 "node_id": "I_hash_test",
                 "title": "Test issue",
                 "body_text": "Test body",
@@ -289,9 +289,9 @@ class TestCloudSQLVectorOperations:
         )
         await db_session.commit()
 
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("SELECT content_hash FROM ingestion.issue_256 WHERE node_id = :id"),
-            {"id": "I_hash_test"},
+            params={"id": "I_hash_test"},
         )
         stored_hash = result.scalar()
 
@@ -357,7 +357,7 @@ class TestPubSubDLQRouting:
 
     def test_dlq_topic_configured(self):
         """Verify DLQ topic is configured in settings"""
-        from src.core.config import get_settings
+        from gim_backend.core.config import get_settings
 
         settings = get_settings()
 
@@ -398,12 +398,12 @@ class TestPubSubIdempotency:
         content_hash = "sha256_duplicate_test"
 
         # Insert first message
-        await db_session.execute(
+        await db_session.exec(
             text("""
                 INSERT INTO ingestion.issue_256 (node_id, title, body_text, content_hash)
                 VALUES (:node_id, :title, :body_text, :content_hash)
             """),
-            {
+            params={
                 "node_id": "I_dup_1",
                 "title": "Original issue",
                 "body_text": "Original body",
@@ -413,12 +413,12 @@ class TestPubSubIdempotency:
         await db_session.commit()
 
         # Check if duplicate exists
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("""
                 SELECT 1 FROM ingestion.issue_256
                 WHERE content_hash = :content_hash
             """),
-            {"content_hash": content_hash},
+            params={"content_hash": content_hash},
         )
         exists = result.scalar() is not None
 
@@ -428,12 +428,12 @@ class TestPubSubIdempotency:
     async def test_different_content_hash_not_duplicate(self, db_session):
         """Verify different content_hash is not detected as duplicate"""
         # Insert with one hash
-        await db_session.execute(
+        await db_session.exec(
             text("""
                 INSERT INTO ingestion.issue_256 (node_id, title, body_text, content_hash)
                 VALUES (:node_id, :title, :body_text, :content_hash)
             """),
-            {
+            params={
                 "node_id": "I_unique_1",
                 "title": "First issue",
                 "body_text": "First body",
@@ -443,12 +443,12 @@ class TestPubSubIdempotency:
         await db_session.commit()
 
         # Check for different hash
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("""
                 SELECT 1 FROM ingestion.issue_256
                 WHERE content_hash = :content_hash
             """),
-            {"content_hash": "sha256_second"},
+            params={"content_hash": "sha256_second"},
         )
         exists = result.scalar() is not None
 

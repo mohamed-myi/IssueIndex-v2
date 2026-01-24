@@ -8,22 +8,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files
-COPY apps/workers/pyproject.toml apps/workers/README.md apps/workers/
-COPY apps/backend/pyproject.toml apps/backend/README.md apps/backend/
-COPY packages/database/pyproject.toml packages/database/README.md packages/database/
+# Copy package dependency files
 COPY packages/shared/pyproject.toml packages/shared/README.md packages/shared/
+COPY packages/database/pyproject.toml packages/database/README.md packages/database/
+COPY apps/backend/pyproject.toml apps/backend/README.md apps/backend/
+COPY apps/workers/pyproject.toml apps/workers/README.md apps/workers/
 
 # Install CPU-only PyTorch first to avoid 4GB+ CUDA packages
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
-# Install dependencies
+# Install dependencies (editable mode for development)
 RUN pip install --no-cache-dir \
     -e packages/shared \
     -e packages/database \
     -e apps/backend \
     -e apps/workers \
     google-cloud-aiplatform \
+    google-cloud-pubsub \
     google-cloud-run \
     sentence-transformers \
     einops
@@ -31,14 +32,14 @@ RUN pip install --no-cache-dir \
 # Pre-download embedding model (nomic-embed-text-v2-moe for 256-dim Matryoshka truncation)
 RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('nomic-ai/nomic-embed-text-v2-moe', trust_remote_code=True)"
 
-# Copy source code
-COPY packages/shared/src packages/shared/src
-COPY packages/database/src packages/database/src
-COPY apps/backend/src apps/backend/src
-COPY apps/workers/src apps/workers/src
+# Copy source code (gim_* packages, not src/)
+COPY packages/shared/gim_shared packages/shared/gim_shared
+COPY packages/database/gim_database packages/database/gim_database
+COPY packages/database/migrations packages/database/migrations
+COPY apps/backend/gim_backend apps/backend/gim_backend
+COPY apps/workers/gim_workers apps/workers/gim_workers
 
-ENV PYTHONPATH=/app/apps/workers:/app/apps/backend:/app/packages/database/src:/app/packages/shared/src
+# No PYTHONPATH needed - packages installed via pip install -e
 
-# Entry point set by JOB_TYPE environment variable
-CMD ["python", "-m", "src"]
-
+# Entry point: run the gim_workers package
+CMD ["python", "-m", "gim_workers"]

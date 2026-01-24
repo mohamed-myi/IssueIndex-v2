@@ -1,26 +1,19 @@
 """Unit tests for profile service business logic."""
-import sys
 from datetime import UTC, datetime
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import pytest
-
-project_root = Path(__file__).resolve().parent.parent.parent.parent.parent
-database_src = project_root / "packages" / "database" / "src"
-if str(database_src) not in sys.path:
-    sys.path.insert(0, str(database_src))
-
 # Side-effect imports: register models with SQLAlchemy ORM mapper
-import models.identity  # noqa: F401, E402
-import models.persistence  # noqa: F401, E402
-import models.profiles  # noqa: F401, E402
+import gim_database.models.identity  # noqa: F401
+import gim_database.models.persistence  # noqa: F401
+import gim_database.models.profiles  # noqa: F401
+import pytest
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 @pytest.fixture
 def mock_db():
-    db = AsyncMock()
+    db = MagicMock(spec=AsyncSession)
     db.add = MagicMock()
     db.commit = AsyncMock()
     db.refresh = AsyncMock()
@@ -62,11 +55,11 @@ class TestValidation:
     """Taxonomy validation boundary tests."""
 
     def test_validate_languages_accepts_all_valid_options(self):
-        from src.services.profile_service import validate_languages
+        from gim_backend.services.profile_service import validate_languages
         validate_languages(["Python", "TypeScript", "Go", "Rust", "Java"])
 
     def test_validate_languages_rejects_invalid_value(self):
-        from src.services.profile_service import InvalidTaxonomyValueError, validate_languages
+        from gim_backend.services.profile_service import InvalidTaxonomyValueError, validate_languages
 
         with pytest.raises(InvalidTaxonomyValueError) as exc:
             validate_languages(["Python", "Cobol"])
@@ -75,23 +68,23 @@ class TestValidation:
         assert exc.value.invalid_value == "Cobol"
 
     def test_validate_languages_rejects_empty_string(self):
-        from src.services.profile_service import InvalidTaxonomyValueError, validate_languages
+        from gim_backend.services.profile_service import InvalidTaxonomyValueError, validate_languages
 
         with pytest.raises(InvalidTaxonomyValueError):
             validate_languages([""])
 
     def test_validate_languages_case_sensitive(self):
-        from src.services.profile_service import InvalidTaxonomyValueError, validate_languages
+        from gim_backend.services.profile_service import InvalidTaxonomyValueError, validate_languages
 
         with pytest.raises(InvalidTaxonomyValueError):
             validate_languages(["python"])
 
     def test_validate_stack_areas_accepts_all_valid_options(self):
-        from src.services.profile_service import validate_stack_areas
+        from gim_backend.services.profile_service import validate_stack_areas
         validate_stack_areas(["backend", "frontend", "data_engineering", "machine_learning"])
 
     def test_validate_stack_areas_rejects_invalid_value(self):
-        from src.services.profile_service import InvalidTaxonomyValueError, validate_stack_areas
+        from gim_backend.services.profile_service import InvalidTaxonomyValueError, validate_stack_areas
 
         with pytest.raises(InvalidTaxonomyValueError) as exc:
             validate_stack_areas(["backend", "hacking"])
@@ -100,14 +93,14 @@ class TestValidation:
         assert exc.value.invalid_value == "hacking"
 
     def test_validate_experience_level_accepts_all_valid_options(self):
-        from src.services.profile_service import validate_experience_level
+        from gim_backend.services.profile_service import validate_experience_level
         validate_experience_level("beginner")
         validate_experience_level("intermediate")
         validate_experience_level("advanced")
         validate_experience_level(None)
 
     def test_validate_experience_level_rejects_invalid_value(self):
-        from src.services.profile_service import InvalidTaxonomyValueError, validate_experience_level
+        from gim_backend.services.profile_service import InvalidTaxonomyValueError, validate_experience_level
 
         with pytest.raises(InvalidTaxonomyValueError) as exc:
             validate_experience_level("expert")
@@ -119,51 +112,51 @@ class TestCalculateOptimizationPercent:
     """Optimization percentage calculation for all source combinations."""
 
     def test_no_sources_returns_zero(self, mock_profile):
-        from src.services.profile_service import calculate_optimization_percent
+        from gim_backend.services.profile_service import calculate_optimization_percent
         assert calculate_optimization_percent(mock_profile) == 0
 
     def test_intent_only_returns_50(self, mock_profile):
-        from src.services.profile_service import calculate_optimization_percent
+        from gim_backend.services.profile_service import calculate_optimization_percent
         mock_profile.intent_text = "I want to work on Python projects"
         assert calculate_optimization_percent(mock_profile) == 50
 
     def test_resume_only_returns_30(self, mock_profile):
-        from src.services.profile_service import calculate_optimization_percent
+        from gim_backend.services.profile_service import calculate_optimization_percent
         mock_profile.resume_skills = ["Python", "FastAPI"]
         assert calculate_optimization_percent(mock_profile) == 30
 
     def test_github_only_returns_20(self, mock_profile):
-        from src.services.profile_service import calculate_optimization_percent
+        from gim_backend.services.profile_service import calculate_optimization_percent
         mock_profile.github_username = "octocat"
         assert calculate_optimization_percent(mock_profile) == 20
 
     def test_intent_plus_resume_returns_80(self, mock_profile):
-        from src.services.profile_service import calculate_optimization_percent
+        from gim_backend.services.profile_service import calculate_optimization_percent
         mock_profile.intent_text = "I want to work on Python projects"
         mock_profile.resume_skills = ["Python", "FastAPI"]
         assert calculate_optimization_percent(mock_profile) == 80
 
     def test_intent_plus_github_returns_70(self, mock_profile):
-        from src.services.profile_service import calculate_optimization_percent
+        from gim_backend.services.profile_service import calculate_optimization_percent
         mock_profile.intent_text = "I want to work on Python projects"
         mock_profile.github_username = "octocat"
         assert calculate_optimization_percent(mock_profile) == 70
 
     def test_resume_plus_github_returns_50(self, mock_profile):
-        from src.services.profile_service import calculate_optimization_percent
+        from gim_backend.services.profile_service import calculate_optimization_percent
         mock_profile.resume_skills = ["Python"]
         mock_profile.github_username = "octocat"
         assert calculate_optimization_percent(mock_profile) == 50
 
     def test_all_sources_returns_100(self, mock_profile):
-        from src.services.profile_service import calculate_optimization_percent
+        from gim_backend.services.profile_service import calculate_optimization_percent
         mock_profile.intent_text = "I want to work on Python projects"
         mock_profile.resume_skills = ["Python", "FastAPI"]
         mock_profile.github_username = "octocat"
         assert calculate_optimization_percent(mock_profile) == 100
 
     def test_empty_list_does_not_count_as_populated(self, mock_profile):
-        from src.services.profile_service import calculate_optimization_percent
+        from gim_backend.services.profile_service import calculate_optimization_percent
         mock_profile.resume_skills = []
         assert calculate_optimization_percent(mock_profile) == 0
 
@@ -172,7 +165,7 @@ class TestGetOrCreateProfile:
     """Profile upsert behavior."""
 
     async def test_returns_existing_profile(self, mock_db, mock_profile):
-        from src.services.profile_service import get_or_create_profile
+        from gim_backend.services.profile_service import get_or_create_profile
 
         user_id = uuid4()
         mock_result = MagicMock()
@@ -185,7 +178,7 @@ class TestGetOrCreateProfile:
         mock_db.add.assert_not_called()
 
     async def test_creates_profile_with_correct_defaults(self, mock_db):
-        from src.services.profile_service import get_or_create_profile
+        from gim_backend.services.profile_service import get_or_create_profile
 
         user_id = uuid4()
         mock_result = MagicMock()
@@ -206,7 +199,7 @@ class TestIntentCrud:
     """Intent CRUD business logic."""
 
     async def test_create_intent_stores_languages_in_preferred_languages(self, mock_db, mock_profile):
-        from src.services.profile_service import create_intent
+        from gim_backend.services.profile_service import create_intent
 
         mock_profile.intent_text = None
         mock_result = MagicMock()
@@ -224,7 +217,7 @@ class TestIntentCrud:
         assert mock_profile.preferred_languages == ["Python", "TypeScript"]
 
     async def test_create_intent_rejects_duplicate(self, mock_db, mock_profile):
-        from src.services.profile_service import IntentAlreadyExistsError, create_intent
+        from gim_backend.services.profile_service import IntentAlreadyExistsError, create_intent
 
         mock_profile.intent_text = "Existing intent"
         mock_result = MagicMock()
@@ -241,7 +234,7 @@ class TestIntentCrud:
             )
 
     async def test_create_intent_validates_before_storing(self, mock_db, mock_profile):
-        from src.services.profile_service import InvalidTaxonomyValueError, create_intent
+        from gim_backend.services.profile_service import InvalidTaxonomyValueError, create_intent
 
         mock_profile.intent_text = None
         mock_result = MagicMock()
@@ -260,7 +253,7 @@ class TestIntentCrud:
         mock_db.commit.assert_not_called()
 
     async def test_get_intent_returns_none_when_empty(self, mock_db, mock_profile):
-        from src.services.profile_service import get_intent
+        from gim_backend.services.profile_service import get_intent
 
         mock_profile.intent_text = None
         mock_result = MagicMock()
@@ -271,7 +264,7 @@ class TestIntentCrud:
         assert result is None
 
     async def test_update_intent_preserves_unmodified_fields(self, mock_db, mock_profile):
-        from src.services.profile_service import update_intent
+        from gim_backend.services.profile_service import update_intent
 
         mock_profile.intent_text = "Original text"
         mock_profile.preferred_languages = ["Python"]
@@ -294,7 +287,7 @@ class TestIntentCrud:
         assert mock_profile.preferred_languages == ["Python"]
 
     async def test_update_intent_raises_when_no_intent(self, mock_db, mock_profile):
-        from src.services.profile_service import IntentNotFoundError, update_intent
+        from gim_backend.services.profile_service import IntentNotFoundError, update_intent
 
         mock_profile.intent_text = None
         mock_result = MagicMock()
@@ -305,7 +298,7 @@ class TestIntentCrud:
             await update_intent(db=mock_db, user_id=mock_profile.user_id, text="Updated")
 
     async def test_delete_intent_clears_preferred_languages(self, mock_db, mock_profile):
-        from src.services.profile_service import delete_intent
+        from gim_backend.services.profile_service import delete_intent
 
         mock_profile.intent_text = "Some intent"
         mock_profile.preferred_languages = ["Python"]
@@ -320,7 +313,7 @@ class TestIntentCrud:
         assert mock_profile.intent_text is None
 
     async def test_delete_intent_returns_false_when_empty(self, mock_db, mock_profile):
-        from src.services.profile_service import delete_intent
+        from gim_backend.services.profile_service import delete_intent
 
         mock_profile.intent_text = None
         mock_result = MagicMock()
@@ -336,7 +329,7 @@ class TestPutIntent:
 
     @pytest.mark.asyncio
     async def test_put_creates_when_missing(self, mock_db, mock_profile):
-        from src.services.profile_service import put_intent
+        from gim_backend.services.profile_service import put_intent
 
         mock_profile.intent_text = None
         mock_result = MagicMock()
@@ -344,14 +337,14 @@ class TestPutIntent:
         mock_db.exec.return_value = mock_result
 
         with patch(
-            "src.services.profile_service.mark_onboarding_in_progress",
+            "gim_backend.services.profile_service.mark_onboarding_in_progress",
             new_callable=AsyncMock,
         ), patch(
-            "src.services.profile_service.generate_intent_vector_with_retry",
+            "gim_backend.services.profile_service.generate_intent_vector_with_retry",
             new_callable=AsyncMock,
             return_value=[0.1] * 768,
         ), patch(
-            "src.services.profile_service.calculate_combined_vector",
+            "gim_backend.services.profile_service.calculate_combined_vector",
             new_callable=AsyncMock,
             return_value=[0.2] * 768,
         ):
@@ -370,7 +363,7 @@ class TestPutIntent:
 
     @pytest.mark.asyncio
     async def test_put_replaces_without_reembed_when_only_languages_change(self, mock_db, mock_profile):
-        from src.services.profile_service import put_intent
+        from gim_backend.services.profile_service import put_intent
 
         mock_profile.intent_text = "Same text"
         mock_profile.intent_stack_areas = ["backend"]
@@ -383,10 +376,10 @@ class TestPutIntent:
         mock_db.exec.return_value = mock_result
 
         with patch(
-            "src.services.profile_service.generate_intent_vector_with_retry",
+            "gim_backend.services.profile_service.generate_intent_vector_with_retry",
             new_callable=AsyncMock,
         ) as mock_embed, patch(
-            "src.services.profile_service.calculate_combined_vector",
+            "gim_backend.services.profile_service.calculate_combined_vector",
             new_callable=AsyncMock,
         ) as mock_combined:
             profile, created = await put_intent(
@@ -406,7 +399,7 @@ class TestPutIntent:
 
     @pytest.mark.asyncio
     async def test_put_replaces_and_reembeds_when_text_changes(self, mock_db, mock_profile):
-        from src.services.profile_service import put_intent
+        from gim_backend.services.profile_service import put_intent
 
         mock_profile.intent_text = "Old text"
         mock_profile.intent_stack_areas = ["backend"]
@@ -418,11 +411,11 @@ class TestPutIntent:
         mock_db.exec.return_value = mock_result
 
         with patch(
-            "src.services.profile_service.generate_intent_vector_with_retry",
+            "gim_backend.services.profile_service.generate_intent_vector_with_retry",
             new_callable=AsyncMock,
             return_value=[0.3] * 768,
         ) as mock_embed, patch(
-            "src.services.profile_service.calculate_combined_vector",
+            "gim_backend.services.profile_service.calculate_combined_vector",
             new_callable=AsyncMock,
             return_value=[0.4] * 768,
         ) as mock_combined:
@@ -446,7 +439,7 @@ class TestPreferences:
     """Preferences CRUD business logic."""
 
     async def test_update_preferences_validates_languages(self, mock_db, mock_profile):
-        from src.services.profile_service import InvalidTaxonomyValueError, update_preferences
+        from gim_backend.services.profile_service import InvalidTaxonomyValueError, update_preferences
 
         mock_result = MagicMock()
         mock_result.first.return_value = mock_profile
@@ -460,7 +453,7 @@ class TestPreferences:
             )
 
     async def test_update_preferences_preserves_unmodified_fields(self, mock_db, mock_profile):
-        from src.services.profile_service import update_preferences
+        from gim_backend.services.profile_service import update_preferences
 
         mock_profile.preferred_languages = ["Python"]
         mock_profile.preferred_topics = ["web"]
@@ -482,7 +475,7 @@ class TestDeleteProfile:
     async def test_delete_profile_resets_to_defaults(self, mock_db, mock_profile):
         from unittest.mock import patch
 
-        from src.services.profile_service import delete_profile
+        from gim_backend.services.profile_service import delete_profile
 
         mock_profile.intent_text = "Some intent"
         mock_profile.resume_skills = ["Python"]
@@ -493,7 +486,7 @@ class TestDeleteProfile:
         mock_result.first.return_value = mock_profile
         mock_db.exec.return_value = mock_result
 
-        with patch("src.services.profile_service.cancel_user_tasks", new_callable=AsyncMock) as mock_cancel:
+        with patch("gim_backend.services.profile_service.cancel_user_tasks", new_callable=AsyncMock) as mock_cancel:
             mock_cancel.return_value = 0
             await delete_profile(mock_db, mock_profile.user_id)
 
@@ -506,13 +499,13 @@ class TestDeleteProfile:
     async def test_delete_profile_returns_false_when_not_found(self, mock_db):
         from unittest.mock import patch
 
-        from src.services.profile_service import delete_profile
+        from gim_backend.services.profile_service import delete_profile
 
         mock_result = MagicMock()
         mock_result.first.return_value = None
         mock_db.exec.return_value = mock_result
 
-        with patch("src.services.profile_service.cancel_user_tasks", new_callable=AsyncMock) as mock_cancel:
+        with patch("gim_backend.services.profile_service.cancel_user_tasks", new_callable=AsyncMock) as mock_cancel:
             mock_cancel.return_value = 0
             result = await delete_profile(mock_db, uuid4())
 
@@ -521,14 +514,14 @@ class TestDeleteProfile:
     async def test_delete_profile_cancels_cloud_tasks(self, mock_db, mock_profile):
         from unittest.mock import patch
 
-        from src.services.profile_service import delete_profile
+        from gim_backend.services.profile_service import delete_profile
 
         mock_profile.intent_text = "Some intent"
         mock_result = MagicMock()
         mock_result.first.return_value = mock_profile
         mock_db.exec.return_value = mock_result
 
-        with patch("src.services.profile_service.cancel_user_tasks", new_callable=AsyncMock) as mock_cancel:
+        with patch("gim_backend.services.profile_service.cancel_user_tasks", new_callable=AsyncMock) as mock_cancel:
             mock_cancel.return_value = 2
             await delete_profile(mock_db, mock_profile.user_id)
             mock_cancel.assert_called_once_with(mock_profile.user_id)
@@ -538,7 +531,7 @@ class TestGetFullProfile:
     """Full profile response structure."""
 
     async def test_response_structure_matches_spec(self, mock_db, mock_profile):
-        from src.services.profile_service import get_full_profile
+        from gim_backend.services.profile_service import get_full_profile
 
         mock_profile.intent_text = "I want to work on Python"
         mock_profile.preferred_languages = ["Python"]

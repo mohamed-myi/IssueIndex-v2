@@ -5,9 +5,9 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from src.api.dependencies import get_db
-from src.main import app
-from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+from gim_backend.api.dependencies import get_db
+from gim_backend.main import app
+from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
 @pytest.fixture(autouse=True)
@@ -52,7 +52,7 @@ class TestSearchInteract:
             "page_size": 20,
         }
 
-        with patch("src.api.routes.search.get_cached_search_context", new=AsyncMock(return_value=context)):
+        with patch("gim_backend.api.routes.search.get_cached_search_context", new=AsyncMock(return_value=context)):
             response = client.post("/search/interact", json={
                 "search_id": str(search_id),
                 "selected_node_id": "issue_1",
@@ -75,7 +75,7 @@ class TestSearchInteract:
     def test_interact_returns_404_when_context_missing(self, client, db_override):
         search_id = uuid4()
 
-        with patch("src.api.routes.search.get_cached_search_context", new=AsyncMock(return_value=None)):
+        with patch("gim_backend.api.routes.search.get_cached_search_context", new=AsyncMock(return_value=None)):
             response = client.post("/search/interact", json={
                 "search_id": str(search_id),
                 "selected_node_id": "issue_1",
@@ -94,7 +94,7 @@ class TestSearchInteract:
             "page_size": 20,
         }
 
-        with patch("src.api.routes.search.get_cached_search_context", new=AsyncMock(return_value=context)):
+        with patch("gim_backend.api.routes.search.get_cached_search_context", new=AsyncMock(return_value=context)):
             response = client.post("/search/interact", json={
                 "search_id": str(search_id),
                 "selected_node_id": "issue_1",
@@ -115,7 +115,7 @@ class TestSearchInteract:
 
         mock_db.execute = AsyncMock(side_effect=Exception("db down"))
 
-        with patch("src.api.routes.search.get_cached_search_context", new=AsyncMock(return_value=context)):
+        with patch("gim_backend.api.routes.search.get_cached_search_context", new=AsyncMock(return_value=context)):
             response = client.post("/search/interact", json={
                 "search_id": str(search_id),
                 "selected_node_id": "issue_1",

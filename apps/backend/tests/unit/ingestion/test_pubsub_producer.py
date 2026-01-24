@@ -6,12 +6,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.ingestion.gatherer import IssueData
-from src.ingestion.pubsub_producer import (
+from gim_backend.ingestion.gatherer import IssueData
+from gim_backend.ingestion.pubsub_producer import (
     IssuePubSubProducer,
     compute_content_hash,
 )
-from src.ingestion.quality_gate import QScoreComponents
+from gim_backend.ingestion.quality_gate import QScoreComponents
 
 
 @pytest.fixture
@@ -102,7 +102,7 @@ class TestIssuePubSubProducer:
 
     @pytest.fixture
     def mock_publisher(self):
-        with patch("src.ingestion.pubsub_producer.pubsub_v1.PublisherClient") as mock:
+        with patch("gim_backend.ingestion.pubsub_producer.pubsub_v1.PublisherClient") as mock:
             mock_client = MagicMock()
             mock_client.topic_path.return_value = "projects/test/topics/test-topic"
             mock.return_value = mock_client
@@ -110,7 +110,7 @@ class TestIssuePubSubProducer:
 
     def test_creates_topic_path(self, mock_publisher):
         """Should create correct topic path"""
-        producer = IssuePubSubProducer(
+        IssuePubSubProducer(
             project_id="test-project",
             topic_id="test-topic",
         )
@@ -186,7 +186,7 @@ class TestPublishStream:
 
     @pytest.fixture
     def mock_publisher(self):
-        with patch("src.ingestion.pubsub_producer.pubsub_v1.PublisherClient") as mock:
+        with patch("gim_backend.ingestion.pubsub_producer.pubsub_v1.PublisherClient") as mock:
             mock_client = MagicMock()
             mock_client.topic_path.return_value = "projects/test/topics/test-topic"
             mock.return_value = mock_client

@@ -15,12 +15,12 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from src.ingestion.embeddings import EmbeddedIssue
-from src.ingestion.gatherer import IssueData
-from src.ingestion.persistence import StreamingPersistence
-from src.ingestion.quality_gate import QScoreComponents
-from src.ingestion.scout import RepositoryData
-from src.ingestion.survival_score import calculate_survival_score, days_since
+from gim_backend.ingestion.embeddings import EmbeddedIssue
+from gim_backend.ingestion.gatherer import IssueData
+from gim_backend.ingestion.persistence import StreamingPersistence
+from gim_backend.ingestion.quality_gate import QScoreComponents
+from gim_backend.ingestion.scout import RepositoryData
+from gim_backend.ingestion.survival_score import calculate_survival_score, days_since
 
 # Skip entire module if testcontainers not installed
 pytestmark = pytest.mark.skipif(
@@ -153,8 +153,8 @@ async def db_session(async_connection_url, setup_schema):
         yield session
 
         # Cleanup: delete all rows after test
-        await session.execute(text("DELETE FROM ingestion.issue"))
-        await session.execute(text("DELETE FROM ingestion.repository"))
+        await session.exec(text("DELETE FROM ingestion.issue"))
+        await session.exec(text("DELETE FROM ingestion.repository"))
         await session.commit()
 
     await engine.dispose()
@@ -233,11 +233,11 @@ class TestRepositoryUpsert:
         assert count == 1
 
         # Verify in database
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("SELECT full_name FROM ingestion.repository WHERE node_id = :id"),
-            {"id": "R_new"},
+            params={"id": "R_new"},
         )
-        row = result.fetchone()
+        row = result.first()
         assert row is not None
         assert row[0] == "test/new-repo"
 
@@ -265,11 +265,11 @@ class TestRepositoryUpsert:
         assert count == 1
 
         # Verify single row with updated value
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("SELECT stargazer_count FROM ingestion.repository WHERE node_id = :id"),
-            {"id": "R_conflict"},
+            params={"id": "R_conflict"},
         )
-        rows = result.fetchall()
+        rows = result.all()
         assert len(rows) == 1
         assert rows[0][0] == 9999
 
@@ -286,7 +286,7 @@ class TestRepositoryUpsert:
 
         assert count == 5
 
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("SELECT COUNT(*) FROM ingestion.repository WHERE node_id LIKE 'R_batch_%'")
         )
         assert result.scalar() == 5
@@ -313,11 +313,11 @@ class TestIssueUpsert:
 
         assert count == 1
 
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("SELECT title, q_score FROM ingestion.issue WHERE node_id = :id"),
-            {"id": "I_new"},
+            params={"id": "I_new"},
         )
-        row = result.fetchone()
+        row = result.first()
         assert row is not None
         assert row[0] == "Bug report"
         assert abs(row[1] - 0.75) < 0.01
@@ -359,11 +359,11 @@ class TestIssueUpsert:
         assert count == 1
 
         # Verify single row with updated values
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("SELECT title, q_score FROM ingestion.issue WHERE node_id = :id"),
-            {"id": "I_upsert"},
+            params={"id": "I_upsert"},
         )
-        rows = result.fetchall()
+        rows = result.all()
         assert len(rows) == 1
         assert rows[0][0] == "Updated title"
         assert abs(rows[0][1] - 0.9) < 0.01
@@ -389,9 +389,9 @@ class TestIssueUpsert:
 
         await persistence.persist_stream(single_issue())
 
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("SELECT survival_score FROM ingestion.issue WHERE node_id = :id"),
-            {"id": "I_survival"},
+            params={"id": "I_survival"},
         )
         stored_score = result.scalar()
 
@@ -434,7 +434,7 @@ class TestBatchStreamPersistence:
         assert count == issue_count
 
         # Verify all in database
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("SELECT COUNT(*) FROM ingestion.issue WHERE node_id LIKE 'I_batch_%'")
         )
         assert result.scalar() == issue_count
@@ -460,7 +460,7 @@ class TestBatchStreamPersistence:
 
         await persistence.persist_stream(issue_stream())
 
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("""
                 SELECT node_id, q_score, survival_score
                 FROM ingestion.issue
@@ -468,7 +468,7 @@ class TestBatchStreamPersistence:
                 ORDER BY q_score
             """)
         )
-        rows = result.fetchall()
+        rows = result.all()
 
         # Verify survival scores increase with q_score
         prev_survival = 0
@@ -497,14 +497,14 @@ class TestQScoreComponents:
 
         await persistence.persist_stream(single_issue())
 
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("""
                 SELECT has_code, has_template_headers, tech_stack_weight
                 FROM ingestion.issue WHERE node_id = :id
             """),
-            {"id": "I_components"},
+            params={"id": "I_components"},
         )
-        row = result.fetchone()
+        row = result.first()
 
         assert row is not None
         assert row[0] is True  # has_code
@@ -531,12 +531,12 @@ class TestVectorEmbedding:
         await persistence.persist_stream(single_issue())
 
         # Query embedding dimension
-        result = await db_session.execute(
+        result = await db_session.exec(
             text("""
                 SELECT vector_dims(embedding)
                 FROM ingestion.issue WHERE node_id = :id
             """),
-            {"id": "I_vector"},
+            params={"id": "I_vector"},
         )
         dim = result.scalar()
 

@@ -11,7 +11,7 @@ def mock_settings():
         "FINGERPRINT_SECRET": "test-fingerprint-secret-key-for-testing",
         "JWT_SECRET_KEY": "test-jwt-secret-key",
     }):
-        from src.core.config import get_settings
+        from gim_backend.core.config import get_settings
         get_settings.cache_clear()
         yield
         get_settings.cache_clear()
@@ -22,7 +22,7 @@ class TestRequestContextExtraction:
 
     async def test_extracts_fingerprint_header(self):
         """Verify fingerprint is extracted from X-Device-Fingerprint header."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {"X-Device-Fingerprint": "test-fingerprint-value"}
@@ -38,7 +38,7 @@ class TestRequestContextExtraction:
 
     async def test_extracts_user_agent(self):
         """Verify User-Agent header is extracted."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {"User-Agent": "Mozilla/5.0 Test Browser"}
@@ -52,7 +52,7 @@ class TestRequestContextExtraction:
 
     async def test_extracts_login_flow_id_cookie(self):
         """Verify login_flow_id cookie is extracted."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {}
@@ -66,7 +66,7 @@ class TestRequestContextExtraction:
 
     async def test_handles_missing_all_optional_headers(self):
         """Verify graceful handling when all optional headers are missing."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {}
@@ -88,8 +88,8 @@ class TestFingerprintIntegrity:
 
     async def test_hashes_fingerprint_correctly(self):
         """Verify fingerprint is hashed using HMAC-SHA256."""
-        from src.core.security import hash_fingerprint
-        from src.middleware.context import get_request_context
+        from gim_backend.core.security import hash_fingerprint
+        from gim_backend.middleware.context import get_request_context
 
         fingerprint_value = "unique-browser-fingerprint"
         expected_hash = hash_fingerprint(fingerprint_value)
@@ -106,8 +106,8 @@ class TestFingerprintIntegrity:
 
     async def test_fingerprint_hash_changes_with_different_secret(self):
         """Verify different secret produces different hash (salt verification)."""
-        from src.core.config import get_settings
-        from src.middleware.context import get_request_context
+        from gim_backend.core.config import get_settings
+        from gim_backend.middleware.context import get_request_context
 
         fingerprint = "same-fingerprint"
 
@@ -131,7 +131,7 @@ class TestFingerprintIntegrity:
 
     async def test_empty_string_fingerprint_treated_as_missing(self):
         """Empty string header results in no hash (falsy check)."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {"X-Device-Fingerprint": ""}
@@ -170,7 +170,7 @@ class TestIPExtraction:
     ])
     async def test_ip_extraction_logic(self, headers, client_host, expected_ip):
         """Parametrized test covering proxy chains, fallbacks, and IPv6."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = headers
@@ -187,7 +187,7 @@ class TestIPExtraction:
 
     async def test_ipv6_from_client_host(self):
         """Verify IPv6 address from client.host is handled correctly."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {}
@@ -205,7 +205,7 @@ class TestCookieExtraction:
 
     async def test_login_flow_id_with_multiple_cookies(self):
         """Ensure correct cookie is extracted when multiple cookies exist."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {}
@@ -224,7 +224,7 @@ class TestCookieExtraction:
 
     async def test_empty_login_flow_id_cookie(self):
         """Empty cookie value is preserved as empty string."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {}
@@ -242,7 +242,7 @@ class TestUserAgentParsing:
 
     async def test_parses_chrome_on_mac(self):
         """Extracts Chrome and Mac OS from typical UA string."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {
@@ -259,7 +259,7 @@ class TestUserAgentParsing:
 
     async def test_parses_safari_on_ios(self):
         """Extracts Safari and iOS from mobile UA string."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {
@@ -276,7 +276,7 @@ class TestUserAgentParsing:
 
     async def test_handles_missing_user_agent(self):
         """No User-Agent header results in None for os/ua family."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {}
@@ -295,7 +295,7 @@ class TestGCPHeaderExtraction:
 
     async def test_extracts_appengine_country(self):
         """Extracts country from X-AppEngine-Country header."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {"X-AppEngine-Country": "us"}
@@ -309,7 +309,7 @@ class TestGCPHeaderExtraction:
 
     async def test_extracts_cloudflare_country(self):
         """Extracts country from CF-IPCountry header."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {"CF-IPCountry": "GB"}
@@ -323,7 +323,7 @@ class TestGCPHeaderExtraction:
 
     async def test_extracts_asn(self):
         """Extracts ASN from X-GCP-ASN header."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {"X-GCP-ASN": "AS15169"}
@@ -337,7 +337,7 @@ class TestGCPHeaderExtraction:
 
     async def test_handles_missing_gcp_headers(self):
         """No GCP headers results in None for asn/country."""
-        from src.middleware.context import get_request_context
+        from gim_backend.middleware.context import get_request_context
 
         request = MagicMock()
         request.headers = {}

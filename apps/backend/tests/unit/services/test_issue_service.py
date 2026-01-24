@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.services.issue_service import (
+from gim_backend.services.issue_service import (
     DEFAULT_SIMILAR_LIMIT,
     MAX_SIMILAR_LIMIT,
     MIN_SIMILARITY_THRESHOLD,

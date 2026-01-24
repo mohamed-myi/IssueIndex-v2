@@ -5,10 +5,10 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from src.api.routes.auth import LINK_STATE_COOKIE_NAME, STATE_COOKIE_NAME
-from src.core.oauth import OAuthProvider, OAuthToken, UserProfile
-from src.main import app
-from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+from gim_backend.api.routes.auth import LINK_STATE_COOKIE_NAME, STATE_COOKIE_NAME
+from gim_backend.core.oauth import OAuthProvider, OAuthToken, UserProfile
+from gim_backend.main import app
+from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
 @pytest.fixture(autouse=True)
@@ -31,10 +31,10 @@ class TestAccountMergingBehavior:
     @pytest.fixture
     def mock_oauth_success(self):
         """Base OAuth mock returning verified user profile"""
-        with patch("src.api.routes.auth.exchange_code_for_token") as mock_exchange, \
-             patch("src.api.routes.auth.fetch_user_profile") as mock_profile, \
-             patch("src.api.routes.auth.get_db") as mock_db, \
-             patch("src.api.routes.auth.get_http_client") as mock_client:
+        with patch("gim_backend.api.routes.auth.exchange_code_for_token") as mock_exchange, \
+             patch("gim_backend.api.routes.auth.fetch_user_profile") as mock_profile, \
+             patch("gim_backend.api.routes.auth.get_db") as mock_db, \
+             patch("gim_backend.api.routes.auth.get_http_client") as mock_client:
 
             mock_exchange.return_value = OAuthToken(
                 access_token="test_token",
@@ -70,8 +70,8 @@ class TestAccountMergingBehavior:
             username="returninguser",
         )
 
-        with patch("src.api.routes.auth.upsert_user") as mock_upsert, \
-             patch("src.api.routes.auth.create_session") as mock_session:
+        with patch("gim_backend.api.routes.auth.upsert_user") as mock_upsert, \
+             patch("gim_backend.api.routes.auth.create_session") as mock_session:
 
             mock_user = MagicMock()
             mock_user.id = user_id
@@ -118,7 +118,7 @@ class TestAccountMergingBehavior:
         User signed up with GitHub; tries Google login with same email;
         must redirect with existing_account error
         """
-        from src.services.session_service import ExistingAccountError
+        from gim_backend.services.session_service import ExistingAccountError
 
         mock_oauth_success["profile"].return_value = UserProfile(
             email="existing@example.com",
@@ -128,8 +128,8 @@ class TestAccountMergingBehavior:
             username=None,
         )
 
-        with patch("src.api.routes.auth.upsert_user") as mock_upsert, \
-             patch("src.api.routes.auth.create_session"):
+        with patch("gim_backend.api.routes.auth.upsert_user") as mock_upsert, \
+             patch("gim_backend.api.routes.auth.create_session"):
 
             mock_upsert.side_effect = ExistingAccountError("github")
 

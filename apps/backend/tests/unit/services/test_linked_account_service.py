@@ -6,6 +6,7 @@ from uuid import uuid4
 # Import all models to ensure SQLAlchemy mappers are configured
 # before LinkedAccount is used (models have inter-dependent relationships)
 import pytest
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 @pytest.fixture(autouse=True)
@@ -17,15 +18,17 @@ def mock_settings():
     with patch.dict(os.environ, {
         "FERNET_KEY": test_fernet_key,
     }):
-        from src.core.config import get_settings
+        from gim_backend.core.config import get_settings
         get_settings.cache_clear()
         yield
         get_settings.cache_clear()
 
 
+
+
 @pytest.fixture
 def mock_db():
-    db = AsyncMock()
+    db = MagicMock(spec=AsyncSession)
     db.add = MagicMock()
     db.commit = AsyncMock()
     db.refresh = AsyncMock()
@@ -38,7 +41,7 @@ class TestTokenEncryption:
 
     def test_encrypt_decrypt_roundtrip(self):
         """Encrypted token decrypts to original value"""
-        from src.services.linked_account_service import decrypt_token, encrypt_token
+        from gim_backend.services.linked_account_service import decrypt_token, encrypt_token
 
         original = "gho_test_token_12345"
         encrypted = encrypt_token(original)
@@ -49,7 +52,7 @@ class TestTokenEncryption:
 
     def test_encrypted_tokens_differ(self):
         """Same token produces different ciphertext each time (salt)"""
-        from src.services.linked_account_service import encrypt_token
+        from gim_backend.services.linked_account_service import encrypt_token
 
         token = "gho_test_token_12345"
         encrypted1 = encrypt_token(token)
@@ -59,7 +62,7 @@ class TestTokenEncryption:
 
     def test_decrypt_invalid_token_raises(self):
         """Invalid ciphertext raises TokenEncryptionError"""
-        from src.services.linked_account_service import TokenEncryptionError, decrypt_token
+        from gim_backend.services.linked_account_service import TokenEncryptionError, decrypt_token
 
         with pytest.raises(TokenEncryptionError) as exc:
             decrypt_token("not_a_valid_encrypted_token")
@@ -68,8 +71,8 @@ class TestTokenEncryption:
 
     def test_encrypt_raises_without_fernet_key(self):
         """Missing FERNET_KEY raises TokenEncryptionError"""
-        from src.core.config import get_settings
-        from src.services.linked_account_service import TokenEncryptionError, encrypt_token
+        from gim_backend.core.config import get_settings
+        from gim_backend.services.linked_account_service import TokenEncryptionError, encrypt_token
 
         with patch.dict(os.environ, {"FERNET_KEY": ""}):
             get_settings.cache_clear()
@@ -87,7 +90,7 @@ class TestStoreLinkedAccount:
     async def test_creates_new_account(self, mock_db):
         """Stores new linked account with encrypted token"""
 
-        from src.services.linked_account_service import store_linked_account
+        from gim_backend.services.linked_account_service import store_linked_account
 
         user_id = uuid4()
 
@@ -114,7 +117,7 @@ class TestStoreLinkedAccount:
 
     async def test_updates_existing_account(self, mock_db):
         """Replaces tokens when account already exists"""
-        from src.services.linked_account_service import encrypt_token, store_linked_account
+        from gim_backend.services.linked_account_service import encrypt_token, store_linked_account
 
         user_id = uuid4()
         existing = MagicMock()
@@ -141,7 +144,7 @@ class TestStoreLinkedAccount:
 
     async def test_reactivates_revoked_account(self, mock_db):
         """Reconnecting clears revoked_at timestamp"""
-        from src.services.linked_account_service import store_linked_account
+        from gim_backend.services.linked_account_service import store_linked_account
 
         user_id = uuid4()
         revoked_account = MagicMock()
@@ -167,7 +170,7 @@ class TestGetValidAccessToken:
 
     async def test_returns_decrypted_token(self, mock_db):
         """Returns usable token from encrypted storage"""
-        from src.services.linked_account_service import (
+        from gim_backend.services.linked_account_service import (
             encrypt_token,
             get_valid_access_token,
         )
@@ -189,7 +192,7 @@ class TestGetValidAccessToken:
 
     async def test_raises_not_found_error(self, mock_db):
         """Raises LinkedAccountNotFoundError when no account exists"""
-        from src.services.linked_account_service import (
+        from gim_backend.services.linked_account_service import (
             LinkedAccountNotFoundError,
             get_valid_access_token,
         )
@@ -205,7 +208,7 @@ class TestGetValidAccessToken:
 
     async def test_raises_revoked_error(self, mock_db):
         """Raises LinkedAccountRevokedError for disconnected accounts"""
-        from src.services.linked_account_service import (
+        from gim_backend.services.linked_account_service import (
             LinkedAccountRevokedError,
             encrypt_token,
             get_valid_access_token,
@@ -230,7 +233,7 @@ class TestMarkRevoked:
 
     async def test_sets_revoked_timestamp(self, mock_db):
         """Revocation sets revoked_at without deleting record"""
-        from src.services.linked_account_service import mark_revoked
+        from gim_backend.services.linked_account_service import mark_revoked
 
         account = MagicMock()
         account.revoked_at = None
@@ -247,7 +250,7 @@ class TestMarkRevoked:
 
     async def test_returns_false_when_not_found(self, mock_db):
         """Returns False when no account to revoke"""
-        from src.services.linked_account_service import mark_revoked
+        from gim_backend.services.linked_account_service import mark_revoked
 
         mock_result = MagicMock()
         mock_result.first.return_value = None
@@ -264,13 +267,13 @@ class TestListLinkedAccounts:
 
     async def test_excludes_revoked_by_default(self, mock_db):
         """Only returns active accounts unless include_revoked is True"""
-        from src.services.linked_account_service import list_linked_accounts
+        from gim_backend.services.linked_account_service import list_linked_accounts
 
         mock_result = MagicMock()
         mock_result.all.return_value = []
         mock_db.exec.return_value = mock_result
 
-        with patch("src.services.linked_account_service.select") as mock_select:
+        with patch("gim_backend.services.linked_account_service.select") as mock_select:
             mock_chain = MagicMock()
             mock_select.return_value.where.return_value = mock_chain
             mock_chain.where.return_value = mock_chain
@@ -282,13 +285,13 @@ class TestListLinkedAccounts:
 
     async def test_includes_revoked_when_requested(self, mock_db):
         """Returns all accounts including revoked when include_revoked is True"""
-        from src.services.linked_account_service import list_linked_accounts
+        from gim_backend.services.linked_account_service import list_linked_accounts
 
         mock_result = MagicMock()
         mock_result.all.return_value = []
         mock_db.exec.return_value = mock_result
 
-        with patch("src.services.linked_account_service.select") as mock_select:
+        with patch("gim_backend.services.linked_account_service.select") as mock_select:
             mock_chain = MagicMock()
             mock_select.return_value.where.return_value = mock_chain
 

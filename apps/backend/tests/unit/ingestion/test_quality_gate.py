@@ -3,7 +3,7 @@
 
 import pytest
 
-from src.ingestion.quality_gate import (
+from gim_backend.ingestion.quality_gate import (
     QScoreComponents,
     compute_q_score,
     evaluate_issue,

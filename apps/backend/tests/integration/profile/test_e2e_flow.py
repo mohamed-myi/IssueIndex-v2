@@ -9,9 +9,9 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
-from src.middleware.auth import require_auth
-from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+from gim_backend.main import app
+from gim_backend.middleware.auth import require_auth
+from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
 @pytest.fixture(autouse=True)
@@ -106,15 +106,15 @@ class TestFeedAuthRequired:
 class TestFeedTrendingFallback:
     """Tests trending feed fallback when user has no profile."""
 
-    @patch("src.services.feed_service.get_or_create_profile")
+    @patch("gim_backend.services.feed_service.get_or_create_profile")
     def test_returns_trending_when_no_combined_vector(
         self, mock_get_profile, authenticated_client, mock_user
     ):
         mock_profile = create_mock_profile(mock_user.id)
         mock_get_profile.return_value = mock_profile
 
-        with patch("src.services.feed_service._get_trending_feed") as mock_trending:
-            from src.services.feed_service import TRENDING_CTA, FeedResponse
+        with patch("gim_backend.services.feed_service._get_trending_feed") as mock_trending:
+            from gim_backend.services.feed_service import TRENDING_CTA, FeedResponse
 
             mock_trending.return_value = FeedResponse(
                 results=[],
@@ -134,15 +134,15 @@ class TestFeedTrendingFallback:
         assert data["profile_cta"] is not None
         assert "trending" in data["profile_cta"].lower()
 
-    @patch("src.services.feed_service.get_or_create_profile")
+    @patch("gim_backend.services.feed_service.get_or_create_profile")
     def test_trending_feed_shows_cta_message(
         self, mock_get_profile, authenticated_client, mock_user
     ):
         mock_profile = create_mock_profile(mock_user.id)
         mock_get_profile.return_value = mock_profile
 
-        with patch("src.services.feed_service._get_trending_feed") as mock_trending:
-            from src.services.feed_service import TRENDING_CTA, FeedResponse
+        with patch("gim_backend.services.feed_service._get_trending_feed") as mock_trending:
+            from gim_backend.services.feed_service import TRENDING_CTA, FeedResponse
 
             mock_trending.return_value = FeedResponse(
                 results=[],
@@ -163,7 +163,7 @@ class TestFeedTrendingFallback:
 class TestFeedPersonalized:
     """Tests personalized feed when user has combined_vector."""
 
-    @patch("src.services.feed_service.get_or_create_profile")
+    @patch("gim_backend.services.feed_service.get_or_create_profile")
     def test_returns_personalized_when_has_combined_vector(
         self, mock_get_profile, authenticated_client, mock_user
     ):
@@ -176,8 +176,8 @@ class TestFeedPersonalized:
         )
         mock_get_profile.return_value = mock_profile
 
-        with patch("src.services.feed_service._get_personalized_feed") as mock_personalized:
-            from src.services.feed_service import FeedResponse
+        with patch("gim_backend.services.feed_service._get_personalized_feed") as mock_personalized:
+            from gim_backend.services.feed_service import FeedResponse
 
             mock_personalized.return_value = FeedResponse(
                 results=[],
@@ -196,7 +196,7 @@ class TestFeedPersonalized:
         assert data["is_personalized"] is True
         assert data["profile_cta"] is None
 
-    @patch("src.services.feed_service.get_or_create_profile")
+    @patch("gim_backend.services.feed_service.get_or_create_profile")
     def test_personalized_feed_no_cta(
         self, mock_get_profile, authenticated_client, mock_user
     ):
@@ -208,8 +208,8 @@ class TestFeedPersonalized:
         )
         mock_get_profile.return_value = mock_profile
 
-        with patch("src.services.feed_service._get_personalized_feed") as mock_personalized:
-            from src.services.feed_service import FeedResponse
+        with patch("gim_backend.services.feed_service._get_personalized_feed") as mock_personalized:
+            from gim_backend.services.feed_service import FeedResponse
 
             mock_personalized.return_value = FeedResponse(
                 results=[],
@@ -230,15 +230,15 @@ class TestFeedPersonalized:
 class TestFeedPagination:
     """Tests feed pagination parameters."""
 
-    @patch("src.services.feed_service.get_or_create_profile")
+    @patch("gim_backend.services.feed_service.get_or_create_profile")
     def test_accepts_page_parameter(
         self, mock_get_profile, authenticated_client, mock_user
     ):
         mock_profile = create_mock_profile(mock_user.id)
         mock_get_profile.return_value = mock_profile
 
-        with patch("src.services.feed_service._get_trending_feed") as mock_trending:
-            from src.services.feed_service import TRENDING_CTA, FeedResponse
+        with patch("gim_backend.services.feed_service._get_trending_feed") as mock_trending:
+            from gim_backend.services.feed_service import TRENDING_CTA, FeedResponse
 
             mock_trending.return_value = FeedResponse(
                 results=[],
@@ -256,15 +256,15 @@ class TestFeedPagination:
         data = response.json()
         assert data["page"] == 2
 
-    @patch("src.services.feed_service.get_or_create_profile")
+    @patch("gim_backend.services.feed_service.get_or_create_profile")
     def test_accepts_page_size_parameter(
         self, mock_get_profile, authenticated_client, mock_user
     ):
         mock_profile = create_mock_profile(mock_user.id)
         mock_get_profile.return_value = mock_profile
 
-        with patch("src.services.feed_service._get_trending_feed") as mock_trending:
-            from src.services.feed_service import TRENDING_CTA, FeedResponse
+        with patch("gim_backend.services.feed_service._get_trending_feed") as mock_trending:
+            from gim_backend.services.feed_service import TRENDING_CTA, FeedResponse
 
             mock_trending.return_value = FeedResponse(
                 results=[],
@@ -287,7 +287,7 @@ class TestOnboardingToFeedFlow:
     @pytest.mark.asyncio
     async def test_intent_vector_triggers_combined_calculation(self):
         """Verifies that intent creation would trigger combined vector calculation."""
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         intent_vector = SAMPLE_VECTOR
 
@@ -307,7 +307,7 @@ class TestRetryLogic:
 
     @pytest.mark.asyncio
     async def test_retry_with_exponential_backoff(self):
-        from src.services.vector_generation import generate_intent_vector_with_retry
+        from gim_backend.services.vector_generation import generate_intent_vector_with_retry
 
         call_count = 0
 
@@ -318,7 +318,7 @@ class TestRetryLogic:
                 raise Exception("Embedding service unavailable")
             return SAMPLE_VECTOR
 
-        with patch("src.services.profile_embedding_service.embed_query", mock_embed):
+        with patch("gim_backend.services.profile_embedding_service.embed_query", mock_embed):
             with patch("asyncio.sleep", new_callable=AsyncMock):
                 result = await generate_intent_vector_with_retry(
                     ["backend"], "Test text", max_retries=3
@@ -329,12 +329,12 @@ class TestRetryLogic:
 
     @pytest.mark.asyncio
     async def test_returns_none_after_max_retries(self):
-        from src.services.vector_generation import generate_intent_vector_with_retry
+        from gim_backend.services.vector_generation import generate_intent_vector_with_retry
 
         async def always_fail(*args, **kwargs):
             raise Exception("Embedding service down")
 
-        with patch("src.services.profile_embedding_service.embed_query", always_fail):
+        with patch("gim_backend.services.profile_embedding_service.embed_query", always_fail):
             with patch("asyncio.sleep", new_callable=AsyncMock):
                 result = await generate_intent_vector_with_retry(
                     ["backend"], "Test text", max_retries=3
@@ -357,8 +357,8 @@ class TestErrorHandling:
 
     def test_error_handler_converts_github_not_connected(self):
         """Verifies error handler produces correct response for GitHubNotConnectedError."""
-        from src.api.routes.profile_github import _handle_github_error
-        from src.core.errors import GitHubNotConnectedError
+        from gim_backend.api.routes.profile_github import _handle_github_error
+        from gim_backend.core.errors import GitHubNotConnectedError
 
         error = GitHubNotConnectedError("No account linked")
         http_exc = _handle_github_error(error)
@@ -368,8 +368,8 @@ class TestErrorHandling:
 
     def test_error_handler_converts_refresh_rate_limit(self):
         """Verifies error handler produces correct response for RefreshRateLimitError."""
-        from src.api.routes.profile_github import _handle_github_error
-        from src.core.errors import RefreshRateLimitError
+        from gim_backend.api.routes.profile_github import _handle_github_error
+        from gim_backend.core.errors import RefreshRateLimitError
 
         error = RefreshRateLimitError(seconds_remaining=3600)
         http_exc = _handle_github_error(error)
@@ -383,7 +383,7 @@ class TestCombinedVectorCalculation:
 
     @pytest.mark.asyncio
     async def test_intent_only_combined_equals_intent(self):
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         intent_vector = [1.0] * 768
 
@@ -399,7 +399,7 @@ class TestCombinedVectorCalculation:
 
     @pytest.mark.asyncio
     async def test_all_sources_uses_correct_weights(self):
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         intent_vector = [1.0, 0.0, 0.0] + [0.0] * 765
         resume_vector = [0.0, 1.0, 0.0] + [0.0] * 765
@@ -416,7 +416,7 @@ class TestCombinedVectorCalculation:
 
     @pytest.mark.asyncio
     async def test_no_sources_returns_none(self):
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         result = await calculate_combined_vector(
             intent_vector=None,
@@ -432,7 +432,7 @@ class TestProfileDeletionCancelsJobs:
 
     async def test_cloud_tasks_cancel_user_tasks(self):
         """Verifies Cloud Tasks client can cancel tasks for a user in mock mode."""
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             get_cloud_tasks_client,
             reset_client_for_testing,
         )

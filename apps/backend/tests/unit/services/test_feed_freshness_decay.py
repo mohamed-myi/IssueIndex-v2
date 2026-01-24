@@ -1,4 +1,4 @@
-from src.services.feed_service import freshness_decay
+from gim_backend.services.feed_service import freshness_decay
 
 
 def test_freshness_decay_is_1_for_non_positive_age():

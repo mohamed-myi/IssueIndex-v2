@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from src.services.recommendation_event_service import (
+from gim_backend.services.recommendation_event_service import (
     RECO_EVENTS_QUEUE_KEY,
     RecommendationBatchContext,
     RecommendationEvent,
@@ -47,7 +47,7 @@ async def test_store_and_get_recommendation_batch_context_roundtrip():
     batch_id = uuid4()
     served_at = datetime.now(UTC)
 
-    with patch("src.services.recommendation_event_service.get_redis", new=AsyncMock(return_value=fake)):
+    with patch("gim_backend.services.recommendation_event_service.get_redis", new=AsyncMock(return_value=fake)):
         ok = await store_recommendation_batch_context(
             recommendation_batch_id=batch_id,
             issue_node_ids=["a", "b"],
@@ -104,7 +104,7 @@ async def test_enqueue_recommendation_events_dedupes_on_event_id():
         metadata={"k": "v"},
     )
 
-    with patch("src.services.recommendation_event_service.get_redis", new=AsyncMock(return_value=fake)):
+    with patch("gim_backend.services.recommendation_event_service.get_redis", new=AsyncMock(return_value=fake)):
         queued1, deduped1 = await enqueue_recommendation_events(
             user_id=user_id,
             context=ctx,

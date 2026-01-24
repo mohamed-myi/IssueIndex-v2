@@ -6,9 +6,9 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
-from src.middleware.auth import require_auth
-from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+from gim_backend.main import app
+from gim_backend.middleware.auth import require_auth
+from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
 @pytest.fixture(autouse=True)
@@ -81,7 +81,7 @@ class TestGetOnboarding:
     """Tests for GET /profile/onboarding endpoint."""
 
     def test_returns_not_started_for_new_user(self, authenticated_client):
-        from src.services.onboarding_service import OnboardingState
+        from gim_backend.services.onboarding_service import OnboardingState
 
         mock_state = OnboardingState(
             status="not_started",
@@ -91,7 +91,7 @@ class TestGetOnboarding:
         )
 
         with patch(
-            "src.api.routes.profile_onboarding.get_onboarding_status",
+            "gim_backend.api.routes.profile_onboarding.get_onboarding_status",
             new_callable=AsyncMock,
             return_value=mock_state,
         ):
@@ -104,7 +104,7 @@ class TestGetOnboarding:
         assert data["can_complete"] is False
 
     def test_returns_in_progress_with_intent(self, authenticated_client):
-        from src.services.onboarding_service import OnboardingState
+        from gim_backend.services.onboarding_service import OnboardingState
 
         mock_state = OnboardingState(
             status="in_progress",
@@ -114,7 +114,7 @@ class TestGetOnboarding:
         )
 
         with patch(
-            "src.api.routes.profile_onboarding.get_onboarding_status",
+            "gim_backend.api.routes.profile_onboarding.get_onboarding_status",
             new_callable=AsyncMock,
             return_value=mock_state,
         ):
@@ -128,7 +128,7 @@ class TestGetOnboarding:
         assert data["can_complete"] is True
 
     def test_returns_completed_status(self, authenticated_client):
-        from src.services.onboarding_service import OnboardingState
+        from gim_backend.services.onboarding_service import OnboardingState
 
         mock_state = OnboardingState(
             status="completed",
@@ -138,7 +138,7 @@ class TestGetOnboarding:
         )
 
         with patch(
-            "src.api.routes.profile_onboarding.get_onboarding_status",
+            "gim_backend.api.routes.profile_onboarding.get_onboarding_status",
             new_callable=AsyncMock,
             return_value=mock_state,
         ):
@@ -152,7 +152,7 @@ class TestCompleteOnboarding:
     """Tests for POST /profile/onboarding/complete endpoint."""
 
     def test_complete_succeeds_with_source(self, authenticated_client):
-        from src.services.onboarding_service import OnboardingState
+        from gim_backend.services.onboarding_service import OnboardingState
 
         mock_state = OnboardingState(
             status="completed",
@@ -162,7 +162,7 @@ class TestCompleteOnboarding:
         )
 
         with patch(
-            "src.api.routes.profile_onboarding.complete_onboarding",
+            "gim_backend.api.routes.profile_onboarding.complete_onboarding",
             new_callable=AsyncMock,
             return_value=mock_state,
         ):
@@ -172,10 +172,10 @@ class TestCompleteOnboarding:
         assert response.json()["status"] == "completed"
 
     def test_complete_fails_without_sources(self, authenticated_client):
-        from src.services.onboarding_service import CannotCompleteOnboardingError
+        from gim_backend.services.onboarding_service import CannotCompleteOnboardingError
 
         with patch(
-            "src.api.routes.profile_onboarding.complete_onboarding",
+            "gim_backend.api.routes.profile_onboarding.complete_onboarding",
             new_callable=AsyncMock,
             side_effect=CannotCompleteOnboardingError("Cannot complete without sources"),
         ):
@@ -185,10 +185,10 @@ class TestCompleteOnboarding:
         assert "Cannot complete" in response.json()["detail"]
 
     def test_complete_returns_409_when_already_completed(self, authenticated_client):
-        from src.services.onboarding_service import OnboardingAlreadyCompletedError
+        from gim_backend.services.onboarding_service import OnboardingAlreadyCompletedError
 
         with patch(
-            "src.api.routes.profile_onboarding.complete_onboarding",
+            "gim_backend.api.routes.profile_onboarding.complete_onboarding",
             new_callable=AsyncMock,
             side_effect=OnboardingAlreadyCompletedError("Onboarding already completed"),
         ):
@@ -202,7 +202,7 @@ class TestSkipOnboarding:
     """Tests for POST /profile/onboarding/skip endpoint."""
 
     def test_skip_succeeds_without_sources(self, authenticated_client):
-        from src.services.onboarding_service import OnboardingState
+        from gim_backend.services.onboarding_service import OnboardingState
 
         mock_state = OnboardingState(
             status="skipped",
@@ -212,7 +212,7 @@ class TestSkipOnboarding:
         )
 
         with patch(
-            "src.api.routes.profile_onboarding.skip_onboarding",
+            "gim_backend.api.routes.profile_onboarding.skip_onboarding",
             new_callable=AsyncMock,
             return_value=mock_state,
         ):
@@ -222,10 +222,10 @@ class TestSkipOnboarding:
         assert response.json()["status"] == "skipped"
 
     def test_skip_returns_409_when_already_skipped(self, authenticated_client):
-        from src.services.onboarding_service import OnboardingAlreadyCompletedError
+        from gim_backend.services.onboarding_service import OnboardingAlreadyCompletedError
 
         with patch(
-            "src.api.routes.profile_onboarding.skip_onboarding",
+            "gim_backend.api.routes.profile_onboarding.skip_onboarding",
             new_callable=AsyncMock,
             side_effect=OnboardingAlreadyCompletedError("Onboarding already skipped"),
         ):
@@ -238,7 +238,7 @@ class TestPreviewRecommendations:
     """Tests for GET /profile/preview-recommendations endpoint."""
 
     def test_returns_issues_with_intent_vector(self, authenticated_client):
-        from src.services.recommendation_preview_service import PreviewIssue
+        from gim_backend.services.recommendation_preview_service import PreviewIssue
 
         mock_issues = [
             PreviewIssue(
@@ -265,7 +265,7 @@ class TestPreviewRecommendations:
         ]
 
         with patch(
-            "src.api.routes.profile_onboarding.get_preview_recommendations",
+            "gim_backend.api.routes.profile_onboarding.get_preview_recommendations",
             new_callable=AsyncMock,
             return_value=mock_issues,
         ):
@@ -282,7 +282,7 @@ class TestPreviewRecommendations:
 
     def test_returns_empty_without_vector(self, authenticated_client):
         with patch(
-            "src.api.routes.profile_onboarding.get_preview_recommendations",
+            "gim_backend.api.routes.profile_onboarding.get_preview_recommendations",
             new_callable=AsyncMock,
             return_value=[],
         ):
@@ -294,7 +294,7 @@ class TestPreviewRecommendations:
         assert response.json()["issues"] == []
 
     def test_returns_trending_when_no_source(self, authenticated_client):
-        from src.services.recommendation_preview_service import PreviewIssue
+        from gim_backend.services.recommendation_preview_service import PreviewIssue
 
         mock_issues = [
             PreviewIssue(
@@ -307,7 +307,7 @@ class TestPreviewRecommendations:
         ]
 
         with patch(
-            "src.api.routes.profile_onboarding.get_preview_recommendations",
+            "gim_backend.api.routes.profile_onboarding.get_preview_recommendations",
             new_callable=AsyncMock,
             return_value=mock_issues,
         ):
@@ -319,10 +319,10 @@ class TestPreviewRecommendations:
         assert len(data["issues"]) == 1
 
     def test_validates_source_parameter(self, authenticated_client):
-        from src.services.recommendation_preview_service import InvalidSourceError
+        from gim_backend.services.recommendation_preview_service import InvalidSourceError
 
         with patch(
-            "src.api.routes.profile_onboarding.get_preview_recommendations",
+            "gim_backend.api.routes.profile_onboarding.get_preview_recommendations",
             new_callable=AsyncMock,
             side_effect=InvalidSourceError("Invalid source: 'invalid'"),
         ):
@@ -335,7 +335,7 @@ class TestPreviewRecommendations:
 
     def test_accepts_resume_source(self, authenticated_client):
         with patch(
-            "src.api.routes.profile_onboarding.get_preview_recommendations",
+            "gim_backend.api.routes.profile_onboarding.get_preview_recommendations",
             new_callable=AsyncMock,
             return_value=[],
         ):
@@ -348,7 +348,7 @@ class TestPreviewRecommendations:
 
     def test_accepts_github_source(self, authenticated_client):
         with patch(
-            "src.api.routes.profile_onboarding.get_preview_recommendations",
+            "gim_backend.api.routes.profile_onboarding.get_preview_recommendations",
             new_callable=AsyncMock,
             return_value=[],
         ):
@@ -370,9 +370,9 @@ class TestOnboardingAfterIntentCreate:
         Verifies that creating intent via POST /profile/intent
         transitions onboarding status from not_started to in_progress.
         """
-        from models.profiles import UserProfile
+        from gim_database.models.profiles import UserProfile
 
-        from src.services.onboarding_service import OnboardingState
+        from gim_backend.services.onboarding_service import OnboardingState
 
         mock_profile = MagicMock(spec=UserProfile)
         mock_profile.intent_text = "I want to contribute"
@@ -384,7 +384,7 @@ class TestOnboardingAfterIntentCreate:
         mock_profile.onboarding_status = "in_progress"
 
         with patch(
-            "src.api.routes.profile.create_intent_service",
+            "gim_backend.api.routes.profile.create_intent_service",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ):
@@ -405,7 +405,7 @@ class TestOnboardingAfterIntentCreate:
         )
 
         with patch(
-            "src.api.routes.profile_onboarding.get_onboarding_status",
+            "gim_backend.api.routes.profile_onboarding.get_onboarding_status",
             new_callable=AsyncMock,
             return_value=mock_state,
         ):
@@ -421,7 +421,7 @@ class TestStartOnboarding:
     """Tests for POST /profile/onboarding/start endpoint."""
 
     def test_start_returns_action_and_state(self, authenticated_client):
-        from src.services.onboarding_service import OnboardingStartResult, OnboardingState
+        from gim_backend.services.onboarding_service import OnboardingStartResult, OnboardingState
 
         mock_state = OnboardingState(
             status="in_progress",
@@ -432,7 +432,7 @@ class TestStartOnboarding:
         mock_result = OnboardingStartResult(state=mock_state, action="started")
 
         with patch(
-            "src.api.routes.profile_onboarding.start_onboarding",
+            "gim_backend.api.routes.profile_onboarding.start_onboarding",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
@@ -444,10 +444,10 @@ class TestStartOnboarding:
         assert data["status"] == "in_progress"
 
     def test_start_returns_409_when_completed(self, authenticated_client):
-        from src.services.onboarding_service import OnboardingAlreadyCompletedError
+        from gim_backend.services.onboarding_service import OnboardingAlreadyCompletedError
 
         with patch(
-            "src.api.routes.profile_onboarding.start_onboarding",
+            "gim_backend.api.routes.profile_onboarding.start_onboarding",
             new_callable=AsyncMock,
             side_effect=OnboardingAlreadyCompletedError("Onboarding already completed"),
         ):
@@ -456,7 +456,7 @@ class TestStartOnboarding:
         assert response.status_code == 409
 
     def test_start_can_restart_from_skipped(self, authenticated_client):
-        from src.services.onboarding_service import OnboardingStartResult, OnboardingState
+        from gim_backend.services.onboarding_service import OnboardingStartResult, OnboardingState
 
         mock_state = OnboardingState(
             status="in_progress",
@@ -467,7 +467,7 @@ class TestStartOnboarding:
         mock_result = OnboardingStartResult(state=mock_state, action="restarted")
 
         with patch(
-            "src.api.routes.profile_onboarding.start_onboarding",
+            "gim_backend.api.routes.profile_onboarding.start_onboarding",
             new_callable=AsyncMock,
             return_value=mock_result,
         ):
@@ -485,7 +485,7 @@ class TestOnboardingStep:
         assert response.status_code == 400
 
     def test_welcome_step_behaves_like_start(self, authenticated_client):
-        from src.services.onboarding_service import OnboardingStartResult, OnboardingState
+        from gim_backend.services.onboarding_service import OnboardingStartResult, OnboardingState
 
         mock_state = OnboardingState(
             status="in_progress",
@@ -495,11 +495,11 @@ class TestOnboardingStep:
         )
 
         with patch(
-            "src.api.routes.profile_onboarding.start_onboarding",
+            "gim_backend.api.routes.profile_onboarding.start_onboarding",
             new_callable=AsyncMock,
             return_value=OnboardingStartResult(state=mock_state, action="noop"),
         ), patch(
-            "src.api.routes.profile_onboarding.get_onboarding_status",
+            "gim_backend.api.routes.profile_onboarding.get_onboarding_status",
             new_callable=AsyncMock,
             return_value=mock_state,
         ):
@@ -514,9 +514,9 @@ class TestOnboardingStep:
     def test_intent_step_saves_intent_and_returns_payload(self, authenticated_client):
         from datetime import datetime
 
-        from models.profiles import UserProfile
+        from gim_database.models.profiles import UserProfile
 
-        from src.services.onboarding_service import OnboardingState
+        from gim_backend.services.onboarding_service import OnboardingState
 
         mock_state = OnboardingState(
             status="in_progress",
@@ -534,11 +534,11 @@ class TestOnboardingStep:
         mock_profile.updated_at = datetime.now(UTC)
 
         with patch(
-            "src.api.routes.profile_onboarding.put_intent_service",
+            "gim_backend.api.routes.profile_onboarding.put_intent_service",
             new_callable=AsyncMock,
             return_value=(mock_profile, True),
         ), patch(
-            "src.api.routes.profile_onboarding.get_onboarding_status",
+            "gim_backend.api.routes.profile_onboarding.get_onboarding_status",
             new_callable=AsyncMock,
             return_value=mock_state,
         ):
@@ -563,7 +563,7 @@ class TestOnboardingStep:
         assert response.status_code == 400
 
     def test_preferences_step_saves_and_returns_payload(self, authenticated_client):
-        from src.services.onboarding_service import OnboardingState
+        from gim_backend.services.onboarding_service import OnboardingState
 
         mock_state = OnboardingState(
             status="in_progress",
@@ -578,11 +578,11 @@ class TestOnboardingStep:
         mock_profile.min_heat_threshold = 0.7
 
         with patch(
-            "src.api.routes.profile_onboarding.update_preferences_service",
+            "gim_backend.api.routes.profile_onboarding.update_preferences_service",
             new_callable=AsyncMock,
             return_value=mock_profile,
         ), patch(
-            "src.api.routes.profile_onboarding.get_onboarding_status",
+            "gim_backend.api.routes.profile_onboarding.get_onboarding_status",
             new_callable=AsyncMock,
             return_value=mock_state,
         ):

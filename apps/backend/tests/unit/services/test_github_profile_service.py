@@ -10,7 +10,7 @@ class TestExtractLanguages:
     """Tests for language extraction and weighting."""
 
     def test_extracts_primary_languages(self):
-        from src.services.github_profile_service import extract_languages
+        from gim_backend.services.github_profile_service import extract_languages
 
         starred = [
             {"primaryLanguage": {"name": "Python"}, "languages": {"nodes": []}},
@@ -24,7 +24,7 @@ class TestExtractLanguages:
         assert "JavaScript" in result
 
     def test_extracts_secondary_languages(self):
-        from src.services.github_profile_service import extract_languages
+        from gim_backend.services.github_profile_service import extract_languages
 
         starred = [
             {
@@ -40,7 +40,7 @@ class TestExtractLanguages:
         assert "C++" in result
 
     def test_weights_contributed_repos_2x(self):
-        from src.services.github_profile_service import extract_languages
+        from gim_backend.services.github_profile_service import extract_languages
 
         starred = [
             {"primaryLanguage": {"name": "Python"}, "languages": {"nodes": []}},
@@ -58,7 +58,7 @@ class TestExtractLanguages:
         assert "Python" in result
 
     def test_deduplicates_languages(self):
-        from src.services.github_profile_service import extract_languages
+        from gim_backend.services.github_profile_service import extract_languages
 
         starred = [
             {"primaryLanguage": {"name": "Python"}, "languages": {"nodes": [{"name": "Python"}]}},
@@ -72,14 +72,14 @@ class TestExtractLanguages:
         assert result.count("Python") == 1
 
     def test_handles_empty_repos(self):
-        from src.services.github_profile_service import extract_languages
+        from gim_backend.services.github_profile_service import extract_languages
 
         result = extract_languages([], [])
 
         assert result == []
 
     def test_handles_null_repos(self):
-        from src.services.github_profile_service import extract_languages
+        from gim_backend.services.github_profile_service import extract_languages
 
         starred = [None, {"primaryLanguage": {"name": "Rust"}, "languages": {"nodes": []}}]
         contributed = [None]
@@ -89,7 +89,7 @@ class TestExtractLanguages:
         assert "Rust" in result
 
     def test_handles_missing_language_data(self):
-        from src.services.github_profile_service import extract_languages
+        from gim_backend.services.github_profile_service import extract_languages
 
         starred = [
             {"primaryLanguage": None, "languages": {"nodes": []}},
@@ -106,7 +106,7 @@ class TestExtractTopics:
     """Tests for topic extraction."""
 
     def test_extracts_topics_from_repos(self):
-        from src.services.github_profile_service import extract_topics
+        from gim_backend.services.github_profile_service import extract_topics
 
         starred = [
             {"repositoryTopics": {"nodes": [{"topic": {"name": "web"}}, {"topic": {"name": "api"}}]}},
@@ -119,7 +119,7 @@ class TestExtractTopics:
         assert "api" in result
 
     def test_weights_contributed_topics_2x(self):
-        from src.services.github_profile_service import extract_topics
+        from gim_backend.services.github_profile_service import extract_topics
 
         starred = [
             {"repositoryTopics": {"nodes": [{"topic": {"name": "cli"}}, {"topic": {"name": "cli"}}]}},
@@ -135,7 +135,7 @@ class TestExtractTopics:
         assert "cli" in result
 
     def test_deduplicates_topics(self):
-        from src.services.github_profile_service import extract_topics
+        from gim_backend.services.github_profile_service import extract_topics
 
         starred = [
             {"repositoryTopics": {"nodes": [{"topic": {"name": "web"}}]}},
@@ -149,14 +149,14 @@ class TestExtractTopics:
         assert result.count("web") == 1
 
     def test_handles_empty_repos(self):
-        from src.services.github_profile_service import extract_topics
+        from gim_backend.services.github_profile_service import extract_topics
 
         result = extract_topics([], [])
 
         assert result == []
 
     def test_handles_missing_topic_data(self):
-        from src.services.github_profile_service import extract_topics
+        from gim_backend.services.github_profile_service import extract_topics
 
         starred = [
             {"repositoryTopics": None},
@@ -174,7 +174,7 @@ class TestFormatGitHubText:
     """Tests for text formatting for embedding."""
 
     def test_formats_all_components(self):
-        from src.services.github_profile_service import format_github_text
+        from gim_backend.services.github_profile_service import format_github_text
 
         result = format_github_text(
             languages=["Python", "TypeScript", "Go"],
@@ -188,7 +188,7 @@ class TestFormatGitHubText:
         assert "Type definitions" in result
 
     def test_handles_languages_only(self):
-        from src.services.github_profile_service import format_github_text
+        from gim_backend.services.github_profile_service import format_github_text
 
         result = format_github_text(
             languages=["Python", "Go"],
@@ -199,7 +199,7 @@ class TestFormatGitHubText:
         assert result == "Python, Go"
 
     def test_handles_topics_only(self):
-        from src.services.github_profile_service import format_github_text
+        from gim_backend.services.github_profile_service import format_github_text
 
         result = format_github_text(
             languages=[],
@@ -210,7 +210,7 @@ class TestFormatGitHubText:
         assert result == "web, ml"
 
     def test_handles_descriptions_only(self):
-        from src.services.github_profile_service import format_github_text
+        from gim_backend.services.github_profile_service import format_github_text
 
         result = format_github_text(
             languages=[],
@@ -221,7 +221,7 @@ class TestFormatGitHubText:
         assert result == "A cool project"
 
     def test_handles_empty_inputs(self):
-        from src.services.github_profile_service import format_github_text
+        from gim_backend.services.github_profile_service import format_github_text
 
         result = format_github_text(
             languages=[],
@@ -232,7 +232,7 @@ class TestFormatGitHubText:
         assert result == ""
 
     def test_limits_language_count(self):
-        from src.services.github_profile_service import format_github_text
+        from gim_backend.services.github_profile_service import format_github_text
 
         languages = [f"Lang{i}" for i in range(20)]
 
@@ -248,7 +248,7 @@ class TestFormatGitHubText:
         assert "Lang10" not in result
 
     def test_limits_topic_count(self):
-        from src.services.github_profile_service import format_github_text
+        from gim_backend.services.github_profile_service import format_github_text
 
         topics = [f"topic{i}" for i in range(20)]
 
@@ -268,7 +268,7 @@ class TestCheckMinimalData:
     """Tests for minimal data threshold checking."""
 
     def test_returns_warning_when_below_threshold(self):
-        from src.services.github_profile_service import check_minimal_data
+        from gim_backend.services.github_profile_service import check_minimal_data
 
         result = check_minimal_data(starred_count=2, contributed_count=1)
 
@@ -276,21 +276,21 @@ class TestCheckMinimalData:
         assert "limited" in result.lower()
 
     def test_returns_none_when_enough_starred(self):
-        from src.services.github_profile_service import check_minimal_data
+        from gim_backend.services.github_profile_service import check_minimal_data
 
         result = check_minimal_data(starred_count=5, contributed_count=0)
 
         assert result is None
 
     def test_returns_none_when_enough_contributed(self):
-        from src.services.github_profile_service import check_minimal_data
+        from gim_backend.services.github_profile_service import check_minimal_data
 
         result = check_minimal_data(starred_count=0, contributed_count=3)
 
         assert result is None
 
     def test_returns_none_at_exact_threshold(self):
-        from src.services.github_profile_service import check_minimal_data
+        from gim_backend.services.github_profile_service import check_minimal_data
 
         # Either threshold met should pass
         result1 = check_minimal_data(starred_count=5, contributed_count=2)
@@ -300,7 +300,7 @@ class TestCheckMinimalData:
         assert result2 is None
 
     def test_boundary_condition_just_below(self):
-        from src.services.github_profile_service import check_minimal_data
+        from gim_backend.services.github_profile_service import check_minimal_data
 
         # Both below threshold
         result = check_minimal_data(starred_count=4, contributed_count=2)
@@ -312,14 +312,14 @@ class TestCheckRefreshAllowed:
     """Tests for refresh rate limit checking."""
 
     def test_allows_first_fetch(self):
-        from src.services.github_profile_service import check_refresh_allowed
+        from gim_backend.services.github_profile_service import check_refresh_allowed
 
         result = check_refresh_allowed(None)
 
         assert result is None
 
     def test_allows_after_cooldown(self):
-        from src.services.github_profile_service import check_refresh_allowed
+        from gim_backend.services.github_profile_service import check_refresh_allowed
 
         old_time = datetime.now(UTC) - timedelta(hours=2)
 
@@ -328,7 +328,7 @@ class TestCheckRefreshAllowed:
         assert result is None
 
     def test_blocks_before_cooldown(self):
-        from src.services.github_profile_service import check_refresh_allowed
+        from gim_backend.services.github_profile_service import check_refresh_allowed
 
         recent_time = datetime.now(UTC) - timedelta(minutes=30)
 
@@ -339,7 +339,7 @@ class TestCheckRefreshAllowed:
         assert result <= 1800  # At most 30 minutes remaining
 
     def test_returns_correct_seconds_remaining(self):
-        from src.services.github_profile_service import check_refresh_allowed
+        from gim_backend.services.github_profile_service import check_refresh_allowed
 
         # 50 minutes ago; 10 minutes remaining
         recent_time = datetime.now(UTC) - timedelta(minutes=50)
@@ -351,7 +351,7 @@ class TestCheckRefreshAllowed:
         assert 500 <= result <= 700
 
     def test_handles_naive_datetime(self):
-        from src.services.github_profile_service import check_refresh_allowed
+        from gim_backend.services.github_profile_service import check_refresh_allowed
 
         # Test with naive datetime (no timezone info)
         naive_time = datetime.now() - timedelta(minutes=30)
@@ -367,12 +367,12 @@ class TestGenerateGitHubVector:
 
     @pytest.mark.asyncio
     async def test_generates_vector_from_data(self):
-        from src.services.github_profile_service import generate_github_vector
+        from gim_backend.services.github_profile_service import generate_github_vector
 
         mock_vector = [0.1] * 768
 
         with patch(
-            "src.services.github_profile_service.generate_github_vector_with_retry",
+            "gim_backend.services.github_profile_service.generate_github_vector_with_retry",
             new_callable=AsyncMock,
         ) as mock_gen:
             mock_gen.return_value = mock_vector
@@ -392,10 +392,10 @@ class TestGenerateGitHubVector:
 
     @pytest.mark.asyncio
     async def test_returns_none_on_embedding_failure(self):
-        from src.services.github_profile_service import generate_github_vector
+        from gim_backend.services.github_profile_service import generate_github_vector
 
         with patch(
-            "src.services.github_profile_service.generate_github_vector_with_retry",
+            "gim_backend.services.github_profile_service.generate_github_vector_with_retry",
             new_callable=AsyncMock,
         ) as mock_gen:
             mock_gen.return_value = None
@@ -410,10 +410,10 @@ class TestGenerateGitHubVector:
 
     @pytest.mark.asyncio
     async def test_returns_none_for_empty_input(self):
-        from src.services.github_profile_service import generate_github_vector
+        from gim_backend.services.github_profile_service import generate_github_vector
 
         with patch(
-            "src.services.github_profile_service.generate_github_vector_with_retry",
+            "gim_backend.services.github_profile_service.generate_github_vector_with_retry",
             new_callable=AsyncMock,
         ) as mock_gen:
             result = await generate_github_vector(
@@ -431,7 +431,7 @@ class TestFetchGitHubProfile:
 
     @pytest.mark.asyncio
     async def test_raises_not_connected_when_no_token(self):
-        from src.services.github_profile_service import (
+        from gim_backend.services.github_profile_service import (
             GitHubNotConnectedError,
             fetch_github_profile,
         )
@@ -445,16 +445,16 @@ class TestFetchGitHubProfile:
         mock_db.refresh = AsyncMock()
 
         with patch(
-            "src.services.github_profile_service._get_or_create_profile",
+            "gim_backend.services.github_profile_service._get_or_create_profile",
             new_callable=AsyncMock,
         ) as mock_get_profile:
             mock_get_profile.return_value = mock_profile
 
             with patch(
-                "src.services.github_profile_service.get_valid_access_token",
+                "gim_backend.services.github_profile_service.get_valid_access_token",
                 new_callable=AsyncMock,
             ) as mock_token:
-                from src.services.linked_account_service import LinkedAccountNotFoundError
+                from gim_backend.services.linked_account_service import LinkedAccountNotFoundError
                 mock_token.side_effect = LinkedAccountNotFoundError("No account")
 
                 with pytest.raises(GitHubNotConnectedError) as exc_info:
@@ -464,7 +464,7 @@ class TestFetchGitHubProfile:
 
     @pytest.mark.asyncio
     async def test_raises_not_connected_when_token_revoked(self):
-        from src.services.github_profile_service import (
+        from gim_backend.services.github_profile_service import (
             GitHubNotConnectedError,
             fetch_github_profile,
         )
@@ -478,16 +478,16 @@ class TestFetchGitHubProfile:
         mock_db.refresh = AsyncMock()
 
         with patch(
-            "src.services.github_profile_service._get_or_create_profile",
+            "gim_backend.services.github_profile_service._get_or_create_profile",
             new_callable=AsyncMock,
         ) as mock_get_profile:
             mock_get_profile.return_value = mock_profile
 
             with patch(
-                "src.services.github_profile_service.get_valid_access_token",
+                "gim_backend.services.github_profile_service.get_valid_access_token",
                 new_callable=AsyncMock,
             ) as mock_token:
-                from src.services.linked_account_service import LinkedAccountRevokedError
+                from gim_backend.services.linked_account_service import LinkedAccountRevokedError
                 mock_token.side_effect = LinkedAccountRevokedError("Revoked")
 
                 with pytest.raises(GitHubNotConnectedError) as exc_info:
@@ -497,7 +497,7 @@ class TestFetchGitHubProfile:
 
     @pytest.mark.asyncio
     async def test_raises_rate_limit_error_on_refresh_too_soon(self):
-        from src.services.github_profile_service import (
+        from gim_backend.services.github_profile_service import (
             RefreshRateLimitError,
             fetch_github_profile,
         )
@@ -509,7 +509,7 @@ class TestFetchGitHubProfile:
         mock_db.exec = AsyncMock(return_value=MagicMock(first=MagicMock(return_value=mock_profile)))
 
         with patch(
-            "src.services.github_profile_service._get_or_create_profile",
+            "gim_backend.services.github_profile_service._get_or_create_profile",
             new_callable=AsyncMock,
         ) as mock_get_profile:
             mock_get_profile.return_value = mock_profile
@@ -525,7 +525,7 @@ class TestDeleteGitHub:
 
     @pytest.mark.asyncio
     async def test_returns_false_when_no_data(self):
-        from src.services.github_profile_service import delete_github
+        from gim_backend.services.github_profile_service import delete_github
 
         mock_profile = MagicMock()
         mock_profile.github_username = None
@@ -539,7 +539,7 @@ class TestDeleteGitHub:
 
     @pytest.mark.asyncio
     async def test_clears_all_github_fields(self):
-        from src.services.github_profile_service import delete_github
+        from gim_backend.services.github_profile_service import delete_github
 
         mock_profile = MagicMock()
         mock_profile.github_username = "octocat"
@@ -557,7 +557,7 @@ class TestDeleteGitHub:
         mock_db.refresh = AsyncMock()
 
         with patch(
-            "src.services.github_profile_service.calculate_combined_vector",
+            "gim_backend.services.github_profile_service.calculate_combined_vector",
             new_callable=AsyncMock,
         ) as mock_combined:
             mock_combined.return_value = None
@@ -574,7 +574,7 @@ class TestDeleteGitHub:
 
     @pytest.mark.asyncio
     async def test_recalculates_combined_vector(self):
-        from src.services.github_profile_service import delete_github
+        from gim_backend.services.github_profile_service import delete_github
 
         mock_profile = MagicMock()
         mock_profile.github_username = "octocat"
@@ -587,7 +587,7 @@ class TestDeleteGitHub:
         mock_db.refresh = AsyncMock()
 
         with patch(
-            "src.services.github_profile_service.calculate_combined_vector",
+            "gim_backend.services.github_profile_service.calculate_combined_vector",
             new_callable=AsyncMock,
         ) as mock_combined:
             mock_combined.return_value = [0.3] * 768
@@ -607,7 +607,7 @@ class TestGetGitHubData:
 
     @pytest.mark.asyncio
     async def test_returns_none_when_not_populated(self):
-        from src.services.github_profile_service import get_github_data
+        from gim_backend.services.github_profile_service import get_github_data
 
         mock_profile = MagicMock()
         mock_profile.github_username = None
@@ -621,7 +621,7 @@ class TestGetGitHubData:
 
     @pytest.mark.asyncio
     async def test_returns_data_when_populated(self):
-        from src.services.github_profile_service import get_github_data
+        from gim_backend.services.github_profile_service import get_github_data
 
         mock_profile = MagicMock()
         mock_profile.github_username = "octocat"

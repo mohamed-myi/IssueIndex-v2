@@ -14,8 +14,8 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
-from src.middleware.auth import require_auth
+from gim_backend.main import app
+from gim_backend.middleware.auth import require_auth
 
 
 @pytest.fixture
@@ -81,7 +81,7 @@ def create_mock_profile(user_id):
 class TestGetProfilePerformance:
     """GET /profile should respond under 100ms."""
 
-    @patch("src.services.profile_service.get_or_create_profile")
+    @patch("gim_backend.services.profile_service.get_or_create_profile")
     def test_get_profile_under_100ms(
         self, mock_get_profile, authenticated_client, mock_user
     ):
@@ -108,15 +108,15 @@ class TestGetProfilePerformance:
 class TestFeedPerformance:
     """GET /feed should respond under 200ms for routing and service layer."""
 
-    @patch("src.services.feed_service.get_or_create_profile")
+    @patch("gim_backend.services.feed_service.get_or_create_profile")
     def test_feed_routing_under_200ms(
         self, mock_get_profile, authenticated_client, mock_user
     ):
         mock_profile = create_mock_profile(mock_user.id)
         mock_get_profile.return_value = mock_profile
 
-        with patch("src.services.feed_service._get_trending_feed") as mock_trending:
-            from src.services.feed_service import TRENDING_CTA, FeedResponse
+        with patch("gim_backend.services.feed_service._get_trending_feed") as mock_trending:
+            from gim_backend.services.feed_service import TRENDING_CTA, FeedResponse
 
             mock_trending.return_value = FeedResponse(
                 results=[],
@@ -149,9 +149,9 @@ class TestVectorGenerationTiming:
     @pytest.mark.asyncio
     async def test_intent_vector_generation_under_3s(self):
         """Intent vector should generate under 3 seconds (mocked embedding)."""
-        from src.services.profile_embedding_service import generate_intent_vector
+        from gim_backend.services.profile_embedding_service import generate_intent_vector
 
-        with patch("src.services.profile_embedding_service.embed_query") as mock_embed:
+        with patch("gim_backend.services.profile_embedding_service.embed_query") as mock_embed:
             mock_embed.return_value = [0.01] * 768
 
             start = time.perf_counter()
@@ -167,7 +167,7 @@ class TestVectorGenerationTiming:
     @pytest.mark.asyncio
     async def test_combined_vector_calculation_under_1s(self):
         """Combined vector calculation should be under 1 second."""
-        from src.services.profile_embedding_service import calculate_combined_vector
+        from gim_backend.services.profile_embedding_service import calculate_combined_vector
 
         intent_vec = [0.01] * 768
         resume_vec = [0.02] * 768
@@ -197,7 +197,7 @@ class TestCloudTasksPerformance:
 
     @pytest.mark.asyncio
     async def test_enqueue_is_fast(self):
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             get_cloud_tasks_client,
             reset_client_for_testing,
         )
@@ -227,7 +227,7 @@ class TestCloudTasksPerformance:
 
     @pytest.mark.asyncio
     async def test_cancel_user_tasks_is_fast(self):
-        from src.services.cloud_tasks_service import (
+        from gim_backend.services.cloud_tasks_service import (
             get_cloud_tasks_client,
             reset_client_for_testing,
         )
@@ -248,7 +248,7 @@ class TestCloudTasksPerformance:
 class TestOnboardingEndpointPerformance:
     """Tests onboarding endpoints respond quickly."""
 
-    @patch("src.services.onboarding_service._get_or_create_profile")
+    @patch("gim_backend.services.onboarding_service._get_or_create_profile")
     def test_get_onboarding_under_100ms(
         self, mock_get_profile, authenticated_client, mock_user
     ):

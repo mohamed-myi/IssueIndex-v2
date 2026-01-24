@@ -1,9 +1,14 @@
 """Shared fixtures and path setup for worker tests"""
 
-import sys
-from pathlib import Path
+import pytest
 
-# Add src directory to path so imports work
-src_path = Path(__file__).parent.parent / "src"
-if str(src_path) not in sys.path:
-    sys.path.insert(0, str(src_path))
+# No sys.path manipulation needed - packages installed via pip install -e
+
+
+@pytest.fixture(autouse=True)
+def setup_test_environment():
+    """Ensure test environment is properly configured."""
+    import os
+    os.environ.setdefault("ENVIRONMENT", "development")
+    os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/testdb")
+    yield

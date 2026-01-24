@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 @pytest.fixture(autouse=True)
@@ -14,15 +15,17 @@ def mock_settings():
         "SESSION_REMEMBER_ME_DAYS": "7",
         "SESSION_DEFAULT_HOURS": "24",
     }):
-        from src.core.config import get_settings
+        from gim_backend.core.config import get_settings
         get_settings.cache_clear()
         yield
         get_settings.cache_clear()
 
 
+
+
 @pytest.fixture
 def mock_db():
-    db = AsyncMock()
+    db = MagicMock(spec=AsyncSession)
     db.add = MagicMock()
     db.commit = AsyncMock()
     db.refresh = AsyncMock()
@@ -36,7 +39,7 @@ class TestListSessionsLogic:
 
     async def test_returns_sanitized_fingerprint_partial(self, mock_db):
         """Only first 8 chars of fingerprint exposed for privacy"""
-        from src.services.session_service import list_sessions
+        from gim_backend.services.session_service import list_sessions
 
         session = MagicMock()
         session.id = uuid4()
@@ -58,7 +61,7 @@ class TestListSessionsLogic:
 
     async def test_is_current_flag_correctly_set(self, mock_db):
         """is_current should be True only for matching session_id"""
-        from src.services.session_service import list_sessions
+        from gim_backend.services.session_service import list_sessions
 
         current_id = uuid4()
         other_id = uuid4()
@@ -98,7 +101,7 @@ class TestListSessionsLogic:
     ])
     async def test_handles_edge_case_fingerprints(self, mock_db, fingerprint, expected):
         """Edge case fingerprints (None or short) should not crash."""
-        from src.services.session_service import list_sessions
+        from gim_backend.services.session_service import list_sessions
 
         session = MagicMock()
         session.id = uuid4()
@@ -122,7 +125,7 @@ class TestCountSessionsLogic:
 
     async def test_returns_integer_count(self, mock_db):
         """count_sessions returns integer, not ResultProxy"""
-        from src.services.session_service import count_sessions
+        from gim_backend.services.session_service import count_sessions
 
         mock_db.exec.return_value = MagicMock(one=MagicMock(return_value=5))
 
@@ -140,7 +143,7 @@ class TestSessionInvalidationEdgeCases:
 
     async def test_invalidate_nonexistent_session(self, mock_db):
         """Invalidating non-existent session returns False"""
-        from src.services.session_service import invalidate_session
+        from gim_backend.services.session_service import invalidate_session
 
         mock_result = MagicMock()
         mock_result.rowcount = 0
@@ -152,7 +155,7 @@ class TestSessionInvalidationEdgeCases:
 
     async def test_invalidate_existing_session(self, mock_db):
         """Invalidating existing session returns True"""
-        from src.services.session_service import invalidate_session
+        from gim_backend.services.session_service import invalidate_session
 
         mock_result = MagicMock()
         mock_result.rowcount = 1

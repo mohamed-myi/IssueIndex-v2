@@ -16,8 +16,10 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "python-dotenv>=1.0.0",
     
-    # Note: Install internal deps first with:
-    # pip install -e ../../packages/database -e ../../packages/shared -e ../backend
+    # Internal packages - install in editable mode:
+    # pip install -e ../../packages/database -e ../../packages/shared -e ../backend -e .
+    "gim-database",
+    "gim-backend",
 ]
 
 [project.optional-dependencies]
@@ -31,7 +33,7 @@ redis = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["gim_workers"]
 
 [tool.hatch.metadata]
 allow-direct-references = true

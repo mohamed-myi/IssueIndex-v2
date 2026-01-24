@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 @pytest.fixture(autouse=True)
@@ -14,15 +15,17 @@ def mock_settings():
         "SESSION_REMEMBER_ME_DAYS": "7",
         "SESSION_DEFAULT_HOURS": "24",
     }):
-        from src.core.config import get_settings
+        from gim_backend.core.config import get_settings
         get_settings.cache_clear()
         yield
         get_settings.cache_clear()
 
 
+
+
 @pytest.fixture
 def mock_db():
-    db = AsyncMock()
+    db = MagicMock(spec=AsyncSession)
     db.add = MagicMock()
     db.commit = AsyncMock()
     db.refresh = AsyncMock()
@@ -33,7 +36,7 @@ def mock_db():
 
 @pytest.fixture
 def github_profile():
-    from src.core.oauth import UserProfile
+    from gim_backend.core.oauth import UserProfile
     return UserProfile(
         email="test@example.com",
         provider_id="MDQ6VXNlcjEyMzQ1Njc=",
@@ -45,7 +48,7 @@ def github_profile():
 
 @pytest.fixture
 def google_profile():
-    from src.core.oauth import UserProfile
+    from gim_backend.core.oauth import UserProfile
     return UserProfile(
         email="test@example.com",
         provider_id="123456789012345678901",
@@ -60,7 +63,7 @@ class TestRefreshSessionLogic:
 
     async def test_updates_session_when_threshold_exceeded(self, mock_db):
         """Refresh updates DB when more than 10 percent through lifespan"""
-        from src.services.session_service import refresh_session
+        from gim_backend.services.session_service import refresh_session
 
         session = MagicMock()
         session.remember_me = True
@@ -74,7 +77,7 @@ class TestRefreshSessionLogic:
 
     async def test_skips_update_when_within_threshold(self, mock_db):
         """Refresh skips DB write when less than 10 percent through lifespan"""
-        from src.services.session_service import refresh_session
+        from gim_backend.services.session_service import refresh_session
 
         session = MagicMock()
         session.remember_me = True
@@ -90,7 +93,7 @@ class TestRefreshSessionLogic:
         Refresh calculates new expires_at from current time, not old expires_at;
         prevents indefinite session extension through repeated refreshes
         """
-        from src.services.session_service import refresh_session
+        from gim_backend.services.session_service import refresh_session
 
         session = MagicMock()
         session.remember_me = True
@@ -114,8 +117,8 @@ class TestIdentityConflicts:
         Prevents duplicate accounts; if user signed up with Google then tries
         GitHub login with same email, must fail with ExistingAccountError
         """
-        from src.core.oauth import OAuthProvider
-        from src.services.session_service import ExistingAccountError, upsert_user
+        from gim_backend.core.oauth import OAuthProvider
+        from gim_backend.services.session_service import ExistingAccountError, upsert_user
 
         existing_user = MagicMock()
         existing_user.created_via = "google"
@@ -131,8 +134,8 @@ class TestIdentityConflicts:
 
     async def test_raises_conflict_when_provider_linked_to_other(self, mock_db, github_profile):
         """Two different users cannot link the same OAuth provider account"""
-        from src.core.oauth import OAuthProvider
-        from src.services.session_service import ProviderConflictError, link_provider
+        from gim_backend.core.oauth import OAuthProvider
+        from gim_backend.services.session_service import ProviderConflictError, link_provider
 
         user = MagicMock()
         user.id = uuid4()
@@ -161,7 +164,7 @@ class TestBulkSessionOperations:
         """
         With except_session_id uses 2 WHERE clauses; without uses 1
         """
-        from src.services.session_service import invalidate_all_sessions
+        from gim_backend.services.session_service import invalidate_all_sessions
 
         user_id = uuid4()
 
@@ -169,7 +172,7 @@ class TestBulkSessionOperations:
         mock_result.rowcount = 3
         mock_db.exec.return_value = mock_result
 
-        with patch("src.services.session_service.delete") as mock_delete:
+        with patch("gim_backend.services.session_service.delete") as mock_delete:
             chain = mock_delete.return_value.where.return_value
             chain.where.return_value = chain
 
@@ -180,7 +183,7 @@ class TestBulkSessionOperations:
 
     async def test_invalidate_all_except_preserves_current(self, mock_db):
         """Excludes current session from bulk deletion"""
-        from src.services.session_service import invalidate_all_sessions
+        from gim_backend.services.session_service import invalidate_all_sessions
 
         user_id = uuid4()
         current_session_id = uuid4()
@@ -189,7 +192,7 @@ class TestBulkSessionOperations:
         mock_result.rowcount = 3
         mock_db.exec.return_value = mock_result
 
-        with patch("src.services.session_service.delete") as mock_delete:
+        with patch("gim_backend.services.session_service.delete") as mock_delete:
             mock_where = MagicMock()
             mock_where.where.return_value = MagicMock()
             mock_delete.return_value.where.return_value = mock_where
@@ -209,7 +212,7 @@ class TestDeleteUserCascade:
 
     async def test_raises_error_when_user_not_found(self, mock_db):
         """UserNotFoundError raised if user does not exist"""
-        from src.services.session_service import UserNotFoundError, delete_user_cascade
+        from gim_backend.services.session_service import UserNotFoundError, delete_user_cascade
 
         mock_result = MagicMock()
         mock_result.first.return_value = None
@@ -222,7 +225,7 @@ class TestDeleteUserCascade:
 
     async def test_returns_result_with_tables_and_counts(self, mock_db):
         """Returns CascadeDeletionResult with tables_affected and total_rows"""
-        from src.services.session_service import CascadeDeletionResult, delete_user_cascade
+        from gim_backend.services.session_service import CascadeDeletionResult, delete_user_cascade
 
         user_id = uuid4()
         mock_user = MagicMock()
@@ -255,7 +258,7 @@ class TestDeleteUserCascade:
 
     async def test_handles_empty_relations(self, mock_db):
         """User with no bookmarks or notes returns 0 for those tables"""
-        from src.services.session_service import delete_user_cascade
+        from gim_backend.services.session_service import delete_user_cascade
 
         user_id = uuid4()
         mock_user = MagicMock()
@@ -295,7 +298,7 @@ class TestDeleteUserCascadeIsolation:
 
     async def test_deletion_passes_correct_user_id(self, mock_db):
         """All delete statements filter by the correct user_id"""
-        from src.services.session_service import delete_user_cascade
+        from gim_backend.services.session_service import delete_user_cascade
 
         user_id = uuid4()
 
@@ -320,7 +323,7 @@ class TestDeleteUserCascadeIsolation:
         mock_db.begin = MagicMock(return_value=AsyncMock(__aenter__=AsyncMock(), __aexit__=AsyncMock()))
 
         # Execute deletion for user_id
-        with patch("src.services.session_service.delete") as mock_delete:
+        with patch("gim_backend.services.session_service.delete") as mock_delete:
             mock_chain = MagicMock()
             mock_chain.where.return_value = mock_chain
             mock_chain.in_.return_value = mock_chain
