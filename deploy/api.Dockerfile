@@ -20,17 +20,12 @@ RUN pip install --no-cache-dir \
     google-cloud-aiplatform
 
 # Copy source code
-COPY packages/shared/src packages/shared/src
-COPY packages/database/src packages/database/src
-COPY apps/backend/src apps/backend/src
+COPY packages/shared/gim_shared packages/shared/gim_shared
+COPY packages/database/gim_database packages/database/gim_database
+COPY apps/backend/gim_backend apps/backend/gim_backend
 
-# Set environment
-# - /app/apps/backend: for "from src.x" imports in backend code
-# - /app/packages/database/src: for "from models.x" direct imports
-# - /app/packages/shared/src: for "from constants" direct imports
-ENV PYTHONPATH=/app/apps/backend:/app/packages/database/src:/app/packages/shared/src
 ENV PORT=8080
 ENV EMBEDDING_MODE=nomic
 
 # Run with uvicorn
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "gim_backend.main:app", "--host", "0.0.0.0", "--port", "8080"]
