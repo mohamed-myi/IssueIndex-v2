@@ -1,5 +1,5 @@
 # CI/CD Pipeline
-# Runs tests on PRs and feature branches, deploys to GCP on main
+# Runs tests then deploys to GCP on main
 
 name: CI/CD
 
@@ -79,9 +79,9 @@ jobs:
       - name: Lint with ruff
         if: ${{ github.event.inputs.skip_tests != 'true' }}
         run: |
-          ruff check apps/backend/src --output-format=github
-          ruff check packages/database/src --output-format=github
-          ruff check packages/shared/src --output-format=github
+          ruff check apps/backend/gim_backend --output-format=github
+          ruff check packages/database/gim_database --output-format=github
+          ruff check packages/shared/gim_shared --output-format=github
 
       - name: Run unit tests
         if: ${{ github.event.inputs.skip_tests != 'true' }}
