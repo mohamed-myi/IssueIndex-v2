@@ -10,10 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files
-COPY apps/backend/pyproject.toml apps/backend/README.md apps/backend/
-COPY packages/database/pyproject.toml packages/database/README.md packages/database/
-COPY packages/shared/pyproject.toml packages/shared/README.md packages/shared/
+# Editable installs require source directories to exist
+COPY packages/shared packages/shared
+COPY packages/database packages/database
+COPY apps/backend apps/backend
 
 # Install dependencies
 RUN pip install --no-cache-dir \
@@ -24,11 +24,6 @@ RUN pip install --no-cache-dir \
 
 # Pre-download GLiNER model
 RUN python3 -c "from gliner import GLiNER; GLiNER.from_pretrained('urchade/gliner_base')"
-
-# Copy source code
-COPY packages/shared/gim_shared packages/shared/gim_shared
-COPY packages/database/gim_database packages/database/gim_database
-COPY apps/backend/gim_backend apps/backend/gim_backend
 
 ENV PORT=8080
 ENV EMBEDDING_MODE=nomic

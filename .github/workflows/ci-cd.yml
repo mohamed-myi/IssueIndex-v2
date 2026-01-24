@@ -185,7 +185,7 @@ jobs:
           gcloud run services update issueindex-api \
             --image=${{ env.REGISTRY }}/api:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest,GOOGLE_CLIENT_ID=google-client-id:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest" \
+            --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest,SESSION_SECRET=session-secret:latest,GITHUB_CLIENT_ID=github-client-id:latest,GITHUB_CLIENT_SECRET=github-client-secret:latest,GOOGLE_CLIENT_ID=google-client-id:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest" \
             --set-env-vars="EMBEDDING_MODE=nomic"
 
       - name: Deploy embed worker service
@@ -206,16 +206,11 @@ jobs:
 
       - name: Deploy embedding worker service
         run: |
-          gcloud run deploy issueindex-embedding-worker \
+          gcloud run services update issueindex-embedding-worker \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --memory=4Gi \
-            --cpu=2 \
-            --min-instances=0 \
-            --max-instances=10 \
-            --timeout=600s \
-            --set-env-vars="JOB_TYPE=embedding,PUBSUB_PROJECT=${{ env.PROJECT_ID }}" \
-            --set-secrets="DATABASE_URL=database-url:latest"
+            --set-secrets="DATABASE_URL=database-url:latest" \
+            --set-env-vars="JOB_TYPE=embedding,PUBSUB_PROJECT=${{ env.PROJECT_ID }}"
 
       - name: Update collector job
         run: |
@@ -232,6 +227,14 @@ jobs:
             --region=${{ env.REGION }} \
             --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest" \
             --set-env-vars="JOB_TYPE=janitor"
+
+      - name: Update reco-flush job
+        run: |
+          gcloud run jobs update issueindex-reco-flush \
+            --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --set-secrets="DATABASE_URL=database-url:latest" \
+            --set-env-vars="JOB_TYPE=reco_flush"
 
       - name: Verify API deployment
         run: |
@@ -265,3 +268,4 @@ jobs:
           echo "### Jobs Updated:" >> $GITHUB_STEP_SUMMARY
           echo "- issueindex-collector" >> $GITHUB_STEP_SUMMARY
           echo "- issueindex-janitor" >> $GITHUB_STEP_SUMMARY
+          echo "- issueindex-reco-flush" >> $GITHUB_STEP_SUMMARY
