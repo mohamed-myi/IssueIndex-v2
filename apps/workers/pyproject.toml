@@ -16,10 +16,8 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "python-dotenv>=1.0.0",
     
-    # Internal packages - install in editable mode:
-    # pip install -e ../../packages/database -e ../../packages/shared -e ../backend -e .
-    "gim-database",
-    "gim-backend",
+    # Internal packages (not on PyPI) - install in editable mode before this package:
+    # pip install -e packages/shared -e packages/database -e apps/backend -e apps/workers
 ]
 
 [project.optional-dependencies]

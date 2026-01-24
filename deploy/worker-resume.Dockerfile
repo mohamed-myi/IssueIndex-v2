@@ -10,15 +10,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-# Editable installs require source directories to exist
+# Copy all source code first (editable installs require source to exist)
 COPY packages/shared packages/shared
 COPY packages/database packages/database
 COPY apps/backend apps/backend
 
-# Install CPU-only PyTorch first to avoid 4GB+ CUDA packages
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+# Install PyTorch ecosystem from CPU index TOGETHER
+# This prevents version conflicts when docling pulls torchvision
+RUN pip install --no-cache-dir \
+    torch torchvision \
+    --index-url https://download.pytorch.org/whl/cpu
 
-# Install dependencies (includes sentence-transformers for embeddings)
+# Install packages and ML dependencies
+# docling will use the already-installed torchvision
 RUN pip install --no-cache-dir \
     -e packages/shared \
     -e packages/database \

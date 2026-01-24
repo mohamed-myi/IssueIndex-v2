@@ -5,22 +5,28 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Editable installs require source directories to exist
+# Copy all source code first (editable installs require source to exist)
 COPY packages/shared packages/shared
 COPY packages/database packages/database
 COPY apps/backend apps/backend
 
-# Install dependencies (includes Vertex AI client for search embeddings)
+# Install PyTorch from CPU index (avoids 4GB CUDA packages)
+RUN pip install --no-cache-dir \
+    torch \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# Install packages and ML dependencies
 RUN pip install --no-cache-dir \
     -e packages/shared \
     -e packages/database \
     -e apps/backend \
-    google-cloud-aiplatform
+    google-cloud-aiplatform \
+    sentence-transformers
 
 ENV PORT=8080
 ENV EMBEDDING_MODE=nomic
 
-# Run with uvicorn
 CMD ["uvicorn", "gim_backend.main:app", "--host", "0.0.0.0", "--port", "8080"]
