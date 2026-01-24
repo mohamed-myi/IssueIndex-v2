@@ -206,9 +206,14 @@ jobs:
 
       - name: Deploy embedding worker service
         run: |
-          gcloud run services update issueindex-embedding-worker \
+          gcloud run deploy issueindex-embedding-worker \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
+            --memory=4Gi \
+            --cpu=2 \
+            --min-instances=0 \
+            --max-instances=10 \
+            --timeout=600s \
             --set-secrets="DATABASE_URL=database-url:latest" \
             --set-env-vars="JOB_TYPE=embedding,PUBSUB_PROJECT=${{ env.PROJECT_ID }}"
 
@@ -230,7 +235,7 @@ jobs:
 
       - name: Update reco-flush job
         run: |
-          gcloud run jobs update issueindex-reco-flush \
+          gcloud run jobs deploy issueindex-reco-flush \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --set-secrets="DATABASE_URL=database-url:latest" \
