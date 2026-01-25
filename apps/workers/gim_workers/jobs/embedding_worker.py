@@ -18,7 +18,8 @@ import signal
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-from google.cloud import pubsub_v1
+
+from google.pubsub_v1.services.subscriber import SubscriberAsyncClient
 
 from gim_backend.core.config import get_settings
 from gim_backend.ingestion.nomic_moe_embedder import NomicMoEEmbedder
@@ -132,7 +133,7 @@ async def run_embedding_worker(embedder: NomicMoEEmbedder) -> None:
     )
     
     # Create Async subscriber client
-    subscriber = pubsub_v1.SubscriberAsyncClient()
+    subscriber = SubscriberAsyncClient()
     subscription_path = subscriber.subscription_path(project_id, subscription_id)
     
     # Track statistics
