@@ -19,6 +19,7 @@ import sys
 import uvicorn
 
 from gim_workers.logging_config import setup_logging
+from gim_backend.ingestion.nomic_moe_embedder import NomicMoEEmbedder
 
 
 class GracefulShutdown:
@@ -43,14 +44,21 @@ class GracefulShutdown:
         return self._shutdown_event
 
 
-async def run_health_server(shutdown: GracefulShutdown) -> None:
+
+
+
+async def run_health_server(shutdown: GracefulShutdown, embedder: NomicMoEEmbedder | None = None) -> None:
     """Run uvicorn health server as an asyncio task."""
     from gim_workers.health import app as health_app
+    
+    # Inject singleton embedder if available
+    if embedder:
+        health_app.state.embedder = embedder
     
     config = uvicorn.Config(
         app=health_app,
         host="0.0.0.0",
-        port=8080,
+        port=int(os.getenv("PORT", 8080)),
         log_level="warning",
     )
     server = uvicorn.Server(config)
@@ -62,7 +70,11 @@ async def run_health_server(shutdown: GracefulShutdown) -> None:
     await server.serve()
 
 
-async def run_worker_task(job_type: str, shutdown: GracefulShutdown) -> dict:
+async def run_worker_task(
+    job_type: str, 
+    shutdown: GracefulShutdown, 
+    embedder: NomicMoEEmbedder | None = None
+) -> dict:
     """Run the specified worker job."""
     
     match job_type:
@@ -71,8 +83,10 @@ async def run_worker_task(job_type: str, shutdown: GracefulShutdown) -> dict:
             return await run_collector_job()
         
         case "embedding":
+            if not embedder:
+                raise ValueError("Embedding worker requires embedder instance")
             from gim_workers.jobs.embedding_worker import run_embedding_worker
-            await run_embedding_worker()
+            await run_embedding_worker(embedder)
             return {"status": "shutdown"}
         
         case "janitor":
@@ -99,6 +113,7 @@ async def main() -> None:
     )
     
     shutdown = GracefulShutdown()
+    embedder: NomicMoEEmbedder | None = None
     
     # Register signal handlers
     loop = asyncio.get_running_loop()
@@ -107,10 +122,15 @@ async def main() -> None:
 
     try:
         if job_type == "embedding":
+            # Initialize singleton embedder model (shared state)
+            # Large size (~1GB), so do it once here
+            logger.info("Initializing shared NomicMoEEmbedder")
+            embedder = NomicMoEEmbedder(max_workers=1)
+            
             # Embedding worker needs health server running alongside
             async with asyncio.TaskGroup() as tg:
-                tg.create_task(run_health_server(shutdown))
-                tg.create_task(run_worker_task(job_type, shutdown))
+                tg.create_task(run_health_server(shutdown, embedder))
+                tg.create_task(run_worker_task(job_type, shutdown, embedder))
             result = {"status": "shutdown"}
         else:
             # Other jobs don't need health server (short-running Cloud Run Jobs)
@@ -129,6 +149,12 @@ async def main() -> None:
                 extra={"job_type": job_type},
             )
         sys.exit(1)
+        
+    finally:
+        # Clean up shared resources
+        if embedder:
+            logger.info("Cleaning up shared embedder")
+            embedder.close()
 
 
 if __name__ == "__main__":

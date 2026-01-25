@@ -20,18 +20,22 @@ RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cpu
 
 # Install packages and ML dependencies
+# Install packages and ML dependencies
+# - huggingface_hub[cli]: For faster model download (avoids QEMU)
+# - einops: Required by nomic-embed-text-v2-moe
 RUN pip install --no-cache-dir \
     -e packages/shared \
     -e packages/database \
     -e apps/backend \
     -e apps/workers \
-    google-cloud-aiplatform \
-    google-cloud-pubsub \
-    google-cloud-run \
+    "google-cloud-pubsub>=2.19.0" \
     sentence-transformers \
-    einops
+    einops \
+    "huggingface_hub[cli]"
 
 # Pre-download embedding model (nomic-embed-text-v2-moe)
-RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('nomic-ai/nomic-embed-text-v2-moe', trust_remote_code=True)"
+# Use CLI instead of python script to avoid QEMU emulation on cross-platform builds
+ENV HF_HOME=/root/.cache/huggingface
+RUN huggingface-cli download nomic-ai/nomic-embed-text-v2-moe --exclude "*.onnx" "*.git*"
 
 CMD ["python", "-m", "gim_workers"]

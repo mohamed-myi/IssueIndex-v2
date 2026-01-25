@@ -14,37 +14,34 @@ import logging
 from fastapi import FastAPI, Response
 from fastapi.responses import JSONResponse
 
-from gim_backend.ingestion.nomic_moe_embedder import EMBEDDING_DIM, NomicMoEEmbedder
+from fastapi import FastAPI, Response, Request
+from fastapi.responses import JSONResponse
+
+from gim_backend.ingestion.nomic_moe_embedder import EMBEDDING_DIM
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Embedding Worker Health", docs_url=None, redoc_url=None)
 
-# Cached embedder for health checks to avoid reloading model
-_cached_embedder: NomicMoEEmbedder | None = None
-
-
-def get_embedder() -> NomicMoEEmbedder:
-    """Get or create cached embedder for health checks."""
-    global _cached_embedder
-    if _cached_embedder is None:
-        _cached_embedder = NomicMoEEmbedder(max_workers=1)
-    return _cached_embedder
-
 
 @app.get("/health")
-async def health_check() -> Response:
+async def health_check(request: Request) -> Response:
     """
     Verify embedding service availability.
     
     Returns 200 OK if:
+    - Shared embedder is available
     - Embedder can generate vectors
     - Output dimension is 256
     
     Returns 503 Service Unavailable on any failure.
     """
     try:
-        embedder = get_embedder()
+        # Access shared embedder injected by __main__
+        if not hasattr(request.app.state, "embedder"):
+            raise RuntimeError("Embedder not initialized in app state")
+            
+        embedder = request.app.state.embedder
         embeddings = await embedder.embed_documents(["health check"])
         
         if len(embeddings) != 1:
@@ -73,55 +70,6 @@ async def health_check() -> Response:
             status_code=503,
             content={"status": "error", "detail": str(e)},
         )
-
-
-@app.get("/ready")
-async def readiness_check() -> Response:
-    """
-    Readiness probe for Cloud Run.
-    
-    Returns 200 OK if the service is ready to accept traffic.
-    """
-    return JSONResponse(status_code=200, content={"status": "ready"})
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Clean up embedder on shutdown."""
-    global _cached_embedder
-    if _cached_embedder is not None:
-        _cached_embedder.close()
-        _cached_embedder = None
-
-
-async def verify_embedder_startup() -> bool:
-    """
-    Verify embedder works during startup.
-    
-    Used by embedding worker to ensure model loads before processing messages.
-    Returns True if embedder is healthy, False otherwise.
-    """
-    try:
-        embedder = NomicMoEEmbedder(max_workers=1)
-        embeddings = await embedder.embed_documents(["startup verification"])
-        embedder.close()
-        
-        if len(embeddings) != 1 or len(embeddings[0]) != EMBEDDING_DIM:
-            logger.error(
-                "Embedder startup verification failed: wrong dimensions",
-                extra={"expected_dim": EMBEDDING_DIM, "actual_dim": len(embeddings[0]) if embeddings else 0},
-            )
-            return False
-        
-        logger.info(
-            "Embedder startup verification passed",
-            extra={"embedding_dim": EMBEDDING_DIM},
-        )
-        return True
-        
-    except Exception as e:
-        logger.exception(f"Embedder startup verification failed: {e}")
-        return False
 
 
 if __name__ == "__main__":

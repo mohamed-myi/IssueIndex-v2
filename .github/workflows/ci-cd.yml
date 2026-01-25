@@ -215,7 +215,7 @@ jobs:
 
       - name: Deploy embedding worker service
         run: |
-          gcloud run deploy issueindex-embedding-worker \
+          gcloud run services update issueindex-embedding-worker \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --memory=4Gi \
@@ -223,7 +223,11 @@ jobs:
             --min-instances=0 \
             --max-instances=10 \
             --timeout=600s \
-            --set-secrets="DATABASE_URL=database-url:latest" \
+            --vpc-connector=issue-index-connector \
+            --cpu-boost \
+            --no-cpu-throttling \
+            --startup-probe="httpGet.path=/health,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=10,failureThreshold=30" \
+            --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest" \
             --set-env-vars="JOB_TYPE=embedding,PUBSUB_PROJECT=${{ env.PROJECT_ID }}"
 
       - name: Update collector job
@@ -231,6 +235,7 @@ jobs:
           gcloud run jobs update issueindex-collector \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
+            --vpc-connector=issue-index-connector \
             --set-secrets="DATABASE_URL=database-url:latest,GIT_TOKEN=github-token:latest" \
             --set-env-vars="JOB_TYPE=collector,PUBSUB_PROJECT=${{ env.PROJECT_ID }}"
 
@@ -239,14 +244,16 @@ jobs:
           gcloud run jobs update issueindex-janitor \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
+            --vpc-connector=issue-index-connector \
             --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest" \
             --set-env-vars="JOB_TYPE=janitor"
 
       - name: Update reco-flush job
         run: |
-          gcloud run jobs deploy issueindex-reco-flush \
+          gcloud run jobs update issueindex-reco-flush \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
+            --vpc-connector=issue-index-connector \
             --set-secrets="DATABASE_URL=database-url:latest" \
             --set-env-vars="JOB_TYPE=reco_flush"
 

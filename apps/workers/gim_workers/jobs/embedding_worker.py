@@ -99,11 +99,11 @@ async def create_session():
         yield session
 
 
-async def run_embedding_worker() -> None:
+async def run_embedding_worker(embedder: NomicMoEEmbedder) -> None:
     """
     Long-running worker that processes Pub/Sub messages.
     
-    Pulls messages in batches, processes them with the IssueEmbeddingConsumer,
+    Pulls messages in batches using AsyncSubscriberClient, processes them,
     and acknowledges/nacks based on success. Handles graceful shutdown.
     """
     settings = get_settings()
@@ -125,17 +125,14 @@ async def run_embedding_worker() -> None:
         },
     )
     
-    # Initialize embedder (lazy loads model on first use)
-    embedder = NomicMoEEmbedder(max_workers=1)
-    
-    # Create consumer with session factory
+    # Create consumer with injected embedder
     consumer = IssueEmbeddingConsumer(
         embedder=embedder,
         session_factory=create_session,
     )
     
-    # Create subscriber client
-    subscriber = pubsub_v1.SubscriberClient()
+    # Create Async subscriber client
+    subscriber = pubsub_v1.SubscriberAsyncClient()
     subscription_path = subscriber.subscription_path(project_id, subscription_id)
     
     # Track statistics
@@ -147,9 +144,9 @@ async def run_embedding_worker() -> None:
         logger.info(f"Listening for messages on {subscription_path}")
         
         while not shutdown.should_stop:
-            # Pull messages in batches
+            # Pull messages in batches using Async Client
             try:
-                response = subscriber.pull(
+                response = await subscriber.pull(
                     request={
                         "subscription": subscription_path,
                         "max_messages": settings.embedding_batch_size,
@@ -157,10 +154,12 @@ async def run_embedding_worker() -> None:
                     timeout=30.0,  # Long poll timeout
                 )
             except Exception as e:
-                if "504 Deadline Exceeded" in str(e) or "DEADLINE_EXCEEDED" in str(e):
-                    # Normal timeout when no messages available
-                    logger.debug("No messages available, continuing...")
+                # Handle timeout errors
+                err_str = str(e)
+                if "504 Deadline Exceeded" in err_str or "DEADLINE_EXCEEDED" in err_str:
+                    logger.debug("No messages available via async pull")
                     continue
+                    
                 logger.error(f"Failed to pull messages: {e}")
                 await asyncio.sleep(5)  # Backoff on error
                 continue
@@ -174,12 +173,10 @@ async def run_embedding_worker() -> None:
             # Loop through batch with atomic shutdown checks
             try:
                 for received_message in response.received_messages:
-                    # 1. Check shutdown BEFORE starting work (Hole #7/8)
+                    # 1. Check shutdown BEFORE starting work
                     if shutdown.should_stop:
                         logger.info("Shutdown signaled mid-batch; yielding remaining messages")
-                        # Add this message's ID to nack list immediately
                         nack_ids.append(received_message.ack_id)
-                        # Continue to next message to bulk-nack everything remaining
                         continue
 
                     message = received_message.message
@@ -198,22 +195,19 @@ async def run_embedding_worker() -> None:
 
             finally:
                 # 2. Atomic Commit/Rollback for the batch
-                # Acknowledge successes
                 if ack_ids:
-                    subscriber.acknowledge(
+                    await subscriber.acknowledge(
                         request={
                             "subscription": subscription_path,
                             "ack_ids": ack_ids,
                         }
                     )
                 
-                # Nack failures AND interruptions (Hole #7)
                 if nack_ids:
-                    # Hole #8: Do NOT use ack_deadline=0 during shutdown to prevent thundering herd
-                    # Only use instant redelivery if we are NOT shutting down (transient errors)
+                    # Don't use ack_deadline=0 during shutdown to prevent thundering
                     delay = 0 if not shutdown.should_stop else 30
                     
-                    subscriber.modify_ack_deadline(
+                    await subscriber.modify_ack_deadline(
                         request={
                             "subscription": subscription_path,
                             "ack_ids": nack_ids,
@@ -237,9 +231,8 @@ async def run_embedding_worker() -> None:
         raise
     
     finally:
-        # Cleanup
-        embedder.close()
-        subscriber.close()
+        # Cleanup does NOT close the embedder here as it is owned by __main__
+        await subscriber.close()
         
         logger.info(
             "Embedding worker shutdown complete",
