@@ -31,11 +31,11 @@ RUN pip install --no-cache-dir \
     "google-cloud-pubsub>=2.19.0" \
     "sentence-transformers>=3.3.1" \
     einops \
-    "huggingface_hub[cli]>=0.23.0"
+    "huggingface_hub>=0.23.0"
 
 # Pre-download embedding model (nomic-embed-text-v2-moe)
 # Use CLI instead of python script to avoid QEMU emulation on cross-platform builds
 ENV HF_HOME=/root/.cache/huggingface
-RUN huggingface-cli download nomic-ai/nomic-embed-text-v2-moe --exclude "*.onnx" "*.git*"
+RUN hf download nomic-ai/nomic-embed-text-v2-moe --exclude "*.onnx" "*.git*"
 
 CMD ["python", "-m", "gim_workers"]

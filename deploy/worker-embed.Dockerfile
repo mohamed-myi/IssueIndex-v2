@@ -25,12 +25,12 @@ RUN pip install --no-cache-dir \
     -e apps/backend \
     google-cloud-aiplatform \
     "sentence-transformers>=3.3.1" \
-    "huggingface_hub[cli]>=0.23.0"
+    "huggingface_hub>=0.23.0"
 
 # Pre-download embedding model (nomic-embed-text-v2-moe)
 # Use CLI instead of python script to avoid QEMU emulation on cross-platform builds
 ENV HF_HOME=/root/.cache/huggingface
-RUN huggingface-cli download nomic-ai/nomic-embed-text-v2-moe --exclude "*.onnx" "*.git*"
+RUN hf download nomic-ai/nomic-embed-text-v2-moe --exclude "*.onnx" "*.git*"
 
 ENV PORT=8080
 ENV EMBEDDING_MODE=nomic
