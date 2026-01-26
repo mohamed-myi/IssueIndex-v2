@@ -107,13 +107,10 @@ async def run_collector_job() -> dict:
             topic_id=settings.pubsub_issues_topic,
         )
         
-        try:
-            total = await producer.publish_stream(
-                issues=issue_stream,
-                log_every=500,
-            )
-        finally:
-            producer.close()
+        total = await producer.publish_stream(
+            issues=issue_stream,
+            log_every=500,
+        )
         
         gather_elapsed = time.monotonic() - gather_start
         

@@ -61,7 +61,6 @@ class IssuePubSubProducer:
     def __init__(self, project_id: str, topic_id: str):
         self._publisher = pubsub_v1.PublisherClient()
         self._topic_path = self._publisher.topic_path(project_id, topic_id)
-        # Bounded semaphore prevents arbitrary memory growth from unbounded concurrency
         self._semaphore = asyncio.Semaphore(self.MAX_INFLIGHT)
         self._active_futures: set[asyncio.Future] = set()
 
@@ -199,6 +198,3 @@ class IssuePubSubProducer:
 
         return submitted_count - failed_completion_count
 
-    def close(self) -> None:
-        """Close the publisher client."""
-        self._publisher.close()
