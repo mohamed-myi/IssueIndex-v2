@@ -54,11 +54,12 @@ dist/
 node_modules/
 .next/
 out/
+build/
+dist/
+.vercel/
 npm-cache/
 
-coverage/
-.nyc_output/
-*.tsbuildinfo
+# Debug logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

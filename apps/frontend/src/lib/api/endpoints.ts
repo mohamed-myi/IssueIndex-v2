@@ -1,0 +1,254 @@
+import { api } from "./client";
+import type {
+  AuthMeResponse,
+  Bookmark,
+  BookmarkBatchCheckResponse,
+  BookmarksListResponse,
+  FeedResponse,
+  IssueDetailResponse,
+  LinkedAccountsResponse,
+  NotesListResponse,
+  OnboardingStep,
+  OnboardingStepResponse,
+  OAuthProvider,
+  ProfileOnboardingResponse,
+  ProfilePreferences,
+  ProfilePreferencesResponse,
+  ProfileResponse,
+  PublicStatsResponse,
+  RepositoriesResponse,
+  SearchRequest,
+  SearchResponse,
+  SessionsResponse,
+  SimilarIssuesResponse,
+  TaxonomyLanguagesResponse,
+  TaxonomyStackAreasResponse,
+  TrendingResponse,
+} from "./types";
+
+export async function fetchPublicStats() {
+  const { data } = await api.get<PublicStatsResponse>("/stats");
+  return data;
+}
+
+export async function fetchTrending(limit = 10) {
+  const { data } = await api.get<TrendingResponse>("/feed/trending", { params: { limit } });
+  return data;
+}
+
+export async function fetchFeed(page = 1, pageSize = 20) {
+  const { data } = await api.get<FeedResponse>("/feed", { params: { page, page_size: pageSize } });
+  return data;
+}
+
+export async function searchIssues(body: SearchRequest) {
+  const { data } = await api.post<SearchResponse>("/search", body);
+  return data;
+}
+
+export async function fetchIssue(nodeId: string) {
+  const { data } = await api.get<IssueDetailResponse>(`/issues/${encodeURIComponent(nodeId)}`);
+  return data;
+}
+
+export async function fetchSimilarIssues(nodeId: string, limit = 5) {
+  const { data } = await api.get<SimilarIssuesResponse>(`/issues/${encodeURIComponent(nodeId)}/similar`, {
+    params: { limit },
+  });
+  return data;
+}
+
+export async function fetchRepositories(params: { q?: string; language?: string; limit?: number }) {
+  const { data } = await api.get<RepositoriesResponse>("/repositories", { params });
+  return data;
+}
+
+export async function fetchLanguages() {
+  const { data } = await api.get<TaxonomyLanguagesResponse>("/taxonomy/languages");
+  return data;
+}
+
+export async function fetchStackAreas() {
+  const { data } = await api.get<TaxonomyStackAreasResponse>("/taxonomy/stack-areas");
+  return data;
+}
+
+export async function authInit() {
+  await api.get("/auth/init");
+}
+
+export async function fetchMe() {
+  const { data } = await api.get<AuthMeResponse>("/auth/me");
+  return data;
+}
+
+export async function authCallback(params: {
+  provider: OAuthProvider;
+  code: string;
+  state?: string;
+  error?: string;
+  fingerprint: string;
+}) {
+  const { provider, code, state, error, fingerprint } = params;
+
+  await api.get(`/auth/callback/${provider}`, {
+    params: { code, state, error },
+    headers: {
+      "X-Fingerprint": fingerprint,
+    },
+    maxRedirects: 0,
+    validateStatus: (status) => status >= 200 && status < 400,
+  });
+}
+
+export async function authLinkCallback(params: {
+  provider: OAuthProvider;
+  code?: string;
+  state?: string;
+  error?: string;
+}) {
+  const { provider, code, state, error } = params;
+  await api.get(`/auth/link/callback/${provider}`, {
+    params: { code, state, error },
+    maxRedirects: 0,
+    validateStatus: (status) => status >= 200 && status < 400,
+  });
+}
+
+export async function authConnectGithubCallback(params: { code?: string; state?: string; error?: string }) {
+  const { code, state, error } = params;
+  await api.get(`/auth/connect/callback/github`, {
+    params: { code, state, error },
+    maxRedirects: 0,
+    validateStatus: (status) => status >= 200 && status < 400,
+  });
+}
+
+export async function listBookmarks(page = 1, pageSize = 20) {
+  const { data } = await api.get<BookmarksListResponse>("/bookmarks", {
+    params: { page, page_size: pageSize },
+  });
+  return data;
+}
+
+export async function createBookmark(input: {
+  issue_node_id: string;
+  github_url: string;
+  title_snapshot: string;
+  body_snapshot: string;
+}) {
+  const { data } = await api.post<Bookmark>("/bookmarks", input);
+  return data;
+}
+
+export async function deleteBookmark(bookmarkId: string) {
+  await api.delete(`/bookmarks/${encodeURIComponent(bookmarkId)}`);
+}
+
+export async function patchBookmark(bookmarkId: string, input: { is_resolved: boolean }) {
+  const { data } = await api.patch<Bookmark>(`/bookmarks/${encodeURIComponent(bookmarkId)}`, input);
+  return data;
+}
+
+export async function batchBookmarkCheck(issueNodeIds: string[]) {
+  const { data } = await api.post<BookmarkBatchCheckResponse>("/bookmarks/check", {
+    issue_node_ids: issueNodeIds,
+  });
+  return data;
+}
+
+export async function getBookmark(bookmarkId: string) {
+  const { data } = await api.get<Bookmark>(`/bookmarks/${encodeURIComponent(bookmarkId)}`);
+  return data;
+}
+
+export async function listNotes(bookmarkId: string) {
+  const { data } = await api.get<NotesListResponse>(`/bookmarks/${encodeURIComponent(bookmarkId)}/notes`);
+  return data;
+}
+
+export async function addNote(bookmarkId: string, content: string) {
+  const { data } = await api.post(`/bookmarks/${encodeURIComponent(bookmarkId)}/notes`, { content });
+  return data;
+}
+
+export async function updateNote(noteId: string, content: string) {
+  const { data } = await api.patch(`/bookmarks/notes/${encodeURIComponent(noteId)}`, { content });
+  return data;
+}
+
+export async function deleteNote(noteId: string) {
+  const { data } = await api.delete(`/bookmarks/notes/${encodeURIComponent(noteId)}`);
+  return data;
+}
+
+export async function fetchProfile() {
+  const { data } = await api.get<ProfileResponse>("/profile");
+  return data;
+}
+
+export async function fetchProfileOnboarding() {
+  const { data } = await api.get<ProfileOnboardingResponse>("/profile/onboarding");
+  return data;
+}
+
+export async function startOnboarding() {
+  const { data } = await api.post<ProfileOnboardingResponse>("/profile/onboarding/start");
+  return data;
+}
+
+export async function skipOnboarding() {
+  const { data } = await api.post<ProfileOnboardingResponse>("/profile/onboarding/skip");
+  return data;
+}
+
+export async function completeOnboarding() {
+  const { data } = await api.post<ProfileOnboardingResponse>("/profile/onboarding/complete");
+  return data;
+}
+
+export async function saveOnboardingStep(step: OnboardingStep, payload: unknown) {
+  const { data } = await api.patch<OnboardingStepResponse>(`/profile/onboarding/step/${step}`, payload ?? {});
+  return data;
+}
+
+export async function fetchPreferences() {
+  const { data } = await api.get<ProfilePreferencesResponse>("/profile/preferences");
+  return data;
+}
+
+export async function patchPreferences(payload: Partial<ProfilePreferences>) {
+  const { data } = await api.patch<ProfilePreferencesResponse>("/profile/preferences", payload);
+  return data;
+}
+
+export async function fetchLinkedAccounts() {
+  const { data } = await api.get<LinkedAccountsResponse>("/auth/linked-accounts");
+  return data;
+}
+
+export async function fetchSessions() {
+  const { data } = await api.get<SessionsResponse>("/auth/sessions");
+  return data;
+}
+
+export async function revokeSession(sessionId: string) {
+  await api.delete(`/auth/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+export async function revokeOtherSessions() {
+  await api.delete("/auth/sessions");
+}
+
+export async function logout() {
+  await api.post("/auth/logout");
+}
+
+export async function logoutAll() {
+  await api.post("/auth/logout/all");
+}
+
+export async function deleteAccount() {
+  await api.delete("/auth/account");
+}
+
