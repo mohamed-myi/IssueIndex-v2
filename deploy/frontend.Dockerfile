@@ -18,7 +18,8 @@ ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_MOCK_API=$NEXT_PUBLIC_MOCK_API
 
 # Build for production with standalone output
-RUN npm run build
+# Use npx next build to bypass the script which tries to sync .env.local
+RUN npx next build
 
 # Production image
 FROM node:20-alpine AS runner
