@@ -29,9 +29,9 @@ RUN pip install --no-cache-dir \
     -e apps/backend \
     -e apps/workers \
     "google-cloud-pubsub>=2.19.0" \
-    sentence-transformers \
+    "sentence-transformers>=3.3.1" \
     einops \
-    "huggingface_hub[cli]"
+    "huggingface_hub[cli]>=0.23.0"
 
 # Pre-download embedding model (nomic-embed-text-v2-moe)
 # Use CLI instead of python script to avoid QEMU emulation on cross-platform builds
