@@ -216,7 +216,7 @@ jobs:
 
       - name: Deploy Frontend Service
         run: |
-          gcloud run deploy issueindex-frontend \
+          gcloud run services update issueindex-frontend \
             --image=${{ env.REGISTRY }}/frontend:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --memory=1Gi \
