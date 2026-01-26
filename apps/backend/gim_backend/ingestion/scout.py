@@ -39,7 +39,7 @@ class Scout:
     Reduced from 50 to 20 per language to fit within GitHub rate limits.
     """
 
-    REPOS_PER_LANGUAGE: int = 20
+    REPOS_PER_LANGUAGE: int = 1  # TEMPORARY DEBUGGING CHANGE (was 20)
     MIN_STARS: int = 1000
     MIN_ISSUE_VELOCITY: int = 10
     RECENCY_DAYS: int = 14
