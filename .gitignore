@@ -78,7 +78,7 @@ Thumbs.db
 logs/
 tmp/
 temp/
-data/
+
 *.sqlite
 *.sqlite3
 *.db

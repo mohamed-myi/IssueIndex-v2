@@ -26,7 +26,7 @@ import {
   filterRepositories,
   mockLanguages,
   mockStackAreas,
-} from "./data";
+} from "./data/index";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
@@ -185,18 +185,18 @@ export const handlers = [
   // ==========================================================================
   // Auth
   // ==========================================================================
-  
+
   // OAuth login redirect - simulates the OAuth flow by redirecting to callback
   http.get(`${BASE_URL}/auth/login/:provider`, ({ params, request }) => {
     const provider = params.provider as string;
     const url = new URL(request.url);
-    
+
     // Build callback URL that mimics what OAuth provider would redirect to
     const origin = url.origin.replace(BASE_URL, "http://localhost:3000");
     const callbackUrl = new URL(`/auth/callback/${provider}`, origin);
     callbackUrl.searchParams.set("code", "mock_auth_code_12345");
     callbackUrl.searchParams.set("state", "mock_state_xyz");
-    
+
     return HttpResponse.redirect(callbackUrl.toString(), 302);
   }),
 
