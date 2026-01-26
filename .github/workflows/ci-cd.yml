@@ -226,7 +226,7 @@ jobs:
             --vpc-connector=issue-index-connector \
             --cpu-boost \
             --no-cpu-throttling \
-            --startup-probe="httpGet.path=/health,initialDelaySeconds=0,timeoutSeconds=5,periodSeconds=10,failureThreshold=30" \
+            --startup-probe="httpGet.path=/health,initialDelaySeconds=5,timeoutSeconds=10,periodSeconds=10,failureThreshold=30" \
             --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest" \
             --set-env-vars="JOB_TYPE=embedding,PUBSUB_PROJECT=${{ env.PROJECT_ID }}"
 

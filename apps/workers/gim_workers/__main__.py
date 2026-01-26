@@ -125,7 +125,7 @@ async def main() -> None:
             # Initialize singleton embedder model (shared state)
             # Large size (~1GB), so do it once here
             logger.info("Initializing shared NomicMoEEmbedder")
-            embedder = NomicMoEEmbedder(max_workers=1)
+            embedder = NomicMoEEmbedder(max_workers=2)
             
             # Embedding worker needs health server running alongside
             async with asyncio.TaskGroup() as tg:
