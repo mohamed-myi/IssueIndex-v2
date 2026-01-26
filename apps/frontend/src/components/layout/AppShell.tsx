@@ -6,6 +6,7 @@ import type { Route } from "next";
 import { useQuery } from "@tanstack/react-query";
 import { fetchLanguages, fetchRepositories } from "@/lib/api/endpoints";
 import { setQueryParam } from "@/lib/url";
+import { cn } from "@/lib/cn";
 import { TopNav } from "./TopNav";
 import { FilterSidebar, type FilterState } from "./FilterSidebar";
 
