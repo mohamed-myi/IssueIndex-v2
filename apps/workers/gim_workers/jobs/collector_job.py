@@ -36,9 +36,6 @@ async def run_collector_job() -> dict:
     job_start = time.monotonic()
     settings = get_settings()
     
-    # TEMPORARY DEBUGGING
-    settings.max_issues_per_repo = 10
-    
     if not settings.git_token:
         raise ValueError("GIT_TOKEN environment variable is required")
     
