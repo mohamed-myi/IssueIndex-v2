@@ -133,113 +133,113 @@ async def run_embedding_worker(embedder: NomicMoEEmbedder) -> None:
     )
     
     # Create Async subscriber client
-    subscriber = SubscriberAsyncClient()
-    subscription_path = subscriber.subscription_path(project_id, subscription_id)
-    
-    # Track statistics
-    processed_count = 0
-    success_count = 0
-    failure_count = 0
-    
-    try:
-        logger.info(f"Listening for messages on {subscription_path}")
+    async with SubscriberAsyncClient() as subscriber:
+        subscription_path = subscriber.subscription_path(project_id, subscription_id)
         
-        while not shutdown.should_stop:
-            # Pull messages in batches using Async Client
-            try:
-                response = await subscriber.pull(
-                    request={
-                        "subscription": subscription_path,
-                        "max_messages": settings.embedding_batch_size,
-                    },
-                    timeout=30.0,  # Long poll timeout
-                )
-            except Exception as e:
-                # Handle timeout errors
-                err_str = str(e)
-                if "504 Deadline Exceeded" in err_str or "DEADLINE_EXCEEDED" in err_str:
-                    logger.debug("No messages available via async pull")
-                    continue
-                    
-                logger.error(f"Failed to pull messages: {e}")
-                await asyncio.sleep(5)  # Backoff on error
-                continue
+        # Track statistics
+        processed_count = 0
+        success_count = 0
+        failure_count = 0
+        
+        try:
+            logger.info(f"Listening for messages on {subscription_path}")
             
-            if not response.received_messages:
-                continue
-            
-            ack_ids = []
-            nack_ids = []
-            
-            # Loop through batch with atomic shutdown checks
-            try:
-                for received_message in response.received_messages:
-                    # 1. Check shutdown BEFORE starting work
-                    if shutdown.should_stop:
-                        logger.info("Shutdown signaled mid-batch; yielding remaining messages")
-                        nack_ids.append(received_message.ack_id)
+            while not shutdown.should_stop:
+                # Pull messages in batches using Async Client
+                try:
+                    response = await subscriber.pull(
+                        request={
+                            "subscription": subscription_path,
+                            "max_messages": settings.embedding_batch_size,
+                        },
+                        timeout=30.0,  # Long poll timeout
+                    )
+                except Exception as e:
+                    # Handle timeout errors
+                    err_str = str(e)
+                    if "504 Deadline Exceeded" in err_str or "DEADLINE_EXCEEDED" in err_str:
+                        logger.debug("No messages available via async pull")
                         continue
-
-                    message = received_message.message
-                    ack_id = received_message.ack_id
-                    processed_count += 1
-                    
-                    # Process with retry policy for transient failures
-                    success = await process_with_retry(message.data, consumer)
-                    
-                    if success:
-                        ack_ids.append(ack_id)
-                        success_count += 1
-                    else:
-                        nack_ids.append(ack_id)
-                        failure_count += 1
-
-            finally:
-                # 2. Atomic Commit/Rollback for the batch
-                if ack_ids:
-                    await subscriber.acknowledge(
-                        request={
-                            "subscription": subscription_path,
-                            "ack_ids": ack_ids,
-                        }
-                    )
+                        
+                    logger.error(f"Failed to pull messages: {e}")
+                    await asyncio.sleep(5)  # Backoff on error
+                    continue
                 
-                if nack_ids:
-                    # Don't use ack_deadline=0 during shutdown to prevent thundering
-                    delay = 0 if not shutdown.should_stop else 30
+                if not response.received_messages:
+                    continue
+                
+                ack_ids = []
+                nack_ids = []
+                
+                # Loop through batch with atomic shutdown checks
+                try:
+                    for received_message in response.received_messages:
+                        # 1. Check shutdown BEFORE starting work
+                        if shutdown.should_stop:
+                            logger.info("Shutdown signaled mid-batch; yielding remaining messages")
+                            nack_ids.append(received_message.ack_id)
+                            continue
+
+                        message = received_message.message
+                        ack_id = received_message.ack_id
+                        processed_count += 1
+                        
+                        # Process with retry policy for transient failures
+                        success = await process_with_retry(message.data, consumer)
+                        
+                        if success:
+                            ack_ids.append(ack_id)
+                            success_count += 1
+                        else:
+                            nack_ids.append(ack_id)
+                            failure_count += 1
+
+                finally:
+                    # 2. Atomic Commit/Rollback for the batch
+                    if ack_ids:
+                        await subscriber.acknowledge(
+                            request={
+                                "subscription": subscription_path,
+                                "ack_ids": ack_ids,
+                            }
+                        )
                     
-                    await subscriber.modify_ack_deadline(
-                        request={
-                            "subscription": subscription_path,
-                            "ack_ids": nack_ids,
-                            "ack_deadline_seconds": delay,
-                        }
+                    if nack_ids:
+                        # Don't use ack_deadline=0 during shutdown to prevent thundering
+                        delay = 0 if not shutdown.should_stop else 30
+                        
+                        await subscriber.modify_ack_deadline(
+                            request={
+                                "subscription": subscription_path,
+                                "ack_ids": nack_ids,
+                                "ack_deadline_seconds": delay,
+                            }
+                        )
+                
+                # Log progress periodically
+                if processed_count % 100 == 0:
+                    logger.info(
+                        "Embedding worker progress",
+                        extra={
+                            "processed": processed_count,
+                            "success": success_count,
+                            "failure": failure_count,
+                        },
                     )
-            
-            # Log progress periodically
-            if processed_count % 100 == 0:
-                logger.info(
-                    "Embedding worker progress",
-                    extra={
-                        "processed": processed_count,
-                        "success": success_count,
-                        "failure": failure_count,
-                    },
-                )
-    
-    except Exception as e:
-        logger.exception(f"Embedding worker error: {e}")
-        raise
-    
-    finally:
-        # Cleanup does NOT close the embedder here as it is owned by __main__
-        await subscriber.close()
         
-        logger.info(
-            "Embedding worker shutdown complete",
-            extra={
-                "total_processed": processed_count,
-                "total_success": success_count,
-                "total_failure": failure_count,
-            },
-        )
+        except Exception as e:
+            logger.exception(f"Embedding worker error: {e}")
+            raise
+        
+        finally:
+            # Cleanup does NOT close the embedder here as it is owned by __main__
+            # subscriber is closed by context manager
+            
+            logger.info(
+                "Embedding worker shutdown complete",
+                extra={
+                    "total_processed": processed_count,
+                    "total_success": success_count,
+                    "total_failure": failure_count,
+                },
+            )
