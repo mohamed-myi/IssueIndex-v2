@@ -257,7 +257,7 @@ jobs:
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --memory=16Gi \
-            --cpu=2 \
+            --cpu=4 \
             --min-instances=0 \
             --max-instances=10 \
             --timeout=600s \
