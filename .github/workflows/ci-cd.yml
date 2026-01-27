@@ -259,7 +259,7 @@ jobs:
             --memory=16Gi \
             --cpu=4 \
             --min-instances=0 \
-            --max-instances=10 \
+            --max-instances=5 \
             --timeout=600s \
             --vpc-connector=issue-index-connector \
             --cpu-boost \
