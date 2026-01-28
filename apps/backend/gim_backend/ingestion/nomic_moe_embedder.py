@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from typing import Literal
 
@@ -50,6 +51,7 @@ class NomicMoEEmbedder:
 
     def __init__(self, max_workers: int = 1):
         self._model = None
+        self._load_lock = threading.Lock()
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         # Import torch here to set thread limit before model load
         try:
@@ -62,13 +64,20 @@ class NomicMoEEmbedder:
     def _load_model(self):
         """Lazy load model on first embedding request to avoid import-time overhead"""
         if self._model is None:
-            logger.info(f"Loading embedding model: {MODEL_NAME}")
-            self._model = SentenceTransformer(
-                MODEL_NAME,
-                trust_remote_code=True,
-            )
-            logger.info(f"Model loaded; output dim will be truncated to {EMBEDDING_DIM}")
+            with self._load_lock:
+                # Double-check inside lock
+                if self._model is None:
+                    logger.info(f"Loading embedding model: {MODEL_NAME}")
+                    self._model = SentenceTransformer(
+                        MODEL_NAME,
+                        trust_remote_code=True,
+                    )
+                    logger.info(f"Model loaded; output dim will be truncated to {EMBEDDING_DIM}")
         return self._model
+
+    def warmup(self):
+        """Force load the model."""
+        self._load_model()
 
     def _truncate_and_normalize(self, embeddings: np.ndarray) -> np.ndarray:
         """

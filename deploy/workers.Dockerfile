@@ -34,8 +34,14 @@ RUN pip install --no-cache-dir \
     "huggingface_hub>=0.23.0"
 
 # Pre-download embedding model (nomic-embed-text-v2-moe)
-# Use CLI instead of python script to avoid QEMU emulation on cross-platform builds
+# We use --mount=type=secret to securely pass the token without leaving traces in image layers.
 ENV HF_HOME=/root/.cache/huggingface
-RUN hf download nomic-ai/nomic-embed-text-v2-moe --exclude "*.onnx" --exclude "*.git*"
+RUN --mount=type=secret,id=hf_token \
+    python -c "from sentence_transformers import SentenceTransformer; \
+    import os; \
+    token_path = '/run/secrets/hf_token'; \
+    token = open(token_path).read().strip() if os.path.exists(token_path) else None; \
+    print(f'Downloading with token: {token[:4]}...' if token else 'Downloading without token...'); \
+    SentenceTransformer('nomic-ai/nomic-embed-text-v2-moe', trust_remote_code=True, token=token)"
 
 CMD ["python", "-m", "gim_workers"]

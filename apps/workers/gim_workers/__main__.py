@@ -126,6 +126,7 @@ async def main() -> None:
             # Large size (~1GB), so do it once here
             logger.info("Initializing shared NomicMoEEmbedder")
             embedder = NomicMoEEmbedder(max_workers=2)
+            embedder.warmup()
             
             # Embedding worker needs health server running alongside
             async with asyncio.TaskGroup() as tg:
