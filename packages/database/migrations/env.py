@@ -57,6 +57,7 @@ def do_run_migrations(connection: Connection) -> None:
         target_metadata=target_metadata,
         compare_type=True,
         render_as_batch=True,
+        include_schemas=True,
     )
 
     with context.begin_transaction():

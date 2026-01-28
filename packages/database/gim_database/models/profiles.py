@@ -17,10 +17,10 @@ class UserProfile(SQLModel, table=True):
     user_id: UUID = Field(primary_key=True, foreign_key="public.users.id")
     
     # Vector fields (4 total); combined_vector is the only one used for recommendations
-    intent_vector: Optional[List[float]] = Field(default=None, sa_column=Column(Vector(768)))
-    resume_vector: Optional[List[float]] = Field(default=None, sa_column=Column(Vector(768)))
-    github_vector: Optional[List[float]] = Field(default=None, sa_column=Column(Vector(768)))
-    combined_vector: Optional[List[float]] = Field(default=None, sa_column=Column(Vector(768)))
+    intent_vector: Optional[List[float]] = Field(default=None, sa_column=Column(Vector(256)))
+    resume_vector: Optional[List[float]] = Field(default=None, sa_column=Column(Vector(256)))
+    github_vector: Optional[List[float]] = Field(default=None, sa_column=Column(Vector(256)))
+    combined_vector: Optional[List[float]] = Field(default=None, sa_column=Column(Vector(256)))
     
     # Manual intent fields (Quick Start)
     intent_stack_areas: Optional[List[str]] = Field(default=None, sa_column=Column(ARRAY(sa.String)))

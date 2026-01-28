@@ -5,7 +5,7 @@ from sqlmodel import SQLModel, Field, Relationship, Column
 from sqlalchemy.dialects.postgresql import JSONB, ARRAY, REAL
 from pgvector.sqlalchemy import Vector
 
-VECTOR_DIM = 768
+VECTOR_DIM = 256
 
 
 class Repository(SQLModel, table=True):
@@ -57,8 +57,11 @@ class Issue(SQLModel, table=True):
     body_text: str
     labels: List[str] = Field(default_factory=list, sa_column=Column(ARRAY(sa.String)))
 
-    # 768-dim Nomic embeddings: cast to halfvec at DB level for 10GB optimization
+    # 256-dim Nomic embeddings: cast to halfvec at DB level for 10GB optimization
     embedding: List[float] = Field(sa_column=Column(Vector(VECTOR_DIM)))
+    
+    # Idempotency
+    content_hash: Optional[str] = Field(default=None, index=True, max_length=64)
 
     github_created_at: datetime
     ingested_at: datetime = Field(
