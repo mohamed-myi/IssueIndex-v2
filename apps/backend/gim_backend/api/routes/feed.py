@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query
 from gim_database.models.identity import Session, User
-from pydantic import BaseModel, Field
+from pydantic import Field
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from gim_backend.api.dependencies import get_db
@@ -14,6 +14,7 @@ from gim_backend.middleware.auth import require_auth
 from gim_backend.services.feed_service import (
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
+    FeedPage,
     get_feed,
 )
 from gim_backend.services.recommendation_event_service import (
@@ -23,47 +24,13 @@ from gim_backend.services.recommendation_event_service import (
 
 router = APIRouter()
 
-class WhyThisItemOutput(BaseModel):
-    entity: str
-    score: float
 
 
-class FeedItemOutput(BaseModel):
-    """Single issue in the feed."""
-    node_id: str
-    title: str
-    body_preview: str
-    labels: list[str]
-    q_score: float
-    repo_name: str
-    primary_language: str | None
-    github_created_at: str
-    similarity_score: float | None = Field(
-        default=None,
-        description="Cosine similarity to user profile; null for trending feed",
-    )
-    why_this: list[WhyThisItemOutput] | None = Field(
-        default=None,
-        description="Top explanation entities with raw scores; present for personalized feed only.",
-    )
 
-
-class FeedResponse(BaseModel):
+class FeedResponse(FeedPage):
     """Paginated feed response with personalization metadata."""
     recommendation_batch_id: str = Field(
         description="Server generated identifier for logging impressions and clicks for this response.",
-    )
-    results: list[FeedItemOutput]
-    total: int
-    page: int
-    page_size: int
-    has_more: bool
-    is_personalized: bool = Field(
-        description="True if results are based on user profile; false for trending",
-    )
-    profile_cta: str | None = Field(
-        default=None,
-        description="Call to action message when showing trending feed",
     )
 
 
@@ -120,30 +87,6 @@ async def get_feed_route(
 
     return FeedResponse(
         recommendation_batch_id=str(recommendation_batch_id),
-        results=[
-            FeedItemOutput(
-                node_id=item.node_id,
-                title=item.title,
-                body_preview=item.body_preview,
-                labels=item.labels,
-                q_score=item.q_score,
-                repo_name=item.repo_name,
-                primary_language=item.primary_language,
-                github_created_at=item.github_created_at.isoformat(),
-                similarity_score=item.similarity_score,
-                why_this=(
-                    [WhyThisItemOutput(entity=w.entity, score=w.score) for w in item.why_this]
-                    if feed.is_personalized and item.why_this
-                    else None
-                ),
-            )
-            for item in feed.results
-        ],
-        total=feed.total,
-        page=feed.page,
-        page_size=feed.page_size,
-        has_more=feed.has_more,
-        is_personalized=feed.is_personalized,
-        profile_cta=feed.profile_cta,
+        **feed.model_dump(),
     )
 

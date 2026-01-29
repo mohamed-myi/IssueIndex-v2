@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from gim_backend.main import app
 from gim_backend.middleware.auth import require_auth
+from gim_backend.services.issue_service import IssueDetail, SimilarIssue
 
 
 @pytest.fixture
@@ -62,21 +63,22 @@ class TestGetIssueDetail:
 
     def test_returns_issue_when_found(self, authenticated_client):
         """Should return full issue detail."""
-        mock_issue = MagicMock()
-        mock_issue.node_id = "I_abc123"
-        mock_issue.title = "Fix memory leak"
-        mock_issue.body = "Full body content"
-        mock_issue.labels = ["bug", "memory"]
-        mock_issue.q_score = 0.85
-        mock_issue.repo_name = "facebook/react"
-        mock_issue.repo_url = "https://github.com/facebook/react"
-        mock_issue.github_url = "https://github.com/facebook/react/issues/123"
-        mock_issue.primary_language = "JavaScript"
-        mock_issue.github_created_at = datetime(2026, 1, 5, 10, 0, 0, tzinfo=UTC)
-        mock_issue.state = "open"
+        issue = IssueDetail(
+            node_id="I_abc123",
+            title="Fix memory leak",
+            body="Full body content",
+            labels=["bug", "memory"],
+            q_score=0.85,
+            repo_name="facebook/react",
+            repo_url="https://github.com/facebook/react",
+            github_url="https://github.com/facebook/react/issues/123",
+            primary_language="JavaScript",
+            github_created_at=datetime(2026, 1, 5, 10, 0, 0, tzinfo=UTC),
+            state="open",
+        )
 
         with patch("gim_backend.api.routes.issues.get_issue_by_node_id", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = mock_issue
+            mock_get.return_value = issue
 
             response = authenticated_client.get("/issues/I_abc123")
 
@@ -102,11 +104,12 @@ class TestGetSimilarIssues:
 
     def test_returns_similar_issues(self, authenticated_client):
         """Should return list of similar issues."""
-        similar1 = MagicMock()
-        similar1.node_id = "I_similar1"
-        similar1.title = "Related Issue"
-        similar1.repo_name = "org/repo"
-        similar1.similarity_score = 0.95
+        similar1 = SimilarIssue(
+            node_id="I_similar1",
+            title="Related Issue",
+            repo_name="org/repo",
+            similarity_score=0.95,
+        )
 
         with patch("gim_backend.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
             mock_similar.return_value = [similar1]

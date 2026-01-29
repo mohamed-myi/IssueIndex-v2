@@ -27,6 +27,7 @@ from gim_backend.services.search_service import (
     MAX_PAGE_SIZE,
     SearchFilters,
     SearchRequest,
+    SearchResponse,
     hybrid_search,
 )
 
@@ -54,27 +55,7 @@ class SearchRequestInput(BaseModel):
     page_size: int = Field(default=DEFAULT_PAGE_SIZE, ge=1, le=MAX_PAGE_SIZE)
 
 
-class SearchResultOutput(BaseModel):
-    """API output model for a single search result."""
-    node_id: str
-    title: str
-    body_preview: str
-    labels: list[str]
-    q_score: float
-    repo_name: str
-    primary_language: str | None
-    github_created_at: str
-    rrf_score: float
 
-
-class SearchResponseOutput(BaseModel):
-    """API output model for search response."""
-    search_id: str
-    results: list[SearchResultOutput]
-    total: int
-    page: int
-    page_size: int
-    has_more: bool
 
 
 async def _get_optional_user_id(request: Request, db: AsyncSession) -> UUID | None:
@@ -148,13 +129,13 @@ async def check_search_rate_limit(
     return user_id
 
 
-@router.post("", response_model=SearchResponseOutput)
+@router.post("", response_model=SearchResponse)
 async def search(
     body: SearchRequestInput,
     user_id: UUID | None = Depends(check_search_rate_limit),
     db: AsyncSession = Depends(get_db),
     ctx: RequestContext = Depends(get_request_context),
-) -> SearchResponseOutput:
+) -> SearchResponse:
     """
     Hybrid search combining vector similarity and BM25 full-text search.
     Results are ranked using Reciprocal Rank Fusion (RRF).
@@ -200,21 +181,6 @@ async def search(
     )
 
     # Convert to output model
-    results = [
-        SearchResultOutput(
-            node_id=r.node_id,
-            title=r.title,
-            body_preview=r.body_text,
-            labels=r.labels,
-            q_score=r.q_score,
-            repo_name=r.repo_name,
-            primary_language=r.primary_language,
-            github_created_at=r.github_created_at.isoformat(),
-            rrf_score=r.rrf_score,
-        )
-        for r in response.results
-    ]
-
     # Store validated search context for interaction logging.
     # This enables /search/interact to persist query_text, filters_json, and result_count
     # without trusting client-provided context fields.
@@ -227,14 +193,7 @@ async def search(
         page_size=body.page_size,
     )
 
-    return SearchResponseOutput(
-        search_id=str(response.search_id),
-        results=results,
-        total=response.total,
-        page=response.page,
-        page_size=response.page_size,
-        has_more=response.has_more,
-    )
+    return response
 
 
 class InteractionInput(BaseModel):

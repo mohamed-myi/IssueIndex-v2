@@ -3,9 +3,9 @@ Issue service for issue discovery and detail endpoints.
 All queries filter open state by default for user-facing endpoints.
 """
 import logging
-from dataclasses import dataclass
 from datetime import datetime
 
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -17,8 +17,7 @@ DEFAULT_SIMILAR_LIMIT = 5
 MAX_SIMILAR_LIMIT = 10
 
 
-@dataclass
-class IssueDetail:
+class IssueDetail(BaseModel):
     """Full issue detail with repository metadata."""
     node_id: str
     title: str
@@ -33,8 +32,7 @@ class IssueDetail:
     state: str
 
 
-@dataclass
-class SimilarIssue:
+class SimilarIssue(BaseModel):
     """Similar issue with similarity score."""
     node_id: str
     title: str

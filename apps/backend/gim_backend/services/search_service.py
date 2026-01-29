@@ -20,10 +20,10 @@ Edge Case Decisions:
 import hashlib
 import json
 import logging
-from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -43,15 +43,14 @@ DEFAULT_PAGE_SIZE: int = 20
 MAX_PAGE_SIZE: int = 50
 
 
-@dataclass
-class SearchFilters:
+class SearchFilters(BaseModel):
     """
     Multi-select filters for hybrid search.
     All filters use ANY semantics (OR within filter, AND across filters).
     """
-    languages: list[str] = field(default_factory=list)
-    labels: list[str] = field(default_factory=list)
-    repos: list[str] = field(default_factory=list)
+    languages: list[str] = Field(default_factory=list)
+    labels: list[str] = Field(default_factory=list)
+    repos: list[str] = Field(default_factory=list)
 
     def is_empty(self) -> bool:
         return not self.languages and not self.labels and not self.repos
@@ -65,22 +64,23 @@ class SearchFilters:
         }, sort_keys=True)
 
 
-@dataclass
-class SearchRequest:
+class SearchRequest(BaseModel):
     """Search request with query, filters, and pagination."""
     query: str
-    filters: SearchFilters = field(default_factory=SearchFilters)
+    filters: SearchFilters = Field(default_factory=SearchFilters)
     page: int = 1
     page_size: int = DEFAULT_PAGE_SIZE
     user_id: UUID | None = None  # For personalization cache key
 
-    def __post_init__(self):
+    @model_validator(mode="after")
+    def validate_pagination(self) -> "SearchRequest":
         if self.page < 1:
             self.page = 1
         if self.page_size < 1:
             self.page_size = DEFAULT_PAGE_SIZE
         if self.page_size > MAX_PAGE_SIZE:
             self.page_size = MAX_PAGE_SIZE
+        return self
 
     @property
     def offset(self) -> int:
@@ -94,8 +94,7 @@ class SearchRequest:
         return hashlib.sha256(key_data.encode()).hexdigest()
 
 
-@dataclass
-class SearchResultItem:
+class SearchResultItem(BaseModel):
     """Single search result with issue data and scores."""
     node_id: str
     title: str
@@ -108,8 +107,7 @@ class SearchResultItem:
     rrf_score: float
 
 
-@dataclass
-class SearchResponse:
+class SearchResponse(BaseModel):
     """Paginated search response."""
     search_id: UUID
     results: list[SearchResultItem]
@@ -121,8 +119,7 @@ class SearchResponse:
     filters: SearchFilters
 
 
-@dataclass
-class Stage1Result:
+class Stage1Result(BaseModel):
     """Result from Stage 1: ordered IDs with scores and total count."""
     node_ids: list[str]
     rrf_scores: dict[str, float]

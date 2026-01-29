@@ -10,6 +10,8 @@ from gim_backend.middleware.auth import require_auth
 from gim_backend.services.issue_service import (
     DEFAULT_SIMILAR_LIMIT,
     MAX_SIMILAR_LIMIT,
+    IssueDetail,
+    SimilarIssue,
     get_issue_by_node_id,
     get_similar_issues,
 )
@@ -17,44 +19,19 @@ from gim_backend.services.issue_service import (
 router = APIRouter()
 
 
-# Response Models
-
-class IssueDetailResponse(BaseModel):
-    """Full issue detail response."""
-    node_id: str
-    title: str
-    body: str
-    labels: list[str]
-    q_score: float
-    repo_name: str
-    repo_url: str
-    github_url: str
-    primary_language: str | None
-    github_created_at: str  # ISO format
-    state: str
-
-
-class SimilarIssueResponse(BaseModel):
-    """Single similar issue."""
-    node_id: str
-    title: str
-    repo_name: str
-    similarity_score: float
-
-
 class SimilarIssuesResponse(BaseModel):
     """List of similar issues."""
-    issues: list[SimilarIssueResponse]
+    issues: list[SimilarIssue]
 
 
 # Endpoints
 
-@router.get("/{node_id}", response_model=IssueDetailResponse)
+@router.get("/{node_id}", response_model=IssueDetail)
 async def get_issue_detail(
     node_id: str,
     auth: Annotated[tuple, Depends(require_auth)],
     db: AsyncSession = Depends(get_db),
-) -> IssueDetailResponse:
+) -> IssueDetail:
     """
     Returns full issue detail by node_id.
 
@@ -65,19 +42,7 @@ async def get_issue_detail(
     if issue is None:
         raise HTTPException(status_code=404, detail="Issue not found")
 
-    return IssueDetailResponse(
-        node_id=issue.node_id,
-        title=issue.title,
-        body=issue.body,
-        labels=issue.labels,
-        q_score=issue.q_score,
-        repo_name=issue.repo_name,
-        repo_url=issue.repo_url,
-        github_url=issue.github_url,
-        primary_language=issue.primary_language,
-        github_created_at=issue.github_created_at.isoformat(),
-        state=issue.state,
-    )
+    return issue
 
 
 @router.get("/{node_id}/similar", response_model=SimilarIssuesResponse)
@@ -102,13 +67,5 @@ async def get_similar_issues_endpoint(
         raise HTTPException(status_code=404, detail="Issue not found")
 
     return SimilarIssuesResponse(
-        issues=[
-            SimilarIssueResponse(
-                node_id=s.node_id,
-                title=s.title,
-                repo_name=s.repo_name,
-                similarity_score=s.similarity_score,
-            )
-            for s in similar
-        ]
+        issues=similar
     )

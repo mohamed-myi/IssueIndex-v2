@@ -3,10 +3,10 @@ Feed service for personalized issue recommendations.
 Uses combined_vector for similarity search; falls back to trending when no profile.
 """
 import logging
-from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -23,8 +23,7 @@ CANDIDATE_LIMIT: int = 200
 TRENDING_CTA = "These are trending issues. Complete your profile for personalized recommendations."
 
 
-@dataclass
-class FeedItem:
+class FeedItem(BaseModel):
     node_id: str
     title: str
     body_preview: str
@@ -54,8 +53,7 @@ def freshness_decay(
     return max(floor, float(base))
 
 
-@dataclass
-class FeedResponse:
+class FeedPage(BaseModel):
     results: list[FeedItem]
     total: int
     page: int
@@ -70,7 +68,7 @@ async def get_feed(
     user_id: UUID,
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
-) -> FeedResponse:
+) -> FeedPage:
     """
     Returns personalized feed using combined_vector; falls back to trending.
     Applies preferred_languages and min_heat_threshold filters when personalized.
@@ -110,7 +108,7 @@ async def _get_personalized_feed(
     min_heat_threshold: float,
     page: int,
     page_size: int,
-) -> FeedResponse:
+) -> FeedPage:
     """Vector similarity search against issue embeddings with preference filters."""
     settings = get_settings()
     offset = (page - 1) * page_size
@@ -146,7 +144,7 @@ async def _get_personalized_feed(
     total = count_result.scalar() or 0
 
     if total == 0:
-        return FeedResponse(
+        return FeedPage(
             results=[],
             total=0,
             page=page,
@@ -240,7 +238,7 @@ async def _get_personalized_feed(
         f"Personalized feed: user has combined_vector, returned {len(results)} of {total}"
     )
 
-    return FeedResponse(
+    return FeedPage(
         results=results,
         total=total,
         page=page,
@@ -255,7 +253,7 @@ async def _get_trending_feed(
     db: AsyncSession,
     page: int,
     page_size: int,
-) -> FeedResponse:
+) -> FeedPage:
     """Trending issues: high q_score, recent, open."""
     offset = (page - 1) * page_size
     min_q_score = 0.6
@@ -278,7 +276,7 @@ async def _get_trending_feed(
     total = count_result.scalar() or 0
 
     if total == 0:
-        return FeedResponse(
+        return FeedPage(
             results=[],
             total=0,
             page=page,
@@ -333,7 +331,7 @@ async def _get_trending_feed(
         f"Trending feed: no combined_vector, returned {len(results)} of {total}"
     )
 
-    return FeedResponse(
+    return FeedPage(
         results=results,
         total=total,
         page=page,
@@ -346,7 +344,7 @@ async def _get_trending_feed(
 
 __all__ = [
     "FeedItem",
-    "FeedResponse",
+    "FeedPage",
     "get_feed",
     "freshness_decay",
     "DEFAULT_PAGE_SIZE",

@@ -35,46 +35,46 @@ def authenticated_client(client):
     app.dependency_overrides.clear()
 
 
-class _Why:
-    def __init__(self, entity: str, score: float):
-        self.entity = entity
-        self.score = score
+from gim_backend.services.feed_service import FeedPage, FeedItem
+from gim_backend.services.why_this_service import WhyThisItem
+from datetime import datetime, timezone
 
-
-class _Item:
-    def __init__(self):
-        self.node_id = "issue_1"
-        self.title = "t"
-        self.body_preview = "b"
-        self.labels = []
-        self.q_score = 0.8
-        self.repo_name = "r"
-        self.primary_language = "Python"
-        self.github_created_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
-        self.similarity_score = 0.9
-        self.why_this = [_Why("Python", 3.0)]
-
-
-class _Feed:
-    def __init__(self, is_personalized: bool):
-        self.results = [_Item()]
-        self.total = 1
-        self.page = 1
-        self.page_size = 20
-        self.has_more = False
-        self.is_personalized = is_personalized
-        self.profile_cta = None
+def _create_mock_feed(is_personalized: bool) -> FeedPage:
+    item = FeedItem(
+        node_id="issue_1",
+        title="t",
+        body_preview="b",
+        labels=[],
+        q_score=0.8,
+        repo_name="r",
+        primary_language="Python",
+        repo_topics=[],
+        github_created_at=datetime.now(timezone.utc),
+        similarity_score=0.9 if is_personalized else None,
+        why_this=[WhyThisItem(entity="Python", score=3.0)] if is_personalized else None,
+        freshness=None,
+        final_score=None,
+    )
+    return FeedPage(
+        results=[item],
+        total=1,
+        page=1,
+        page_size=20,
+        has_more=False,
+        is_personalized=is_personalized,
+        profile_cta=None,
+    )
 
 
 def test_feed_includes_why_this_only_when_personalized(authenticated_client):
-    with patch("gim_backend.api.routes.feed.get_feed", return_value=_Feed(is_personalized=True)):
+    with patch("gim_backend.api.routes.feed.get_feed", return_value=_create_mock_feed(is_personalized=True)):
         resp = authenticated_client.get("/feed")
     assert resp.status_code == 200
     payload = resp.json()
     assert "recommendation_batch_id" in payload
     assert payload["results"][0]["why_this"][0]["entity"] == "Python"
 
-    with patch("gim_backend.api.routes.feed.get_feed", return_value=_Feed(is_personalized=False)):
+    with patch("gim_backend.api.routes.feed.get_feed", return_value=_create_mock_feed(is_personalized=False)):
         resp2 = authenticated_client.get("/feed")
     assert resp2.status_code == 200
     payload2 = resp2.json()
