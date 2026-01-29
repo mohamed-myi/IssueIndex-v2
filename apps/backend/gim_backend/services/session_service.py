@@ -1,10 +1,10 @@
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from gim_database.models.identity import LinkedAccount, Session, User
 from gim_database.models.persistence import BookmarkedIssue, PersonalNote
 from gim_database.models.profiles import UserProfile as UserProfileModel
+from pydantic import BaseModel
 from sqlalchemy import delete, func
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -247,8 +247,7 @@ async def invalidate_all_sessions(
     return result.rowcount
 
 
-@dataclass
-class SessionInfo:
+class SessionInfo(BaseModel):
     """Sanitized session metadata for API response"""
     id: str
     fingerprint_partial: str
@@ -257,6 +256,11 @@ class SessionInfo:
     user_agent: str | None
     ip_address: str | None
     is_current: bool
+
+
+class SessionListResponse(BaseModel):
+    sessions: list[SessionInfo]
+    count: int
 
 
 async def list_sessions(
@@ -309,8 +313,7 @@ class UserNotFoundError(Exception):
     pass
 
 
-@dataclass
-class CascadeDeletionResult:
+class CascadeDeletionResult(BaseModel):
     tables_affected: list[str]
     total_rows: int
 

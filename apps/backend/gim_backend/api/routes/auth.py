@@ -39,6 +39,7 @@ from gim_backend.services.linked_account_service import (
 from gim_backend.services.session_service import (
     ExistingAccountError,
     ProviderConflictError,
+    SessionListResponse,
     UserNotFoundError,
     count_sessions,
     create_session,
@@ -427,11 +428,11 @@ async def link_callback(
         )
 
 
-@router.get("/sessions")
+@router.get("/sessions", response_model=SessionListResponse)
 async def get_sessions(
     request: Request,
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> SessionListResponse:
     """Returns all active sessions for authenticated user"""
     ctx = await get_request_context(request)
 
@@ -443,21 +444,10 @@ async def get_sessions(
 
     sessions = await list_sessions(db, user.id, session.id)
 
-    return {
-        "sessions": [
-            {
-                "id": s.id,
-                "fingerprint_partial": s.fingerprint_partial,
-                "created_at": s.created_at.isoformat(),
-                "last_active_at": s.last_active_at.isoformat(),
-                "user_agent": s.user_agent,
-                "ip_address": s.ip_address,
-                "is_current": s.is_current,
-            }
-            for s in sessions
-        ],
-        "count": len(sessions),
-    }
+    return SessionListResponse(
+        sessions=sessions,
+        count=len(sessions),
+    )
 
 
 @router.delete("/sessions/{session_id}")
