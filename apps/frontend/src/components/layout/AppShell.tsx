@@ -71,59 +71,48 @@ export function AppShell({
   const repos = useMemo(() => reposQuery.data?.repositories.map((r) => r.name) ?? [], [reposQuery.data]);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background">
+      {/* Header - Fixed Top, Full Width, Z-Index High */}
       <TopNav activeTab={activeTab} sidebarOpen={sidebarOpen} onToggleSidebar={() => setSidebarOpen((v) => !v)} />
-      <main className="pt-[var(--topnav-height)]">
-        <div className="flex items-start">
-          {/* Mobile Overlay */}
-          <div
-            className={cn(
-              "fixed inset-0 z-40 bg-black/50 transition-opacity duration-300 md:hidden",
-              sidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
-            )}
-            onClick={() => setSidebarOpen(false)}
-          />
 
-          {/* Sidebar Container */}
-          <div
-            className={cn(
-              // Base: Fixed for mobile, sticky for desktop
-              "fixed bottom-0 left-0 top-[var(--topnav-height)] z-50 overflow-hidden transition-all duration-300 md:sticky md:top-[var(--topnav-height)] md:z-0 md:h-[calc(100vh-var(--topnav-height))]",
-              // Mobile state: Translate X
-              sidebarOpen ? "translate-x-0" : "-translate-x-full",
-              // Desktop state: Always translate-0 (visibility controlled by width/margin of content if needed, but here we just slide it)
-              "md:translate-x-0",
-              // Desktop toggle: If we want to hide it on desktop, we usually shrink width. 
-              // For this implementation, let's assume sidebarOpen affects desktop too (as per original design).
-              // If closed on desktop, we hide it.
-              !sidebarOpen && "md:hidden"
-            )}
-            style={{ width: "var(--sidebar-width)" }}
-          >
-            <FilterSidebar
-              isVisible={true}
-              languages={languages}
-              labels={DEFAULT_LABELS}
-              repos={repos}
-              value={filterState}
-              onChange={updateFilters}
-            />
-          </div>
+      {/* Mobile Overlay */}
+      <div
+        className={cn(
+          "fixed inset-0 z-40 bg-black/50 transition-opacity duration-300 md:hidden",
+          sidebarOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+        )}
+        onClick={() => setSidebarOpen(false)}
+      />
 
-          {/* Main Content */}
-          <div
-            className={cn(
-              "min-w-0 flex-1 px-4 py-6 transition-all duration-300 md:px-8 md:py-8",
-              // Desktop: Apply margin when sidebar is open, otherwise no margin
-              sidebarOpen ? "md:ml-[var(--sidebar-width)]" : "md:ml-0"
-            )}
-            // We only apply margin on desktop if sidebar is open
-            style={{
-              marginLeft: 0 // Reset default
-            }}
-          >
-            {children}
-          </div>
+      {/* Sidebar - Fixed Left, starts below header */}
+      <div
+        className={cn(
+          "fixed bottom-0 left-0 top-[var(--topnav-height)] z-40 w-[var(--sidebar-width)] transition-transform duration-300",
+          // Mobile: Slide in/out
+          // Desktop: Slide in/out or Hide
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        <FilterSidebar
+          isVisible={true}
+          languages={languages}
+          labels={DEFAULT_LABELS}
+          repos={repos}
+          value={filterState}
+          onChange={updateFilters}
+        />
+      </div>
+
+      {/* Main Content - Padded Top for Header, Margin Left for Sidebar */}
+      <main
+        className={cn(
+          "min-h-screen pt-[var(--topnav-height)] transition-[margin-left] duration-300",
+          // Desktop margin depends on sidebar state
+          sidebarOpen ? "md:ml-[var(--sidebar-width)]" : "md:ml-0"
+        )}
+      >
+        <div className="px-4 py-6 md:px-8 md:py-8">
+          {children}
         </div>
       </main>
     </div>

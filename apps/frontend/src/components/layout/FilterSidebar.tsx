@@ -39,7 +39,7 @@ export function FilterSidebar({ isVisible, languages, labels, repos, value, onCh
 
   return (
     <aside
-      className="fixed bottom-0 left-0 top-[var(--topnav-height)] w-[var(--sidebar-width)] flex-shrink-0 overflow-y-auto pl-6 pr-4 pt-6 transition-all duration-300"
+      className="h-full w-full overflow-y-auto pl-6 pr-4 pt-6"
       style={{ backgroundColor: "var(--sidebar)", borderRight: "1px solid var(--sidebar-border)" }}
     >
       <div className="space-y-6 pb-8">
