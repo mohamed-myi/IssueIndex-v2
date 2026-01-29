@@ -3,8 +3,8 @@ Repository service for repository listing and filtering.
 Used for search filter dropdowns and repository discovery.
 """
 import logging
-from dataclasses import dataclass
 
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -14,8 +14,7 @@ DEFAULT_LIMIT = 50
 MAX_LIMIT = 100
 
 
-@dataclass
-class RepositoryItem:
+class RepositoryItem(BaseModel):
     """Repository summary with issue count."""
     name: str  # full_name like "facebook/react"
     primary_language: str | None

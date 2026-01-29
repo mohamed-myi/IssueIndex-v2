@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from gim_backend.services.repository_service import RepositoryItem
 
 from gim_backend.main import app
 
@@ -31,13 +32,14 @@ class TestListRepositories:
 
     def test_returns_repositories_list(self, client):
         """Should return list of repositories."""
-        mock_repo = MagicMock()
-        mock_repo.name = "facebook/react"
-        mock_repo.primary_language = "JavaScript"
-        mock_repo.issue_count = 1250
+        repo = RepositoryItem(
+            name="facebook/react",
+            primary_language="JavaScript",
+            issue_count=1250,
+        )
 
         with patch("gim_backend.api.routes.repositories.list_repositories", new_callable=AsyncMock) as mock_list:
-            mock_list.return_value = [mock_repo]
+            mock_list.return_value = [repo]
 
             response = client.get("/repositories")
 

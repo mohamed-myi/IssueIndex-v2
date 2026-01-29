@@ -9,6 +9,7 @@ from gim_backend.api.dependencies import get_db
 from gim_backend.services.repository_service import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
+    RepositoryItem,
     list_repositories,
 )
 
@@ -17,16 +18,9 @@ router = APIRouter()
 
 # Response Models
 
-class RepositoryItemResponse(BaseModel):
-    """Single repository item."""
-    name: str
-    primary_language: str | None
-    issue_count: int
-
-
 class RepositoriesResponse(BaseModel):
     """List of repositories."""
-    repositories: list[RepositoryItemResponse]
+    repositories: list[RepositoryItem]
 
 
 # Endpoints
@@ -53,12 +47,5 @@ async def list_repositories_endpoint(
     )
 
     return RepositoriesResponse(
-        repositories=[
-            RepositoryItemResponse(
-                name=r.name,
-                primary_language=r.primary_language,
-                issue_count=r.issue_count,
-            )
-            for r in repos
-        ]
+        repositories=repos
     )
