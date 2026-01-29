@@ -1,5 +1,4 @@
 import re
-from dataclasses import dataclass
 from typing import Any
 
 from gim_shared.constants import (
@@ -9,14 +8,17 @@ from gim_shared.constants import (
     TECH_KEYWORDS_BY_LANGUAGE,
     normalize_skill,
 )
+from pydantic import BaseModel
 
 _TOKEN_RE = re.compile(r"[a-z0-9\+\#\.]+")
 
 
-@dataclass(frozen=True)
-class WhyThisItem:
+
+
+class WhyThisItem(BaseModel):
     entity: str
     score: float
+    model_config = {"frozen": True}
 
 
 def _norm(s: str) -> str:

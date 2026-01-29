@@ -6,6 +6,7 @@ from uuid import UUID
 
 from gim_database.models.profiles import UserProfile
 from gim_shared.constants import PROFILE_LANGUAGES, STACK_AREAS
+from pydantic import BaseModel
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -22,6 +23,77 @@ from gim_backend.services.vector_generation import generate_intent_vector_with_r
 logger = logging.getLogger(__name__)
 
 VALID_EXPERIENCE_LEVELS = ["beginner", "intermediate", "advanced"]
+
+
+class IntentData(BaseModel):
+    languages: list[str]
+    stack_areas: list[str]
+    text: str
+    experience_level: str | None
+    updated_at: str | None
+
+
+class IntentSource(BaseModel):
+    populated: bool
+    vector_status: str | None
+    data: IntentData | None
+
+
+class ResumeData(BaseModel):
+    skills: list[str]
+    job_titles: list[str]
+    uploaded_at: str | None
+
+
+class ResumeSource(BaseModel):
+    populated: bool
+    vector_status: str | None
+    data: ResumeData | None
+
+
+class GitHubData(BaseModel):
+    username: str
+    languages: list[str]
+    topics: list[str]
+    fetched_at: str | None
+
+
+class GitHubSource(BaseModel):
+    populated: bool
+    vector_status: str | None
+    data: GitHubData | None
+
+
+class ProfileSources(BaseModel):
+    intent: IntentSource
+    resume: ResumeSource
+    github: GitHubSource
+
+
+class ProfilePreferences(BaseModel):
+    preferred_languages: list[str]
+    preferred_topics: list[str]
+    min_heat_threshold: float
+
+
+class FullProfile(BaseModel):
+    user_id: str
+    optimization_percent: int
+    combined_vector_status: str | None
+    is_calculating: bool
+    onboarding_status: str
+    updated_at: str | None
+    sources: ProfileSources
+    preferences: ProfilePreferences
+
+
+class IntentProfile(BaseModel):
+    languages: list[str]
+    stack_areas: list[str]
+    text: str
+    experience_level: str | None
+    vector_status: str | None
+    updated_at: str | None
 
 
 def validate_languages(languages: list[str]) -> None:
@@ -97,74 +169,74 @@ async def get_or_create_profile(
 async def get_full_profile(
     db: AsyncSession,
     user_id: UUID,
-) -> dict:
+) -> FullProfile:
     profile = await get_or_create_profile(db, user_id)
 
     intent_populated = profile.intent_text is not None
     intent_data = None
     if intent_populated:
-        intent_data = {
-            "languages": profile.preferred_languages or [],
-            "stack_areas": profile.intent_stack_areas or [],
-            "text": profile.intent_text,
-            "experience_level": profile.intent_experience,
-            "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
-        }
+        intent_data = IntentData(
+            languages=profile.preferred_languages or [],
+            stack_areas=profile.intent_stack_areas or [],
+            text=profile.intent_text,
+            experience_level=profile.intent_experience,
+            updated_at=profile.updated_at.isoformat() if profile.updated_at else None,
+        )
 
     resume_populated = profile.resume_skills is not None
     resume_data = None
     if resume_populated:
-        resume_data = {
-            "skills": profile.resume_skills or [],
-            "job_titles": profile.resume_job_titles or [],
-            "uploaded_at": profile.resume_uploaded_at.isoformat() if profile.resume_uploaded_at else None,
-        }
+        resume_data = ResumeData(
+            skills=profile.resume_skills or [],
+            job_titles=profile.resume_job_titles or [],
+            uploaded_at=profile.resume_uploaded_at.isoformat() if profile.resume_uploaded_at else None,
+        )
 
     github_populated = profile.github_username is not None
     github_data = None
     if github_populated:
-        github_data = {
-            "username": profile.github_username,
-            "languages": profile.github_languages or [],
-            "topics": profile.github_topics or [],
-            "fetched_at": profile.github_fetched_at.isoformat() if profile.github_fetched_at else None,
-        }
+        github_data = GitHubData(
+            username=profile.github_username,
+            languages=profile.github_languages or [],
+            topics=profile.github_topics or [],
+            fetched_at=profile.github_fetched_at.isoformat() if profile.github_fetched_at else None,
+        )
 
     intent_vector_status = "ready" if profile.intent_vector else None
     resume_vector_status = "ready" if profile.resume_vector else None
     github_vector_status = "ready" if profile.github_vector else None
     combined_vector_status = "ready" if profile.combined_vector else None
 
-    return {
-        "user_id": str(profile.user_id),
-        "optimization_percent": calculate_optimization_percent(profile),
-        "combined_vector_status": combined_vector_status,
-        "is_calculating": profile.is_calculating,
-        "onboarding_status": profile.onboarding_status,
-        "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
-        "sources": {
-            "intent": {
-                "populated": intent_populated,
-                "vector_status": intent_vector_status,
-                "data": intent_data,
-            },
-            "resume": {
-                "populated": resume_populated,
-                "vector_status": resume_vector_status,
-                "data": resume_data,
-            },
-            "github": {
-                "populated": github_populated,
-                "vector_status": github_vector_status,
-                "data": github_data,
-            },
-        },
-        "preferences": {
-            "preferred_languages": profile.preferred_languages or [],
-            "preferred_topics": profile.preferred_topics or [],
-            "min_heat_threshold": profile.min_heat_threshold,
-        },
-    }
+    return FullProfile(
+        user_id=str(profile.user_id),
+        optimization_percent=calculate_optimization_percent(profile),
+        combined_vector_status=combined_vector_status,
+        is_calculating=profile.is_calculating,
+        onboarding_status=profile.onboarding_status,
+        updated_at=profile.updated_at.isoformat() if profile.updated_at else None,
+        sources=ProfileSources(
+            intent=IntentSource(
+                populated=intent_populated,
+                vector_status=intent_vector_status,
+                data=intent_data,
+            ),
+            resume=ResumeSource(
+                populated=resume_populated,
+                vector_status=resume_vector_status,
+                data=resume_data,
+            ),
+            github=GitHubSource(
+                populated=github_populated,
+                vector_status=github_vector_status,
+                data=github_data,
+            ),
+        ),
+        preferences=ProfilePreferences(
+            preferred_languages=profile.preferred_languages or [],
+            preferred_topics=profile.preferred_topics or [],
+            min_heat_threshold=profile.min_heat_threshold,
+        ),
+    )
 
 
 async def delete_profile(
@@ -338,7 +410,7 @@ async def put_intent(
 async def get_intent(
     db: AsyncSession,
     user_id: UUID,
-) -> dict | None:
+) -> IntentProfile | None:
     profile = await get_or_create_profile(db, user_id)
 
     if profile.intent_text is None:
@@ -346,14 +418,14 @@ async def get_intent(
 
     vector_status = "ready" if profile.intent_vector else None
 
-    return {
-        "languages": profile.preferred_languages or [],
-        "stack_areas": profile.intent_stack_areas or [],
-        "text": profile.intent_text,
-        "experience_level": profile.intent_experience,
-        "vector_status": vector_status,
-        "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
-    }
+    return IntentProfile(
+        languages=profile.preferred_languages or [],
+        stack_areas=profile.intent_stack_areas or [],
+        text=profile.intent_text,
+        experience_level=profile.intent_experience,
+        vector_status=vector_status,
+        updated_at=profile.updated_at.isoformat() if profile.updated_at else None,
+    )
 
 
 async def update_intent(
@@ -462,14 +534,14 @@ async def delete_intent(
 async def get_preferences(
     db: AsyncSession,
     user_id: UUID,
-) -> dict:
+) -> ProfilePreferences:
     profile = await get_or_create_profile(db, user_id)
 
-    return {
-        "preferred_languages": profile.preferred_languages or [],
-        "preferred_topics": profile.preferred_topics or [],
-        "min_heat_threshold": profile.min_heat_threshold,
-    }
+    return ProfilePreferences(
+        preferred_languages=profile.preferred_languages or [],
+        preferred_topics=profile.preferred_topics or [],
+        min_heat_threshold=profile.min_heat_threshold,
+    )
 
 
 async def update_preferences(

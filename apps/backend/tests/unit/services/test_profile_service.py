@@ -543,10 +543,10 @@ class TestGetFullProfile:
 
         result = await get_full_profile(mock_db, mock_profile.user_id)
 
-        assert "user_id" in result
-        assert "optimization_percent" in result
-        assert "sources" in result
-        assert "preferences" in result
-        assert result["sources"]["intent"]["populated"] is True
-        assert result["sources"]["resume"]["populated"] is False
-        assert result["sources"]["github"]["populated"] is False
+        assert result.user_id is not None
+        assert result.optimization_percent is not None
+        assert result.sources is not None
+        assert result.preferences is not None
+        assert result.sources.intent.populated is True
+        assert result.sources.resume.populated is False
+        assert result.sources.github.populated is False

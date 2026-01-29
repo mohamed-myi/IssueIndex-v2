@@ -1,9 +1,9 @@
 """
 Recommendation preview service for onboarding flow.
 """
-from dataclasses import dataclass
 from uuid import UUID
 
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -18,8 +18,7 @@ class InvalidSourceError(Exception):
     pass
 
 
-@dataclass
-class PreviewIssue:
+class PreviewIssue(BaseModel):
     node_id: str
     title: str
     repo_name: str

@@ -25,6 +25,7 @@ from gim_backend.services.profile_service import (
 )
 from gim_backend.services.recommendation_preview_service import (
     InvalidSourceError,
+    PreviewIssue,
     get_preview_recommendations,
 )
 
@@ -60,17 +61,11 @@ class OnboardingStepResponse(OnboardingStatusResponse):
     payload: dict[str, Any]
 
 
-class PreviewIssueResponse(BaseModel):
-    node_id: str
-    title: str
-    repo_name: str
-    primary_language: str | None
-    q_score: float
 
 
 class PreviewRecommendationsResponse(BaseModel):
     source: str | None
-    issues: list[PreviewIssueResponse]
+    issues: list[PreviewIssue]
 
 
 @router.get("/onboarding", response_model=OnboardingStatusResponse)
@@ -267,15 +262,6 @@ async def get_preview_recommendations_route(
 
     return PreviewRecommendationsResponse(
         source=source,
-        issues=[
-            PreviewIssueResponse(
-                node_id=issue.node_id,
-                title=issue.title,
-                repo_name=issue.repo_name,
-                primary_language=issue.primary_language,
-                q_score=issue.q_score,
-            )
-            for issue in issues
-        ],
+        issues=issues,
     )
 

@@ -13,6 +13,13 @@ from gim_backend.core.errors import (
 )
 from gim_backend.middleware.auth import require_auth
 from gim_backend.services.profile_service import (
+    FullProfile,
+    IntentProfile,
+    ProfilePreferences,
+    get_full_profile,
+    get_or_create_profile,
+)
+from gim_backend.services.profile_service import (
     create_intent as create_intent_service,
 )
 from gim_backend.services.profile_service import (
@@ -20,10 +27,6 @@ from gim_backend.services.profile_service import (
 )
 from gim_backend.services.profile_service import (
     delete_profile as delete_profile_service,
-)
-from gim_backend.services.profile_service import (
-    get_full_profile,
-    get_or_create_profile,
 )
 from gim_backend.services.profile_service import (
     get_intent as get_intent_service,
@@ -64,75 +67,7 @@ class PreferencesUpdateInput(BaseModel):
     min_heat_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
-class IntentDataOutput(BaseModel):
-    languages: list[str]
-    stack_areas: list[str]
-    text: str
-    experience_level: str | None
-    updated_at: str | None
 
-
-class IntentSourceOutput(BaseModel):
-    populated: bool
-    vector_status: str | None
-    data: IntentDataOutput | None
-
-
-class ResumeDataOutput(BaseModel):
-    skills: list[str]
-    job_titles: list[str]
-    uploaded_at: str | None
-
-
-class ResumeSourceOutput(BaseModel):
-    populated: bool
-    vector_status: str | None
-    data: ResumeDataOutput | None
-
-
-class GitHubDataOutput(BaseModel):
-    username: str
-    languages: list[str]
-    topics: list[str]
-    fetched_at: str | None
-
-
-class GitHubSourceOutput(BaseModel):
-    populated: bool
-    vector_status: str | None
-    data: GitHubDataOutput | None
-
-
-class SourcesOutput(BaseModel):
-    intent: IntentSourceOutput
-    resume: ResumeSourceOutput
-    github: GitHubSourceOutput
-
-
-class PreferencesOutput(BaseModel):
-    preferred_languages: list[str]
-    preferred_topics: list[str]
-    min_heat_threshold: float
-
-
-class ProfileOutput(BaseModel):
-    user_id: str
-    optimization_percent: int
-    combined_vector_status: str | None
-    is_calculating: bool
-    onboarding_status: str
-    updated_at: str | None
-    sources: SourcesOutput
-    preferences: PreferencesOutput
-
-
-class IntentOutput(BaseModel):
-    languages: list[str]
-    stack_areas: list[str]
-    text: str
-    experience_level: str | None
-    vector_status: str | None
-    updated_at: str | None
 
 
 class ProcessingStatusOutput(BaseModel):
@@ -146,45 +81,13 @@ class ProcessingStatusOutput(BaseModel):
     combined_vector_status: str | None
 
 
-@router.get("", response_model=ProfileOutput)
+@router.get("", response_model=FullProfile)
 async def get_profile(
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> ProfileOutput:
+) -> FullProfile:
     user, _ = auth
-    profile_data = await get_full_profile(db, user.id)
-
-    sources = SourcesOutput(
-        intent=IntentSourceOutput(
-            populated=profile_data["sources"]["intent"]["populated"],
-            vector_status=profile_data["sources"]["intent"]["vector_status"],
-            data=IntentDataOutput(**profile_data["sources"]["intent"]["data"])
-                if profile_data["sources"]["intent"]["data"] else None,
-        ),
-        resume=ResumeSourceOutput(
-            populated=profile_data["sources"]["resume"]["populated"],
-            vector_status=profile_data["sources"]["resume"]["vector_status"],
-            data=ResumeDataOutput(**profile_data["sources"]["resume"]["data"])
-                if profile_data["sources"]["resume"]["data"] else None,
-        ),
-        github=GitHubSourceOutput(
-            populated=profile_data["sources"]["github"]["populated"],
-            vector_status=profile_data["sources"]["github"]["vector_status"],
-            data=GitHubDataOutput(**profile_data["sources"]["github"]["data"])
-                if profile_data["sources"]["github"]["data"] else None,
-        ),
-    )
-
-    return ProfileOutput(
-        user_id=profile_data["user_id"],
-        optimization_percent=profile_data["optimization_percent"],
-        combined_vector_status=profile_data["combined_vector_status"],
-        is_calculating=profile_data["is_calculating"],
-        onboarding_status=profile_data["onboarding_status"],
-        updated_at=profile_data["updated_at"],
-        sources=sources,
-        preferences=PreferencesOutput(**profile_data["preferences"]),
-    )
+    return await get_full_profile(db, user.id)
 
 
 @router.delete("")
@@ -201,12 +104,12 @@ async def delete_profile(
     }
 
 
-@router.post("/intent", response_model=IntentOutput, status_code=201)
+@router.post("/intent", response_model=IntentProfile, status_code=201)
 async def create_intent(
     body: IntentCreateInput,
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> IntentOutput:
+) -> IntentProfile:
     user, _ = auth
 
     try:
@@ -225,7 +128,7 @@ async def create_intent(
 
     vector_status = "ready" if profile.intent_vector else None
 
-    return IntentOutput(
+    return IntentProfile(
         languages=profile.preferred_languages or [],
         stack_areas=profile.intent_stack_areas or [],
         text=profile.intent_text or "",
@@ -235,27 +138,27 @@ async def create_intent(
     )
 
 
-@router.get("/intent", response_model=IntentOutput)
+@router.get("/intent", response_model=IntentProfile)
 async def get_intent(
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> IntentOutput:
+) -> IntentProfile:
     user, _ = auth
     intent_data = await get_intent_service(db, user.id)
 
     if intent_data is None:
         raise HTTPException(status_code=404, detail="No intent data found")
 
-    return IntentOutput(**intent_data)
+    return intent_data
 
 
-@router.put("/intent", response_model=IntentOutput)
+@router.put("/intent", response_model=IntentProfile)
 async def replace_intent(
     body: IntentCreateInput,
     response: Response,
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> IntentOutput:
+) -> IntentProfile:
     user, _ = auth
 
     try:
@@ -274,7 +177,7 @@ async def replace_intent(
 
     vector_status = "ready" if profile.intent_vector else None
 
-    return IntentOutput(
+    return IntentProfile(
         languages=profile.preferred_languages or [],
         stack_areas=profile.intent_stack_areas or [],
         text=profile.intent_text or "",
@@ -284,12 +187,12 @@ async def replace_intent(
     )
 
 
-@router.patch("/intent", response_model=IntentOutput)
+@router.patch("/intent", response_model=IntentProfile)
 async def update_intent(
     body: IntentUpdateInput,
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> IntentOutput:
+) -> IntentProfile:
     user, _ = auth
 
     raw_body = body.model_dump(exclude_unset=True)
@@ -312,7 +215,7 @@ async def update_intent(
 
     vector_status = "ready" if profile.intent_vector else None
 
-    return IntentOutput(
+    return IntentProfile(
         languages=profile.preferred_languages or [],
         stack_areas=profile.intent_stack_areas or [],
         text=profile.intent_text or "",
@@ -374,23 +277,21 @@ async def get_processing_status(
     )
 
 
-@router.get("/preferences", response_model=PreferencesOutput)
+@router.get("/preferences", response_model=ProfilePreferences)
 async def get_preferences(
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> PreferencesOutput:
+) -> ProfilePreferences:
     user, _ = auth
-    prefs = await get_preferences_service(db, user.id)
-
-    return PreferencesOutput(**prefs)
+    return await get_preferences_service(db, user.id)
 
 
-@router.patch("/preferences", response_model=PreferencesOutput)
+@router.patch("/preferences", response_model=ProfilePreferences)
 async def update_preferences(
     body: PreferencesUpdateInput,
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> PreferencesOutput:
+) -> ProfilePreferences:
     user, _ = auth
 
     try:
@@ -404,7 +305,7 @@ async def update_preferences(
     except InvalidTaxonomyValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    return PreferencesOutput(
+    return ProfilePreferences(
         preferred_languages=profile.preferred_languages or [],
         preferred_topics=profile.preferred_topics or [],
         min_heat_threshold=profile.min_heat_threshold,

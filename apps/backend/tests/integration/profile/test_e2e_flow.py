@@ -114,9 +114,9 @@ class TestFeedTrendingFallback:
         mock_get_profile.return_value = mock_profile
 
         with patch("gim_backend.services.feed_service._get_trending_feed") as mock_trending:
-            from gim_backend.services.feed_service import TRENDING_CTA, FeedResponse
+            from gim_backend.services.feed_service import TRENDING_CTA, FeedPage
 
-            mock_trending.return_value = FeedResponse(
+            mock_trending.return_value = FeedPage(
                 results=[],
                 total=0,
                 page=1,
@@ -142,9 +142,9 @@ class TestFeedTrendingFallback:
         mock_get_profile.return_value = mock_profile
 
         with patch("gim_backend.services.feed_service._get_trending_feed") as mock_trending:
-            from gim_backend.services.feed_service import TRENDING_CTA, FeedResponse
+            from gim_backend.services.feed_service import TRENDING_CTA, FeedPage
 
-            mock_trending.return_value = FeedResponse(
+            mock_trending.return_value = FeedPage(
                 results=[],
                 total=0,
                 page=1,
@@ -177,9 +177,9 @@ class TestFeedPersonalized:
         mock_get_profile.return_value = mock_profile
 
         with patch("gim_backend.services.feed_service._get_personalized_feed") as mock_personalized:
-            from gim_backend.services.feed_service import FeedResponse
+            from gim_backend.services.feed_service import FeedPage
 
-            mock_personalized.return_value = FeedResponse(
+            mock_personalized.return_value = FeedPage(
                 results=[],
                 total=0,
                 page=1,
@@ -209,9 +209,9 @@ class TestFeedPersonalized:
         mock_get_profile.return_value = mock_profile
 
         with patch("gim_backend.services.feed_service._get_personalized_feed") as mock_personalized:
-            from gim_backend.services.feed_service import FeedResponse
+            from gim_backend.services.feed_service import FeedPage
 
-            mock_personalized.return_value = FeedResponse(
+            mock_personalized.return_value = FeedPage(
                 results=[],
                 total=0,
                 page=1,
@@ -238,9 +238,9 @@ class TestFeedPagination:
         mock_get_profile.return_value = mock_profile
 
         with patch("gim_backend.services.feed_service._get_trending_feed") as mock_trending:
-            from gim_backend.services.feed_service import TRENDING_CTA, FeedResponse
+            from gim_backend.services.feed_service import TRENDING_CTA, FeedPage
 
-            mock_trending.return_value = FeedResponse(
+            mock_trending.return_value = FeedPage(
                 results=[],
                 total=0,
                 page=2,
@@ -264,9 +264,9 @@ class TestFeedPagination:
         mock_get_profile.return_value = mock_profile
 
         with patch("gim_backend.services.feed_service._get_trending_feed") as mock_trending:
-            from gim_backend.services.feed_service import TRENDING_CTA, FeedResponse
+            from gim_backend.services.feed_service import TRENDING_CTA, FeedPage
 
-            mock_trending.return_value = FeedResponse(
+            mock_trending.return_value = FeedPage(
                 results=[],
                 total=0,
                 page=1,

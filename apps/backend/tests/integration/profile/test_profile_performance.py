@@ -116,9 +116,9 @@ class TestFeedPerformance:
         mock_get_profile.return_value = mock_profile
 
         with patch("gim_backend.services.feed_service._get_trending_feed") as mock_trending:
-            from gim_backend.services.feed_service import TRENDING_CTA, FeedResponse
+            from gim_backend.services.feed_service import TRENDING_CTA, FeedPage
 
-            mock_trending.return_value = FeedResponse(
+            mock_trending.return_value = FeedPage(
                 results=[],
                 total=0,
                 page=1,
