@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from gim_database.models.persistence import BookmarkedIssue, PersonalNote
+from pydantic import BaseModel
 from sqlalchemy import delete, func
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -12,18 +13,39 @@ from gim_backend.core.errors import BookmarkAlreadyExistsError
 
 logger = logging.getLogger(__name__)
 
+
 DEFAULT_PAGE_SIZE: int = 20
 MAX_PAGE_SIZE: int = 50
+
+
+class NoteSchema(BaseModel):
+    id: UUID
+    bookmark_id: UUID
+    content: str
+    updated_at: datetime
+
+
+class BookmarkSchema(BaseModel):
+    id: UUID
+    issue_node_id: str
+    github_url: str
+    title_snapshot: str
+    body_snapshot: str
+    is_resolved: bool
+    created_at: datetime
+    notes_count: int = 0
+
 
 
 async def create_bookmark(
     db: AsyncSession,
     user_id: UUID,
     issue_node_id: str,
+
     github_url: str,
     title_snapshot: str,
     body_snapshot: str,
-) -> BookmarkedIssue:
+) -> BookmarkSchema:
     existing_stmt = select(BookmarkedIssue).where(
         BookmarkedIssue.user_id == user_id,
         BookmarkedIssue.issue_node_id == issue_node_id,
@@ -46,7 +68,17 @@ async def create_bookmark(
     await db.refresh(bookmark)
 
     logger.info(f"Created bookmark {bookmark.id} for user {user_id}")
-    return bookmark
+    logger.info(f"Created bookmark {bookmark.id} for user {user_id}")
+    return BookmarkSchema(
+        id=bookmark.id,
+        issue_node_id=bookmark.issue_node_id,
+        github_url=bookmark.github_url,
+        title_snapshot=bookmark.title_snapshot,
+        body_snapshot=bookmark.body_snapshot,
+        is_resolved=bookmark.is_resolved,
+        created_at=bookmark.created_at,
+        notes_count=0,
+    )
 
 
 async def list_bookmarks(
@@ -54,7 +86,8 @@ async def list_bookmarks(
     user_id: UUID,
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
-) -> tuple[list[BookmarkedIssue], int, bool]:
+
+) -> tuple[list[BookmarkSchema], int, bool]:
     if page < 1:
         page = 1
     if page_size < 1:
@@ -71,14 +104,30 @@ async def list_bookmarks(
     total = count_result.one()
 
     list_stmt = (
-        select(BookmarkedIssue)
+        select(BookmarkedIssue, func.count(PersonalNote.id))
+        .outerjoin(PersonalNote, BookmarkedIssue.id == PersonalNote.bookmark_id)
         .where(BookmarkedIssue.user_id == user_id)
+        .group_by(BookmarkedIssue.id)
         .order_by(BookmarkedIssue.created_at.desc())
         .offset(offset)
         .limit(page_size)
     )
     result = await db.exec(list_stmt)
-    bookmarks = list(result.all())
+    rows = result.all()
+
+    bookmarks = [
+        BookmarkSchema(
+            id=row[0].id,
+            issue_node_id=row[0].issue_node_id,
+            github_url=row[0].github_url,
+            title_snapshot=row[0].title_snapshot,
+            body_snapshot=row[0].body_snapshot,
+            is_resolved=row[0].is_resolved,
+            created_at=row[0].created_at,
+            notes_count=row[1],
+        )
+        for row in rows
+    ]
 
     has_more = (offset + len(bookmarks)) < total
 
@@ -89,13 +138,35 @@ async def get_bookmark(
     db: AsyncSession,
     user_id: UUID,
     bookmark_id: UUID,
-) -> BookmarkedIssue | None:
-    stmt = select(BookmarkedIssue).where(
-        BookmarkedIssue.id == bookmark_id,
-        BookmarkedIssue.user_id == user_id,
+
+) -> BookmarkSchema | None:
+    stmt = (
+        select(BookmarkedIssue, func.count(PersonalNote.id))
+        .outerjoin(PersonalNote, BookmarkedIssue.id == PersonalNote.bookmark_id)
+        .where(
+            BookmarkedIssue.id == bookmark_id,
+            BookmarkedIssue.user_id == user_id,
+        )
+        .group_by(BookmarkedIssue.id)
     )
     result = await db.exec(stmt)
-    return result.first()
+    row = result.first()
+
+    if row is None:
+        return None
+
+    bookmark, count = row
+    return BookmarkSchema(
+        id=bookmark.id,
+        issue_node_id=bookmark.issue_node_id,
+        github_url=bookmark.github_url,
+        title_snapshot=bookmark.title_snapshot,
+        body_snapshot=bookmark.body_snapshot,
+        is_resolved=bookmark.is_resolved,
+        created_at=bookmark.created_at,
+        notes_count=count,
+    )
+
 
 
 async def get_bookmark_with_notes_count(
@@ -103,17 +174,17 @@ async def get_bookmark_with_notes_count(
     user_id: UUID,
     bookmark_id: UUID,
 ) -> tuple[BookmarkedIssue | None, int]:
-    bookmark = await get_bookmark(db, user_id, bookmark_id)
-    if bookmark is None:
+    # Deprecated: usage should be replaced by get_bookmark which now includes count
+    schema = await get_bookmark(db, user_id, bookmark_id)
+    if schema is None:
         return None, 0
-
-    count_stmt = select(func.count()).select_from(PersonalNote).where(
-        PersonalNote.bookmark_id == bookmark_id
-    )
-    count_result = await db.exec(count_stmt)
-    notes_count = count_result.one()
-
-    return bookmark, notes_count
+    # Temporary compatibility return
+    # We construct a fake ORM object if really needed, but better to update callers?
+    # Actually, let's update this to return the Schema directly or just remove it if callers are updated.
+    # The integration plan says update 'bookmarks.py' to use shared models.
+    # So we can remove this function if we update the route to use get_bookmark.
+    # For now, let's make it return Schema since we're refactoring.
+    return schema, schema.notes_count
 
 
 async def update_bookmark(
@@ -121,8 +192,16 @@ async def update_bookmark(
     user_id: UUID,
     bookmark_id: UUID,
     is_resolved: bool,
-) -> BookmarkedIssue | None:
-    bookmark = await get_bookmark(db, user_id, bookmark_id)
+
+) -> BookmarkSchema | None:
+    # We need the ORM object to update
+    stmt = select(BookmarkedIssue).where(
+        BookmarkedIssue.id == bookmark_id,
+        BookmarkedIssue.user_id == user_id,
+    )
+    result = await db.exec(stmt)
+    bookmark = result.first()
+
     if bookmark is None:
         return None
 
@@ -131,8 +210,8 @@ async def update_bookmark(
     await db.commit()
     await db.refresh(bookmark)
 
-    logger.info(f"Updated bookmark {bookmark_id} is_resolved={is_resolved}")
-    return bookmark
+    # Return schema
+    return await get_bookmark(db, user_id, bookmark_id)
 
 
 async def delete_bookmark(
@@ -141,7 +220,14 @@ async def delete_bookmark(
     bookmark_id: UUID,
 ) -> bool:
     """Cascade deletes associated notes before removing bookmark."""
-    bookmark = await get_bookmark(db, user_id, bookmark_id)
+    # We need to find it first. get_bookmark returns schema now, so we need a separate check or custom query.
+    stmt = select(BookmarkedIssue).where(
+        BookmarkedIssue.id == bookmark_id,
+        BookmarkedIssue.user_id == user_id,
+    )
+    result = await db.exec(stmt)
+    bookmark = result.first()
+
     if bookmark is None:
         return False
 
@@ -162,9 +248,14 @@ async def create_note(
     user_id: UUID,
     bookmark_id: UUID,
     content: str,
-) -> PersonalNote | None:
-    bookmark = await get_bookmark(db, user_id, bookmark_id)
-    if bookmark is None:
+
+) -> NoteSchema | None:
+    # ownership check
+    bm_stmt = select(BookmarkedIssue).where(
+        BookmarkedIssue.id == bookmark_id,
+        BookmarkedIssue.user_id == user_id,
+    )
+    if (await db.exec(bm_stmt)).first() is None:
         return None
 
     note = PersonalNote(
@@ -177,16 +268,26 @@ async def create_note(
     await db.refresh(note)
 
     logger.info(f"Created note {note.id} on bookmark {bookmark_id}")
-    return note
+    return NoteSchema(
+        id=note.id,
+        bookmark_id=note.bookmark_id,
+        content=note.content,
+        updated_at=note.updated_at,
+    )
 
 
 async def list_notes(
     db: AsyncSession,
     user_id: UUID,
     bookmark_id: UUID,
-) -> list[PersonalNote] | None:
-    bookmark = await get_bookmark(db, user_id, bookmark_id)
-    if bookmark is None:
+
+) -> list[NoteSchema] | None:
+    # ownership check
+    bm_stmt = select(BookmarkedIssue).where(
+        BookmarkedIssue.id == bookmark_id,
+        BookmarkedIssue.user_id == user_id,
+    )
+    if (await db.exec(bm_stmt)).first() is None:
         return None
 
     stmt = (
@@ -195,7 +296,17 @@ async def list_notes(
         .order_by(PersonalNote.updated_at.desc())
     )
     result = await db.exec(stmt)
-    return list(result.all())
+    rows = result.all()
+
+    return [
+        NoteSchema(
+            id=n.id,
+            bookmark_id=n.bookmark_id,
+            content=n.content,
+            updated_at=n.updated_at,
+        )
+        for n in rows
+    ]
 
 
 async def get_note_with_ownership_check(
@@ -221,7 +332,8 @@ async def update_note(
     user_id: UUID,
     note_id: UUID,
     content: str,
-) -> PersonalNote | None:
+) -> NoteSchema | None:
+    # Need ORM object
     note = await get_note_with_ownership_check(db, user_id, note_id)
     if note is None:
         return None
@@ -233,7 +345,12 @@ async def update_note(
     await db.refresh(note)
 
     logger.info(f"Updated note {note_id}")
-    return note
+    return NoteSchema(
+        id=note.id,
+        bookmark_id=note.bookmark_id,
+        content=note.content,
+        updated_at=note.updated_at,
+    )
 
 
 async def delete_note(

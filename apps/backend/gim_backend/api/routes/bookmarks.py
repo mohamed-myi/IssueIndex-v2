@@ -13,8 +13,8 @@ from gim_backend.core.errors import (
 from gim_backend.middleware.auth import require_auth
 from gim_backend.services.bookmark_service import (
     DEFAULT_PAGE_SIZE,
-    get_bookmark_with_notes_count,
-    get_notes_count_for_bookmark,
+    BookmarkSchema,
+    NoteSchema,
 )
 from gim_backend.services.bookmark_service import (
     check_bookmark as check_bookmark_service,
@@ -33,6 +33,9 @@ from gim_backend.services.bookmark_service import (
 )
 from gim_backend.services.bookmark_service import (
     delete_note as delete_note_service,
+)
+from gim_backend.services.bookmark_service import (
+    get_bookmark as get_bookmark_service,
 )
 from gim_backend.services.bookmark_service import (
     list_bookmarks as list_bookmarks_service,
@@ -69,34 +72,16 @@ class NoteUpdateInput(BaseModel):
     content: str = Field(..., min_length=1, max_length=5000)
 
 
-class BookmarkOutput(BaseModel):
-    id: str
-    issue_node_id: str
-    github_url: str
-    title_snapshot: str
-    body_snapshot: str
-    is_resolved: bool
-    created_at: str
-    notes_count: int
-
-
 class BookmarkListOutput(BaseModel):
-    results: list[BookmarkOutput]
+    results: list[BookmarkSchema]
     total: int
     page: int
     page_size: int
     has_more: bool
 
 
-class NoteOutput(BaseModel):
-    id: str
-    bookmark_id: str
-    content: str
-    updated_at: str
-
-
 class NoteListOutput(BaseModel):
-    results: list[NoteOutput]
+    results: list[NoteSchema]
 
 
 class BookmarkCheckOutput(BaseModel):
@@ -115,12 +100,12 @@ class BookmarkBatchCheckOutput(BaseModel):
     bookmarks: dict[str, str | None]  # issue_node_id -> bookmark_id or null
 
 
-@router.post("", response_model=BookmarkOutput, status_code=201)
+@router.post("", response_model=BookmarkSchema, status_code=201)
 async def create_bookmark(
     body: BookmarkCreateInput,
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> BookmarkOutput:
+) -> BookmarkSchema:
     user, _ = auth
 
     try:
@@ -135,16 +120,7 @@ async def create_bookmark(
     except BookmarkAlreadyExistsError as e:
         raise HTTPException(status_code=409, detail=e.user_message)
 
-    return BookmarkOutput(
-        id=str(bookmark.id),
-        issue_node_id=bookmark.issue_node_id,
-        github_url=bookmark.github_url,
-        title_snapshot=bookmark.title_snapshot,
-        body_snapshot=bookmark.body_snapshot,
-        is_resolved=bookmark.is_resolved,
-        created_at=bookmark.created_at.isoformat(),
-        notes_count=0,
-    )
+    return bookmark
 
 
 @router.get("", response_model=BookmarkListOutput)
@@ -163,19 +139,9 @@ async def list_bookmarks(
         page_size=page_size,
     )
 
-    results = []
-    for bookmark in bookmarks:
-        notes_count = await get_notes_count_for_bookmark(db, bookmark.id)
-        results.append(BookmarkOutput(
-            id=str(bookmark.id),
-            issue_node_id=bookmark.issue_node_id,
-            github_url=bookmark.github_url,
-            title_snapshot=bookmark.title_snapshot,
-            body_snapshot=bookmark.body_snapshot,
-            is_resolved=bookmark.is_resolved,
-            created_at=bookmark.created_at.isoformat(),
-            notes_count=notes_count,
-        ))
+    results = bookmarks
+    # Service now handles notes_count efficiently
+
 
     return BookmarkListOutput(
         results=results,
@@ -186,15 +152,15 @@ async def list_bookmarks(
     )
 
 
-@router.get("/{bookmark_id}", response_model=BookmarkOutput)
+@router.get("/{bookmark_id}", response_model=BookmarkSchema)
 async def get_bookmark(
     bookmark_id: UUID,
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> BookmarkOutput:
+) -> BookmarkSchema:
     user, _ = auth
 
-    bookmark, notes_count = await get_bookmark_with_notes_count(
+    bookmark = await get_bookmark_service(
         db=db,
         user_id=user.id,
         bookmark_id=bookmark_id,
@@ -203,25 +169,16 @@ async def get_bookmark(
     if bookmark is None:
         raise HTTPException(status_code=404, detail="Bookmark not found")
 
-    return BookmarkOutput(
-        id=str(bookmark.id),
-        issue_node_id=bookmark.issue_node_id,
-        github_url=bookmark.github_url,
-        title_snapshot=bookmark.title_snapshot,
-        body_snapshot=bookmark.body_snapshot,
-        is_resolved=bookmark.is_resolved,
-        created_at=bookmark.created_at.isoformat(),
-        notes_count=notes_count,
-    )
+    return bookmark
 
 
-@router.patch("/{bookmark_id}", response_model=BookmarkOutput)
+@router.patch("/{bookmark_id}", response_model=BookmarkSchema)
 async def update_bookmark(
     bookmark_id: UUID,
     body: BookmarkUpdateInput,
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> BookmarkOutput:
+) -> BookmarkSchema:
     user, _ = auth
 
     bookmark = await update_bookmark_service(
@@ -234,18 +191,7 @@ async def update_bookmark(
     if bookmark is None:
         raise HTTPException(status_code=404, detail="Bookmark not found")
 
-    notes_count = await get_notes_count_for_bookmark(db, bookmark.id)
-
-    return BookmarkOutput(
-        id=str(bookmark.id),
-        issue_node_id=bookmark.issue_node_id,
-        github_url=bookmark.github_url,
-        title_snapshot=bookmark.title_snapshot,
-        body_snapshot=bookmark.body_snapshot,
-        is_resolved=bookmark.is_resolved,
-        created_at=bookmark.created_at.isoformat(),
-        notes_count=notes_count,
-    )
+    return bookmark
 
 
 @router.delete("/{bookmark_id}")
@@ -320,13 +266,13 @@ async def check_bookmarks_batch(
     return BookmarkBatchCheckOutput(bookmarks=bookmarks)
 
 
-@router.post("/{bookmark_id}/notes", response_model=NoteOutput, status_code=201)
+@router.post("/{bookmark_id}/notes", response_model=NoteSchema, status_code=201)
 async def create_note(
     bookmark_id: UUID,
     body: NoteCreateInput,
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> NoteOutput:
+) -> NoteSchema:
     user, _ = auth
 
     note = await create_note_service(
@@ -339,12 +285,7 @@ async def create_note(
     if note is None:
         raise HTTPException(status_code=404, detail="Bookmark not found")
 
-    return NoteOutput(
-        id=str(note.id),
-        bookmark_id=str(note.bookmark_id),
-        content=note.content,
-        updated_at=note.updated_at.isoformat(),
-    )
+    return note
 
 
 @router.get("/{bookmark_id}/notes", response_model=NoteListOutput)
@@ -364,26 +305,17 @@ async def list_notes(
     if notes is None:
         raise HTTPException(status_code=404, detail="Bookmark not found")
 
-    results = [
-        NoteOutput(
-            id=str(note.id),
-            bookmark_id=str(note.bookmark_id),
-            content=note.content,
-            updated_at=note.updated_at.isoformat(),
-        )
-        for note in notes
-    ]
-
+    results = notes
     return NoteListOutput(results=results)
 
 
-@router.patch("/notes/{note_id}", response_model=NoteOutput)
+@router.patch("/notes/{note_id}", response_model=NoteSchema)
 async def update_note(
     note_id: UUID,
     body: NoteUpdateInput,
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
-) -> NoteOutput:
+) -> NoteSchema:
     user, _ = auth
 
     note = await update_note_service(
@@ -396,12 +328,7 @@ async def update_note(
     if note is None:
         raise HTTPException(status_code=404, detail="Note not found")
 
-    return NoteOutput(
-        id=str(note.id),
-        bookmark_id=str(note.bookmark_id),
-        content=note.content,
-        updated_at=note.updated_at.isoformat(),
-    )
+    return note
 
 
 @router.delete("/notes/{note_id}")

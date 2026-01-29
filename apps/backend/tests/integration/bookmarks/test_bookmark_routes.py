@@ -52,25 +52,28 @@ def authenticated_client(client, mock_user, mock_session):
 
 @pytest.fixture
 def mock_bookmark():
-    bookmark = MagicMock()
-    bookmark.id = uuid4()
-    bookmark.issue_node_id = "I_abc123"
-    bookmark.github_url = "https://github.com/org/repo/issues/1"
-    bookmark.title_snapshot = "Bug title"
-    bookmark.body_snapshot = "Bug body description"
-    bookmark.is_resolved = False
-    bookmark.created_at = datetime.now(UTC)
-    return bookmark
+    from gim_backend.services.bookmark_service import BookmarkSchema
+    return BookmarkSchema(
+        id=uuid4(),
+        issue_node_id="I_abc123",
+        github_url="https://github.com/org/repo/issues/1",
+        title_snapshot="Bug title",
+        body_snapshot="Bug body description",
+        is_resolved=False,
+        created_at=datetime.now(UTC),
+        notes_count=0,
+    )
 
 
 @pytest.fixture
 def mock_note(mock_bookmark):
-    note = MagicMock()
-    note.id = uuid4()
-    note.bookmark_id = mock_bookmark.id
-    note.content = "My note content"
-    note.updated_at = datetime.now(UTC)
-    return note
+    from gim_backend.services.bookmark_service import NoteSchema
+    return NoteSchema(
+        id=uuid4(),
+        bookmark_id=mock_bookmark.id,
+        content="My note content",
+        updated_at=datetime.now(UTC),
+    )
 
 
 class TestAuthRequired:
@@ -171,20 +174,20 @@ class TestBookmarkCRUD:
             assert response.status_code == 409
 
     def test_list_bookmarks_returns_paginated_results(self, authenticated_client, mock_bookmark):
+        # mock_bookmark already has notes_count=0 from fixture, let's change it
+        mock_bookmark.notes_count = 2
         with patch("gim_backend.api.routes.bookmarks.list_bookmarks_service", new_callable=AsyncMock) as mock_list:
-            with patch("gim_backend.api.routes.bookmarks.get_notes_count_for_bookmark", new_callable=AsyncMock) as mock_count:
-                mock_list.return_value = ([mock_bookmark], 1, False)
-                mock_count.return_value = 2
+            mock_list.return_value = ([mock_bookmark], 1, False)
 
-                response = authenticated_client.get("/bookmarks?page=1&page_size=20")
+            response = authenticated_client.get("/bookmarks?page=1&page_size=20")
 
-                assert response.status_code == 200
-                data = response.json()
-                assert data["total"] == 1
-                assert data["page"] == 1
-                assert data["has_more"] is False
-                assert len(data["results"]) == 1
-                assert data["results"][0]["notes_count"] == 2
+            assert response.status_code == 200
+            data = response.json()
+            assert data["total"] == 1
+            assert data["page"] == 1
+            assert data["has_more"] is False
+            assert len(data["results"]) == 1
+            assert data["results"][0]["notes_count"] == 2
 
     def test_list_bookmarks_empty_returns_200(self, authenticated_client):
         with patch("gim_backend.api.routes.bookmarks.list_bookmarks_service", new_callable=AsyncMock) as mock_list:
@@ -198,8 +201,9 @@ class TestBookmarkCRUD:
             assert data["total"] == 0
 
     def test_get_bookmark_returns_bookmark_with_notes_count(self, authenticated_client, mock_bookmark):
-        with patch("gim_backend.api.routes.bookmarks.get_bookmark_with_notes_count", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = (mock_bookmark, 3)
+        mock_bookmark.notes_count = 3
+        with patch("gim_backend.api.routes.bookmarks.get_bookmark_service", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = mock_bookmark
 
             response = authenticated_client.get(f"/bookmarks/{mock_bookmark.id}")
 
@@ -209,8 +213,8 @@ class TestBookmarkCRUD:
             assert data["notes_count"] == 3
 
     def test_get_bookmark_not_found_returns_404(self, authenticated_client):
-        with patch("gim_backend.api.routes.bookmarks.get_bookmark_with_notes_count", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = (None, 0)
+        with patch("gim_backend.api.routes.bookmarks.get_bookmark_service", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = None
 
             response = authenticated_client.get(f"/bookmarks/{uuid4()}")
 
@@ -218,19 +222,17 @@ class TestBookmarkCRUD:
 
     def test_update_bookmark_is_resolved(self, authenticated_client, mock_bookmark):
         with patch("gim_backend.api.routes.bookmarks.update_bookmark_service", new_callable=AsyncMock) as mock_update:
-            with patch("gim_backend.api.routes.bookmarks.get_notes_count_for_bookmark", new_callable=AsyncMock) as mock_count:
-                mock_bookmark.is_resolved = True
-                mock_update.return_value = mock_bookmark
-                mock_count.return_value = 0
+            mock_bookmark.is_resolved = True
+            mock_update.return_value = mock_bookmark
 
-                response = authenticated_client.patch(
-                    f"/bookmarks/{mock_bookmark.id}",
-                    json={"is_resolved": True}
-                )
+            response = authenticated_client.patch(
+                f"/bookmarks/{mock_bookmark.id}",
+                json={"is_resolved": True}
+            )
 
-                assert response.status_code == 200
-                data = response.json()
-                assert data["is_resolved"] is True
+            assert response.status_code == 200
+            data = response.json()
+            assert data["is_resolved"] is True
 
     def test_update_bookmark_not_found_returns_404(self, authenticated_client):
         with patch("gim_backend.api.routes.bookmarks.update_bookmark_service", new_callable=AsyncMock) as mock_update:
@@ -421,8 +423,8 @@ class TestUserIsolation:
     """Tests that users can only access their own bookmarks."""
 
     def test_get_bookmark_owned_by_other_user_returns_404(self, authenticated_client):
-        with patch("gim_backend.api.routes.bookmarks.get_bookmark_with_notes_count", new_callable=AsyncMock) as mock_get:
-            mock_get.return_value = (None, 0)
+        with patch("gim_backend.api.routes.bookmarks.get_bookmark_service", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = None
 
             response = authenticated_client.get(f"/bookmarks/{uuid4()}")
 

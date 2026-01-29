@@ -21,6 +21,8 @@ from gim_backend.services.bookmark_service import (
     list_notes,
     update_bookmark,
     update_note,
+    BookmarkSchema,
+    NoteSchema,
 )
 
 
@@ -123,7 +125,8 @@ class TestListBookmarks:
         count_result.one.return_value = 5
 
         list_result = MagicMock()
-        list_result.all.return_value = [sample_bookmark]
+        # list_bookmarks now expects (bookmark, notes_count) tuple
+        list_result.all.return_value = [(sample_bookmark, 2)]
 
         mock_db.exec.side_effect = [count_result, list_result]
 
@@ -137,6 +140,8 @@ class TestListBookmarks:
         assert len(bookmarks) == 1
         assert total == 5
         assert has_more is True
+        assert isinstance(bookmarks[0], BookmarkSchema)
+        assert bookmarks[0].notes_count == 2
 
     async def test_returns_empty_list_for_no_bookmarks(self, mock_db, user_id):
         count_result = MagicMock()
@@ -189,7 +194,7 @@ class TestListBookmarks:
         count_result.one.return_value = 1
 
         list_result = MagicMock()
-        list_result.all.return_value = [sample_bookmark]
+        list_result.all.return_value = [(sample_bookmark, 1)]
 
         mock_db.exec.side_effect = [count_result, list_result]
 
@@ -207,7 +212,8 @@ class TestGetBookmark:
 
     async def test_returns_bookmark_if_owned(self, mock_db, user_id, sample_bookmark):
         mock_result = MagicMock()
-        mock_result.first.return_value = sample_bookmark
+        # get_bookmark expects (bookmark, count)
+        mock_result.first.return_value = (sample_bookmark, 5)
         mock_db.exec.return_value = mock_result
 
         bookmark = await get_bookmark(
@@ -216,7 +222,9 @@ class TestGetBookmark:
             bookmark_id=sample_bookmark.id,
         )
 
-        assert bookmark == sample_bookmark
+        assert isinstance(bookmark, BookmarkSchema)
+        assert bookmark.id == sample_bookmark.id
+        assert bookmark.notes_count == 5
 
     async def test_returns_none_if_not_found(self, mock_db, user_id, bookmark_id):
         mock_result = MagicMock()
@@ -235,13 +243,11 @@ class TestGetBookmark:
 class TestGetBookmarkWithNotesCount:
 
     async def test_returns_bookmark_and_count(self, mock_db, user_id, sample_bookmark):
-        bookmark_result = MagicMock()
-        bookmark_result.first.return_value = sample_bookmark
-
-        count_result = MagicMock()
-        count_result.one.return_value = 3
-
-        mock_db.exec.side_effect = [bookmark_result, count_result]
+        # get_bookmark_with_notes_count delegates to get_bookmark
+        # which performs one query returning (bookmark, count)
+        mock_result = MagicMock()
+        mock_result.first.return_value = (sample_bookmark, 3)
+        mock_db.exec.return_value = mock_result
 
         bookmark, count = await get_bookmark_with_notes_count(
             db=mock_db,
@@ -249,7 +255,8 @@ class TestGetBookmarkWithNotesCount:
             bookmark_id=sample_bookmark.id,
         )
 
-        assert bookmark == sample_bookmark
+        assert isinstance(bookmark, BookmarkSchema)
+        assert bookmark.id == sample_bookmark.id
         assert count == 3
 
     async def test_returns_none_and_zero_if_not_found(self, mock_db, user_id, bookmark_id):
@@ -269,10 +276,22 @@ class TestGetBookmarkWithNotesCount:
 
 class TestUpdateBookmark:
 
+        # update_bookmark needs:
     async def test_updates_is_resolved_status(self, mock_db, user_id, sample_bookmark):
-        mock_result = MagicMock()
-        mock_result.first.return_value = sample_bookmark
-        mock_db.exec.return_value = mock_result
+        # update_bookmark needs:
+        # 1. select to find ORM object
+        # 2. commit/refresh
+        # 3. get_bookmark (which does select with join)
+        
+        # 1. Find ORM object
+        find_result = MagicMock()
+        find_result.first.return_value = sample_bookmark
+        
+        # 3. get_bookmark call
+        get_result = MagicMock()
+        get_result.first.return_value = (sample_bookmark, 1)
+
+        mock_db.exec.side_effect = [find_result, get_result]
 
         bookmark = await update_bookmark(
             db=mock_db,
@@ -284,6 +303,7 @@ class TestUpdateBookmark:
         assert bookmark.is_resolved is True
         assert mock_db.commit.called
         assert mock_db.refresh.called
+        assert isinstance(bookmark, BookmarkSchema)
 
     async def test_returns_none_if_not_found(self, mock_db, user_id, bookmark_id):
         mock_result = MagicMock()
@@ -303,6 +323,7 @@ class TestUpdateBookmark:
 class TestDeleteBookmark:
 
     async def test_deletes_bookmark_and_notes(self, mock_db, user_id, sample_bookmark):
+        # delete_bookmark does a check select first
         mock_result = MagicMock()
         mock_result.first.return_value = sample_bookmark
         mock_db.exec.return_value = mock_result
@@ -314,6 +335,7 @@ class TestDeleteBookmark:
         )
 
         assert result is True
+        # exec called for: check exist, delete notes
         assert mock_db.exec.call_count == 2
         assert mock_db.delete.called
         assert mock_db.commit.called
@@ -335,9 +357,10 @@ class TestDeleteBookmark:
 class TestCreateNote:
 
     async def test_creates_note_on_owned_bookmark(self, mock_db, user_id, sample_bookmark):
-        mock_result = MagicMock()
-        mock_result.first.return_value = sample_bookmark
-        mock_db.exec.return_value = mock_result
+        # create_note does ownership check first
+        check_result = MagicMock()
+        check_result.first.return_value = sample_bookmark
+        mock_db.exec.return_value = check_result
 
         async def refresh_side_effect(note):
             note.id = uuid4()
@@ -355,6 +378,7 @@ class TestCreateNote:
         assert mock_db.add.called
         assert mock_db.commit.called
         assert note.content == "My note content"
+        assert isinstance(note, NoteSchema)
 
     async def test_returns_none_if_bookmark_not_owned(self, mock_db, user_id, bookmark_id):
         mock_result = MagicMock()
@@ -374,6 +398,7 @@ class TestCreateNote:
 class TestListNotes:
 
     async def test_returns_notes_for_owned_bookmark(self, mock_db, user_id, sample_bookmark, sample_note):
+        # ownership check
         bookmark_result = MagicMock()
         bookmark_result.first.return_value = sample_bookmark
 
@@ -389,7 +414,8 @@ class TestListNotes:
         )
 
         assert len(notes) == 1
-        assert notes[0] == sample_note
+        assert notes[0].id == sample_note.id
+        assert isinstance(notes[0], NoteSchema)
 
     async def test_returns_none_if_bookmark_not_owned(self, mock_db, user_id, bookmark_id):
         mock_result = MagicMock()
@@ -425,6 +451,7 @@ class TestListNotes:
 class TestUpdateNote:
 
     async def test_updates_note_content(self, mock_db, user_id, sample_note):
+        # ownership/get check
         mock_result = MagicMock()
         mock_result.first.return_value = sample_note
         mock_db.exec.return_value = mock_result
@@ -439,6 +466,7 @@ class TestUpdateNote:
         assert note.content == "Updated content"
         assert mock_db.commit.called
         assert mock_db.refresh.called
+        assert isinstance(note, NoteSchema)
 
     async def test_returns_none_if_not_found_or_not_owned(self, mock_db, user_id, note_id):
         mock_result = MagicMock()
