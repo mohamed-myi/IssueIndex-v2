@@ -37,7 +37,6 @@ export type FeedIssue = {
 };
 
 export type FeedResponse = {
-  recommendation_batch_id: string;
   results: FeedIssue[];
   total: number;
   page: number;

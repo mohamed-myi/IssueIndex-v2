@@ -31,9 +31,7 @@ import {
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 export const handlers = [
-  // ==========================================================================
   // Public Stats
-  // ==========================================================================
   http.get(`${BASE_URL}/stats`, () => {
     return HttpResponse.json({
       total_issues: 12847,
@@ -43,9 +41,7 @@ export const handlers = [
     });
   }),
 
-  // ==========================================================================
   // Feed & Trending
-  // ==========================================================================
   http.get(`${BASE_URL}/feed/trending`, ({ request }) => {
     const url = new URL(request.url);
     const limit = Number(url.searchParams.get("limit")) || 10;
@@ -92,7 +88,6 @@ export const handlers = [
     }));
 
     return HttpResponse.json({
-      recommendation_batch_id: `batch_${Date.now()}`,
       results,
       total: mockIssues.length,
       page,
@@ -103,9 +98,7 @@ export const handlers = [
     });
   }),
 
-  // ==========================================================================
   // Search
-  // ==========================================================================
   http.post(`${BASE_URL}/search`, async ({ request }) => {
     const body = (await request.json()) as {
       query: string;
@@ -131,9 +124,7 @@ export const handlers = [
     });
   }),
 
-  // ==========================================================================
   // Issues
-  // ==========================================================================
   http.get(`${BASE_URL}/issues/:nodeId`, ({ params }) => {
     const nodeId = decodeURIComponent(params.nodeId as string);
     const issue = getMockIssueDetail(nodeId);
@@ -155,9 +146,7 @@ export const handlers = [
     return HttpResponse.json({ issues });
   }),
 
-  // ==========================================================================
   // Taxonomy
-  // ==========================================================================
   http.get(`${BASE_URL}/taxonomy/languages`, () => {
     return HttpResponse.json(mockLanguages);
   }),
@@ -166,9 +155,7 @@ export const handlers = [
     return HttpResponse.json(mockStackAreas);
   }),
 
-  // ==========================================================================
   // Repositories
-  // ==========================================================================
   http.get(`${BASE_URL}/repositories`, ({ request }) => {
     const url = new URL(request.url);
     const q = url.searchParams.get("q") || undefined;
@@ -182,9 +169,7 @@ export const handlers = [
     return HttpResponse.json({ repositories });
   }),
 
-  // ==========================================================================
   // Auth
-  // ==========================================================================
 
   // OAuth login redirect - simulates the OAuth flow by redirecting to callback
   http.get(`${BASE_URL}/auth/login/:provider`, ({ params, request }) => {
@@ -249,9 +234,7 @@ export const handlers = [
     return HttpResponse.json({ status: "ok" });
   }),
 
-  // ==========================================================================
   // Profile
-  // ==========================================================================
   http.get(`${BASE_URL}/profile`, () => {
     return HttpResponse.json(mockProfile);
   }),
