@@ -98,6 +98,8 @@ class TestLoginEndpoint:
 class TestCallbackEndpoint:
     """Tests for GET /auth/callback/{provider}"""
 
+
+
     def test_callback_rejects_missing_fingerprint(self, client):
         """Verify 400 when X-Device-Fingerprint header missing."""
         token = "validtoken1234567890123456789012"
@@ -220,8 +222,11 @@ class TestCallbackSuccessFlow:
                 "session": mock_session,
             }
 
-    def test_callback_success_redirects_to_dashboard(self, client, mock_oauth_flow):
+    @patch("gim_backend.api.routes.auth.get_settings")
+    def test_callback_success_redirects_to_dashboard(self, mock_settings, client, mock_oauth_flow):
         """Verify successful callback redirects to /dashboard."""
+        mock_settings.return_value.frontend_base_url = "http://localhost:3000"
+        
         token = "validtoken1234567890123456789012"
         state = f"login:{token}:0"
         
@@ -235,7 +240,7 @@ class TestCallbackSuccessFlow:
 
         assert response.status_code == 302
         location = response.headers["location"]
-        assert "/dashboard" in location
+        assert "http://localhost:3000/dashboard" in location
 
     def test_callback_success_sets_session_cookie(self, client, mock_oauth_flow):
         """Verify session cookie is set after successful auth."""

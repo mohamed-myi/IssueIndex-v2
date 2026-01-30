@@ -115,7 +115,8 @@ async def login(
     state_token = secrets.token_urlsafe(32)
     state_value = f"{AuthIntent.LOGIN.value}:{state_token}:{1 if remember_me else 0}"
 
-    redirect_uri = str(request.url_for("callback", provider=provider))
+    # Redirect to frontend callback page to pick up fingerprint
+    redirect_uri = f"{settings.frontend_base_url}/auth/callback/{provider}"
     auth_url = get_authorization_url(oauth_provider, redirect_uri, state_value)
     response = RedirectResponse(url=auth_url, status_code=302)
 
@@ -192,8 +193,8 @@ async def callback(
             status_code=302,
         )
 
-    # Unified Redirect URI
-    redirect_uri = str(request.url_for("callback", provider=provider))
+    # Unified Redirect URI - Matches frontend callback URL
+    redirect_uri = f"{settings.frontend_base_url}/auth/callback/{provider}"
 
     # Dispatch Logic
     if intent == AuthIntent.LOGIN.value:
@@ -261,8 +262,8 @@ async def link(
     state_token = secrets.token_urlsafe(32)
     state_value = f"{AuthIntent.LINK.value}:{state_token}"
 
-    # Callback
-    redirect_uri = str(request.url_for("callback", provider=provider))
+    # Callback to frontend
+    redirect_uri = f"{settings.frontend_base_url}/auth/callback/{provider}"
 
     auth_url = get_authorization_url(oauth_provider, redirect_uri, state_value)
     response = RedirectResponse(url=auth_url, status_code=302)
@@ -470,7 +471,7 @@ async def connect_github(
 
     # Note: connect/github is specific, but it routes through generalized callback
     # The callback will see Intent=CONNECT and Provider=GITHUB
-    redirect_uri = str(request.url_for("callback", provider="github"))
+    redirect_uri = f"{settings.frontend_base_url}/auth/callback/github"
 
     auth_url = get_profile_authorization_url(OAuthProvider.GITHUB, redirect_uri, state_value)
 
