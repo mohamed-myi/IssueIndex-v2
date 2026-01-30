@@ -1,4 +1,5 @@
 import secrets
+from enum import Enum
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -55,8 +56,15 @@ from gim_backend.services.session_service import (
 router = APIRouter()
 
 
+
 STATE_COOKIE_NAME = "oauth_state"
 STATE_COOKIE_MAX_AGE = 300
+
+
+class AuthIntent(str, Enum):
+    LOGIN = "login"
+    LINK = "link"
+    CONNECT = "connect"
 
 
 def _get_state_cookie_params(settings) -> dict:
@@ -103,16 +111,17 @@ async def login(
         )
 
     settings = get_settings()
-    state = secrets.token_urlsafe(32)
+    # State format: "intent:token:remember_me"
+    state_token = secrets.token_urlsafe(32)
+    state_value = f"{AuthIntent.LOGIN.value}:{state_token}:{1 if remember_me else 0}"
+
     redirect_uri = str(request.url_for("callback", provider=provider))
-    auth_url = get_authorization_url(oauth_provider, redirect_uri, state)
+    auth_url = get_authorization_url(oauth_provider, redirect_uri, state_value)
     response = RedirectResponse(url=auth_url, status_code=302)
 
-    # Encode remember_me in state cookie for callback to extract
-    state_value = f"{state}:{1 if remember_me else 0}"
     response.set_cookie(
         key=STATE_COOKIE_NAME,
-        value=state_value,
+        value=state_token, # Store only the secret token in cookie
         **_get_state_cookie_params(settings),
     )
 
@@ -135,6 +144,8 @@ async def callback(
     settings = get_settings()
 
     if error:
+        # Default error handling - could be improved by parsing state even on error
+        # to know where to redirect, but for security fail-safe to login
         return RedirectResponse(
             url=_build_error_redirect("consent_denied"),
             status_code=302,
@@ -148,138 +159,66 @@ async def callback(
             status_code=302,
         )
 
-    stored_state = request.cookies.get(STATE_COOKIE_NAME)
-    if not stored_state or not state:
-        return RedirectResponse(
-            url=_build_error_redirect("csrf_failed"),
-            status_code=302,
-        )
-
-    # Validate format to prevent 500 on malformed cookies
-    parts = stored_state.rsplit(":", 1)
-    if len(parts) != 2:
-        return RedirectResponse(
-            url=_build_error_redirect("csrf_failed"),
-            status_code=302,
-        )
-
-    stored_state_value, remember_me_flag = parts
-    remember_me = remember_me_flag == "1"
-
-    if state != stored_state_value:
-        return RedirectResponse(
-            url=_build_error_redirect("csrf_failed"),
-            status_code=302,
-        )
-
-    if not code:
-        return RedirectResponse(
+    if not state or not code:
+         return RedirectResponse(
             url=_build_error_redirect("missing_code"),
             status_code=302,
         )
 
-    # Redirect URI must match login redirect
-    redirect_uri = str(request.url_for("callback", provider=provider))
-
+    # Parse state: "intent:token:extra"
     try:
-        token = await exchange_code_for_token(
-            oauth_provider, code, redirect_uri, client
-        )
-        profile = await fetch_user_profile(oauth_provider, token, client)
-        user = await upsert_user(db, profile, oauth_provider)
-
-        session, expires_at = await create_session(
-            db=db,
-            user_id=user.id,
-            fingerprint_hash=fingerprint_hash,
-            remember_me=remember_me,
-            ip_address=ctx.ip_address,
-            user_agent=ctx.user_agent,
-            os_family=ctx.os_family,
-            ua_family=ctx.ua_family,
-            asn=ctx.asn,
-            country_code=ctx.country_code,
-        )
-
-        log_audit_event(
-            AuditEvent.LOGIN_SUCCESS,
-            user_id=user.id,
-            session_id=session.id,
-            ip_address=ctx.ip_address,
-            user_agent=ctx.user_agent,
-            provider=provider,
-        )
-
-        response = RedirectResponse(
-            url=f"{settings.frontend_base_url}/dashboard",
+        state_parts = state.split(":", 2)
+        intent = state_parts[0]
+        state_token = state_parts[1]
+        extra = state_parts[2] if len(state_parts) > 2 else None
+    except Exception:
+         return RedirectResponse(
+            url=_build_error_redirect("csrf_failed"),
             status_code=302,
         )
-        response.delete_cookie(
-            key=STATE_COOKIE_NAME,
-            path="/",
-        )
-        create_session_cookie(response, str(session.id), expires_at)
 
-        return response
+    # Verify CSRF token from cookie
+    stored_token = request.cookies.get(STATE_COOKIE_NAME)
 
-    except InvalidCodeError:
-        log_audit_event(
-            AuditEvent.LOGIN_FAILED,
-            ip_address=request.client.host if request.client else None,
-            provider=provider,
-            metadata={"reason": "code_expired"},
-        )
-        return RedirectResponse(
-            url=_build_error_redirect("code_expired"),
-            status_code=302,
-        )
-    except EmailNotVerifiedError:
-        log_audit_event(
-            AuditEvent.LOGIN_FAILED,
-            ip_address=request.client.host if request.client else None,
-            provider=provider,
-            metadata={"reason": "email_not_verified"},
-        )
-        return RedirectResponse(
-            url=_build_error_redirect("email_not_verified", provider),
-            status_code=302,
-        )
-    except NoEmailError:
-        log_audit_event(
-            AuditEvent.LOGIN_FAILED,
-            ip_address=request.client.host if request.client else None,
-            provider=provider,
-            metadata={"reason": "no_email"},
-        )
-        return RedirectResponse(
-            url=_build_error_redirect("no_email", provider),
-            status_code=302,
-        )
-    except ExistingAccountError as e:
-        log_audit_event(
-            AuditEvent.LOGIN_FAILED,
-            ip_address=request.client.host if request.client else None,
-            provider=provider,
-            metadata={"reason": "existing_account", "original_provider": e.original_provider},
-        )
-        return RedirectResponse(
-            url=_build_error_redirect("existing_account", e.original_provider),
-            status_code=302,
-        )
-    except OAuthStateError:
-        log_audit_event(
-            AuditEvent.LOGIN_FAILED,
-            ip_address=request.client.host if request.client else None,
-            provider=provider,
-            metadata={"reason": "csrf_failed"},
-        )
+    if not stored_token or stored_token != state_token:
+        # Determine redirect based on intent if possible, else default to login error
+        if intent == AuthIntent.LINK.value:
+             return RedirectResponse(url=_build_settings_redirect("csrf_failed"), status_code=302)
+        if intent == AuthIntent.CONNECT.value:
+             return RedirectResponse(url=_build_profile_redirect("csrf_failed"), status_code=302)
+
         return RedirectResponse(
             url=_build_error_redirect("csrf_failed"),
             status_code=302,
         )
 
+    # Unified Redirect URI
+    redirect_uri = str(request.url_for("callback", provider=provider))
 
-LINK_STATE_COOKIE_NAME = "oauth_link_state"
+    # Dispatch Logic
+    if intent == AuthIntent.LOGIN.value:
+        remember_me = extra == "1"
+        return await _handle_login_callback(
+            code, redirect_uri, oauth_provider, remember_me,
+            fingerprint_hash, ctx, db, client, request, settings
+        )
+
+    elif intent == AuthIntent.LINK.value:
+        return await _handle_link_callback(
+            code, redirect_uri, oauth_provider,
+            ctx, db, client, request
+        )
+
+    elif intent == AuthIntent.CONNECT.value:
+        return await _handle_connect_callback(
+            code, redirect_uri, oauth_provider,
+            ctx, db, client, request
+        )
+
+    return RedirectResponse(url=_build_error_redirect("invalid_request"), status_code=302)
+
+
+
 
 
 def _build_settings_redirect(error_code: str | None = None) -> str:
@@ -317,115 +256,27 @@ async def link(
         )
 
     settings = get_settings()
-    state = secrets.token_urlsafe(32)
-    redirect_uri = str(request.url_for("link_callback", provider=provider))
-    auth_url = get_authorization_url(oauth_provider, redirect_uri, state)
+
+    # State format: "intent:token"
+    state_token = secrets.token_urlsafe(32)
+    state_value = f"{AuthIntent.LINK.value}:{state_token}"
+
+    # Callback
+    redirect_uri = str(request.url_for("callback", provider=provider))
+
+    auth_url = get_authorization_url(oauth_provider, redirect_uri, state_value)
     response = RedirectResponse(url=auth_url, status_code=302)
 
     response.set_cookie(
-        key=LINK_STATE_COOKIE_NAME,
-        value=state,
+        key=STATE_COOKIE_NAME,
+        value=state_token,
         **_get_state_cookie_params(settings),
     )
 
     return response
 
 
-@router.get("/link/callback/{provider}")
-async def link_callback(
-    provider: str,
-    request: Request,
-    code: str | None = Query(default=None),
-    state: str | None = Query(default=None),
-    error: str | None = Query(default=None),
-    db: AsyncSession = Depends(get_db),
-    client: httpx.AsyncClient = Depends(get_http_client),
-    _: None = Depends(check_auth_rate_limit),
-) -> RedirectResponse:
-    """Handles OAuth callback for account linking; requires existing session"""
-    ctx = await get_request_context(request)
 
-    try:
-        session = await get_current_session(request, ctx, db)
-        user = await get_current_user(session, db)
-    except Exception:
-        return RedirectResponse(
-            url=_build_error_redirect("not_authenticated"),
-            status_code=302,
-        )
-
-    if error:
-        return RedirectResponse(
-            url=_build_settings_redirect("consent_denied"),
-            status_code=302,
-        )
-
-    try:
-        oauth_provider = OAuthProvider(provider)
-    except ValueError:
-        return RedirectResponse(
-            url=_build_settings_redirect("invalid_provider"),
-            status_code=302,
-        )
-
-    stored_state = request.cookies.get(LINK_STATE_COOKIE_NAME)
-    if not stored_state or not state or state != stored_state:
-        return RedirectResponse(
-            url=_build_settings_redirect("csrf_failed"),
-            status_code=302,
-        )
-
-    if not code:
-        return RedirectResponse(
-            url=_build_settings_redirect("missing_code"),
-            status_code=302,
-        )
-
-    redirect_uri = str(request.url_for("link_callback", provider=provider))
-
-    try:
-        token = await exchange_code_for_token(
-            oauth_provider, code, redirect_uri, client
-        )
-        profile = await fetch_user_profile(oauth_provider, token, client)
-        await link_provider(db, user, profile, oauth_provider)
-
-        log_audit_event(
-            AuditEvent.ACCOUNT_LINKED,
-            user_id=user.id,
-            session_id=session.id,
-            ip_address=request.client.host if request.client else None,
-            provider=provider,
-        )
-
-        response = RedirectResponse(
-            url=_build_settings_redirect(),
-            status_code=302,
-        )
-        response.delete_cookie(key=LINK_STATE_COOKIE_NAME, path="/")
-
-        return response
-
-    except InvalidCodeError:
-        return RedirectResponse(
-            url=_build_settings_redirect("code_expired"),
-            status_code=302,
-        )
-    except EmailNotVerifiedError:
-        return RedirectResponse(
-            url=_build_settings_redirect("email_not_verified"),
-            status_code=302,
-        )
-    except NoEmailError:
-        return RedirectResponse(
-            url=_build_settings_redirect("no_email"),
-            status_code=302,
-        )
-    except ProviderConflictError:
-        return RedirectResponse(
-            url=_build_settings_redirect("provider_conflict"),
-            status_code=302,
-        )
 
 
 @router.get("/sessions", response_model=SessionListResponse)
@@ -575,7 +426,7 @@ async def logout_all(
 
 
 # Stores OAuth tokens for background API access
-CONNECT_STATE_COOKIE_NAME = "oauth_connect_state"
+
 
 
 def _build_profile_redirect(error_code: str | None = None, success: bool = False) -> str:
@@ -612,134 +463,29 @@ async def connect_github(
         )
 
     settings = get_settings()
-    state = secrets.token_urlsafe(32)
-    redirect_uri = str(request.url_for("connect_github_callback"))
-    auth_url = get_profile_authorization_url(OAuthProvider.GITHUB, redirect_uri, state)
+
+    # "intent:token"
+    state_token = secrets.token_urlsafe(32)
+    state_value = f"{AuthIntent.CONNECT.value}:{state_token}"
+
+    # Note: connect/github is specific, but it routes through generalized callback
+    # The callback will see Intent=CONNECT and Provider=GITHUB
+    redirect_uri = str(request.url_for("callback", provider="github"))
+
+    auth_url = get_profile_authorization_url(OAuthProvider.GITHUB, redirect_uri, state_value)
+
     response = RedirectResponse(url=auth_url, status_code=302)
 
     response.set_cookie(
-        key=CONNECT_STATE_COOKIE_NAME,
-        value=state,
+        key=STATE_COOKIE_NAME,
+        value=state_token,
         **_get_state_cookie_params(settings),
     )
 
     return response
 
 
-@router.get("/connect/callback/github")
-async def connect_github_callback(
-    request: Request,
-    code: str | None = Query(default=None),
-    state: str | None = Query(default=None),
-    error: str | None = Query(default=None),
-    db: AsyncSession = Depends(get_db),
-    client: httpx.AsyncClient = Depends(get_http_client),
-    _: None = Depends(check_auth_rate_limit),
-) -> RedirectResponse:
-    """
-    Handles OAuth callback for GitHub profile connect.
-    Stores token in linked_accounts table for background profile data fetching.
-    """
-    ctx = await get_request_context(request)
 
-    try:
-        session = await get_current_session(request, ctx, db)
-        user = await get_current_user(session, db)
-    except Exception:
-        return RedirectResponse(
-            url=_build_error_redirect("not_authenticated"),
-            status_code=302,
-        )
-
-    if error:
-        log_audit_event(
-            AuditEvent.ACCOUNT_LINKED,
-            user_id=user.id,
-            ip_address=ctx.ip_address,
-            provider="github",
-            metadata={"action": "connect_denied", "error": error},
-        )
-        return RedirectResponse(
-            url=_build_profile_redirect("consent_denied"),
-            status_code=302,
-        )
-
-    stored_state = request.cookies.get(CONNECT_STATE_COOKIE_NAME)
-    if not stored_state or not state or state != stored_state:
-        return RedirectResponse(
-            url=_build_profile_redirect("csrf_failed"),
-            status_code=302,
-        )
-
-    if not code:
-        return RedirectResponse(
-            url=_build_profile_redirect("missing_code"),
-            status_code=302,
-        )
-
-    redirect_uri = str(request.url_for("connect_github_callback"))
-
-    try:
-        token = await exchange_code_for_token(
-            OAuthProvider.GITHUB, code, redirect_uri, client
-        )
-        profile = await fetch_user_profile(OAuthProvider.GITHUB, token, client)
-
-        # Parse scopes from token response
-        scopes = token.scope.split(",") if token.scope else GITHUB_PROFILE_SCOPES.split(" ")
-
-        await store_linked_account(
-            db=db,
-            user_id=user.id,
-            provider="github",
-            provider_user_id=profile.provider_id,
-            access_token=token.access_token,
-            refresh_token=token.refresh_token,
-            scopes=scopes,
-            expires_at=None,  # GitHub tokens dont expire unless revoked
-        )
-
-        log_audit_event(
-            AuditEvent.ACCOUNT_LINKED,
-            user_id=user.id,
-            session_id=session.id,
-            ip_address=ctx.ip_address,
-            provider="github",
-            metadata={"action": "connect_profile", "scopes": scopes},
-        )
-
-        # To-do: Cloud Tasks job trigger
-
-        response = RedirectResponse(
-            url=_build_profile_redirect(success=True),
-            status_code=302,
-        )
-        response.delete_cookie(key=CONNECT_STATE_COOKIE_NAME, path="/")
-
-        return response
-
-    except InvalidCodeError:
-        log_audit_event(
-            AuditEvent.ACCOUNT_LINKED,
-            user_id=user.id,
-            ip_address=ctx.ip_address,
-            provider="github",
-            metadata={"action": "connect_failed", "reason": "code_expired"},
-        )
-        return RedirectResponse(
-            url=_build_profile_redirect("code_expired"),
-            status_code=302,
-        )
-    except EmailNotVerifiedError:
-        return RedirectResponse(
-            url=_build_profile_redirect("email_not_verified"),
-            status_code=302,
-        )
-    except NoEmailError:
-        return RedirectResponse(
-            url=_build_profile_redirect("no_email"),
-            status_code=302,
-        )
 
 
 @router.delete("/connect/github")
@@ -913,3 +659,171 @@ async def delete_account(
     })
     clear_session_cookie(response)
     return response
+
+
+async def _handle_login_callback(
+    code: str,
+    redirect_uri: str,
+    oauth_provider: OAuthProvider,
+    remember_me: bool,
+    fingerprint_hash: str,
+    ctx: RequestContext,
+    db: AsyncSession,
+    client: httpx.AsyncClient,
+    request: Request,
+    settings
+) -> RedirectResponse:
+    try:
+        token = await exchange_code_for_token(
+            oauth_provider, code, redirect_uri, client
+        )
+        profile = await fetch_user_profile(oauth_provider, token, client)
+        user = await upsert_user(db, profile, oauth_provider)
+
+        session, expires_at = await create_session(
+            db=db,
+            user_id=user.id,
+            fingerprint_hash=fingerprint_hash,
+            remember_me=remember_me,
+            ip_address=ctx.ip_address,
+            user_agent=ctx.user_agent,
+            os_family=ctx.os_family,
+            ua_family=ctx.ua_family,
+            asn=ctx.asn,
+            country_code=ctx.country_code,
+        )
+
+        log_audit_event(
+            AuditEvent.LOGIN_SUCCESS,
+            user_id=user.id,
+            session_id=session.id,
+            ip_address=ctx.ip_address,
+            user_agent=ctx.user_agent,
+            provider=oauth_provider.value,
+        )
+
+        response = RedirectResponse(
+            url=f"{settings.frontend_base_url}/dashboard",
+            status_code=302,
+        )
+        response.delete_cookie(key=STATE_COOKIE_NAME, path="/")
+        create_session_cookie(response, str(session.id), expires_at)
+
+        return response
+
+    except InvalidCodeError:
+        log_audit_event(AuditEvent.LOGIN_FAILED, ip_address=ctx.ip_address, provider=oauth_provider.value, metadata={"reason": "code_expired"})
+        return RedirectResponse(url=_build_error_redirect("code_expired"), status_code=302)
+    except EmailNotVerifiedError:
+        log_audit_event(AuditEvent.LOGIN_FAILED, ip_address=ctx.ip_address, provider=oauth_provider.value, metadata={"reason": "email_not_verified"})
+        return RedirectResponse(url=_build_error_redirect("email_not_verified", oauth_provider.value), status_code=302)
+    except NoEmailError:
+        log_audit_event(AuditEvent.LOGIN_FAILED, ip_address=ctx.ip_address, provider=oauth_provider.value, metadata={"reason": "no_email"})
+        return RedirectResponse(url=_build_error_redirect("no_email", oauth_provider.value), status_code=302)
+    except ExistingAccountError as e:
+        log_audit_event(AuditEvent.LOGIN_FAILED, ip_address=ctx.ip_address, provider=oauth_provider.value, metadata={"reason": "existing_account", "original_provider": e.original_provider})
+        return RedirectResponse(url=_build_error_redirect("existing_account", e.original_provider), status_code=302)
+    except OAuthStateError:
+         return RedirectResponse(url=_build_error_redirect("csrf_failed"), status_code=302)
+
+
+async def _handle_link_callback(
+    code: str,
+    redirect_uri: str,
+    oauth_provider: OAuthProvider,
+    ctx: RequestContext,
+    db: AsyncSession,
+    client: httpx.AsyncClient,
+    request: Request
+) -> RedirectResponse:
+    try:
+        session = await get_current_session(request, ctx, db)
+        user = await get_current_user(session, db)
+    except Exception:
+        return RedirectResponse(url=_build_error_redirect("not_authenticated"), status_code=302)
+
+    try:
+        token = await exchange_code_for_token(
+            oauth_provider, code, redirect_uri, client
+        )
+        profile = await fetch_user_profile(oauth_provider, token, client)
+        await link_provider(db, user, profile, oauth_provider)
+
+        log_audit_event(
+            AuditEvent.ACCOUNT_LINKED,
+            user_id=user.id,
+            session_id=session.id,
+            ip_address=ctx.ip_address,
+            provider=oauth_provider.value,
+        )
+
+        response = RedirectResponse(url=_build_settings_redirect(), status_code=302)
+        response.delete_cookie(key=STATE_COOKIE_NAME, path="/") # Consuming unified cookie
+        return response
+
+    except InvalidCodeError:
+        return RedirectResponse(url=_build_settings_redirect("code_expired"), status_code=302)
+    except EmailNotVerifiedError:
+        return RedirectResponse(url=_build_settings_redirect("email_not_verified"), status_code=302)
+    except NoEmailError:
+        return RedirectResponse(url=_build_settings_redirect("no_email"), status_code=302)
+    except ProviderConflictError:
+        return RedirectResponse(url=_build_settings_redirect("provider_conflict"), status_code=302)
+
+
+async def _handle_connect_callback(
+    code: str,
+    redirect_uri: str,
+    oauth_provider: OAuthProvider,
+    ctx: RequestContext,
+    db: AsyncSession,
+    client: httpx.AsyncClient,
+    request: Request
+) -> RedirectResponse:
+    try:
+        session = await get_current_session(request, ctx, db)
+        user = await get_current_user(session, db)
+    except Exception:
+        return RedirectResponse(url=_build_error_redirect("not_authenticated"), status_code=302)
+
+    try:
+        token = await exchange_code_for_token(
+            oauth_provider, code, redirect_uri, client
+        )
+        profile = await fetch_user_profile(oauth_provider, token, client)
+
+        # Parse scopes from token response
+        scopes = token.scope.split(",") if token.scope else GITHUB_PROFILE_SCOPES.split(" ")
+
+        await store_linked_account(
+            db=db,
+            user_id=user.id,
+            provider="github",
+            provider_user_id=profile.provider_id,
+            access_token=token.access_token,
+            refresh_token=token.refresh_token,
+            scopes=scopes,
+            expires_at=None,
+        )
+
+        log_audit_event(
+            AuditEvent.ACCOUNT_LINKED,
+            user_id=user.id,
+            session_id=session.id,
+            ip_address=ctx.ip_address,
+            provider="github",
+            metadata={"action": "connect_profile", "scopes": scopes},
+        )
+
+        response = RedirectResponse(url=_build_profile_redirect(success=True), status_code=302)
+        response.delete_cookie(key=STATE_COOKIE_NAME, path="/") # Consuming unified cookie
+        return response
+
+    except InvalidCodeError:
+        log_audit_event(AuditEvent.ACCOUNT_LINKED, user_id=user.id, ip_address=ctx.ip_address, provider="github", metadata={"action": "connect_failed", "reason": "code_expired"})
+        return RedirectResponse(url=_build_profile_redirect("code_expired"), status_code=302)
+    except EmailNotVerifiedError:
+        return RedirectResponse(url=_build_profile_redirect("email_not_verified"), status_code=302)
+    except NoEmailError:
+        return RedirectResponse(url=_build_profile_redirect("no_email"), status_code=302)
+

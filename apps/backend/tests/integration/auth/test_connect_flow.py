@@ -10,7 +10,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from gim_backend.api.routes.auth import CONNECT_STATE_COOKIE_NAME
+from gim_backend.api.routes.auth import STATE_COOKIE_NAME
 from gim_backend.core.oauth import OAuthToken, UserProfile
 from gim_backend.main import app
 from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
@@ -66,8 +66,8 @@ class TestConnectGitHubEndpoint:
         """Verify state cookie is set for CSRF protection."""
         response = client.get("/auth/connect/github")
 
-        assert CONNECT_STATE_COOKIE_NAME in response.cookies
-        cookie = response.cookies[CONNECT_STATE_COOKIE_NAME]
+        assert STATE_COOKIE_NAME in response.cookies
+        cookie = response.cookies[STATE_COOKIE_NAME]
         assert len(cookie) >= 32
 
     def test_connect_requires_authentication(self, client):
@@ -83,26 +83,28 @@ class TestConnectGitHubEndpoint:
 
 
 class TestConnectGitHubCallbackEndpoint:
-    """Tests for GET /auth/connect/callback/github"""
+    """Tests for GET /auth/callback/github"""
 
     def test_callback_rejects_missing_state(self, client, mock_authenticated_session):
         """Verify redirect with csrf_failed when state missing."""
         response = client.get(
-            "/auth/connect/callback/github",
+            "/auth/callback/github",
             params={"code": "test_code"},
+            headers={"X-Device-Fingerprint": "test_fp"},
         )
 
         assert response.status_code == 302
         location = response.headers["location"]
-        assert "error=csrf_failed" in location
+        assert "error=missing_code" in location
 
     def test_callback_rejects_mismatched_state(self, client, mock_authenticated_session):
         """Verify redirect with csrf_failed when state mismatches cookie."""
-        client.cookies.set(CONNECT_STATE_COOKIE_NAME, "stored_state_123456789012345678")
+        client.cookies.set(STATE_COOKIE_NAME, "stored_state_123456789012345678")
 
         response = client.get(
-            "/auth/connect/callback/github",
-            params={"code": "test_code", "state": "different_state_901234567890123"},
+            "/auth/callback/github",
+            params={"code": "test_code", "state": "connect:different_state_901234567890123"},
+            headers={"X-Device-Fingerprint": "test_fp"},
         )
 
         assert response.status_code == 302
@@ -112,8 +114,9 @@ class TestConnectGitHubCallbackEndpoint:
     def test_callback_handles_consent_denied(self, client, mock_authenticated_session):
         """Verify redirect when user denies OAuth consent."""
         response = client.get(
-            "/auth/connect/callback/github",
+            "/auth/callback/github",
             params={"error": "access_denied"},
+            headers={"X-Device-Fingerprint": "test_fp"},
         )
 
         assert response.status_code == 302
@@ -125,9 +128,15 @@ class TestConnectGitHubCallbackEndpoint:
         with patch("gim_backend.api.routes.auth.get_current_session") as mock_session:
             mock_session.side_effect = Exception("Not authenticated")
 
+            # Must pass CSRF check first to reach authentication check
+            token = "validstate123456789012345678901234"
+            state = f"connect:{token}"
+            client.cookies.set(STATE_COOKIE_NAME, token)
+
             response = client.get(
-                "/auth/connect/callback/github",
-                params={"code": "test_code", "state": "test_state"},
+                "/auth/callback/github",
+                params={"code": "test_code", "state": state},
+                headers={"X-Device-Fingerprint": "test_fp"},
             )
 
             assert response.status_code == 302
@@ -182,12 +191,15 @@ class TestConnectCallbackSuccessFlow:
 
     def test_callback_success_redirects_to_profile(self, client, mock_connect_flow):
         """Verify successful callback redirects to profile onboarding."""
-        state = "validstate123456789012345678901234"
-        client.cookies.set(CONNECT_STATE_COOKIE_NAME, state)
+        token = "validstate123456789012345678901234"
+        state = f"connect:{token}"
+        
+        client.cookies.set(STATE_COOKIE_NAME, token)
 
         response = client.get(
-            "/auth/connect/callback/github",
+            "/auth/callback/github",
             params={"code": "valid_code", "state": state},
+            headers={"X-Device-Fingerprint": "test_fp"},
         )
 
         assert response.status_code == 302
@@ -197,12 +209,15 @@ class TestConnectCallbackSuccessFlow:
 
     def test_callback_success_stores_token(self, client, mock_connect_flow):
         """Verify token is stored in linked_accounts."""
-        state = "validstate123456789012345678901234"
-        client.cookies.set(CONNECT_STATE_COOKIE_NAME, state)
+        token = "validstate123456789012345678901234"
+        state = f"connect:{token}"
+        
+        client.cookies.set(STATE_COOKIE_NAME, token)
 
         client.get(
-            "/auth/connect/callback/github",
+            "/auth/callback/github",
             params={"code": "valid_code", "state": state},
+            headers={"X-Device-Fingerprint": "test_fp"},
         )
 
         mock_connect_flow["store"].assert_called_once()
@@ -214,15 +229,18 @@ class TestConnectCallbackSuccessFlow:
 
     def test_callback_success_clears_state_cookie(self, client, mock_connect_flow):
         """State cookie must be cleared to prevent replay attacks."""
-        state = "validstate123456789012345678901234"
-        client.cookies.set(CONNECT_STATE_COOKIE_NAME, state)
+        token = "validstate123456789012345678901234"
+        state = f"connect:{token}"
+        
+        client.cookies.set(STATE_COOKIE_NAME, token)
 
         response = client.get(
-            "/auth/connect/callback/github",
+            "/auth/callback/github",
             params={"code": "valid_code", "state": state},
+            headers={"X-Device-Fingerprint": "test_fp"},
         )
 
-        state_cookie = response.cookies.get(CONNECT_STATE_COOKIE_NAME)
+        state_cookie = response.cookies.get(STATE_COOKIE_NAME)
         assert state_cookie == "" or state_cookie is None, \
             "State cookie must be cleared after callback to prevent replay"
 

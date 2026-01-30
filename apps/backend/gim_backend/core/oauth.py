@@ -70,7 +70,7 @@ GOOGLE_LOGIN_SCOPES = "openid email profile"
 
 STATE_MIN_LENGTH = 32
 STATE_MAX_LENGTH = 128
-STATE_ALLOWED_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+STATE_ALLOWED_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_:")
 
 
 def validate_state(state: str) -> None:

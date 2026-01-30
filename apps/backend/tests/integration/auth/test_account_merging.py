@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from gim_backend.api.routes.auth import LINK_STATE_COOKIE_NAME, STATE_COOKIE_NAME
+from gim_backend.api.routes.auth import STATE_COOKIE_NAME
 from gim_backend.core.oauth import OAuthProvider, OAuthToken, UserProfile
 from gim_backend.main import app
 from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
@@ -85,10 +85,11 @@ class TestAccountMergingBehavior:
                 datetime.now(UTC) + timedelta(days=7)
             )
 
-            state = "validstate123456789012345678901234"
+            token = "validstate123456789012345678901234"
+            state = f"login:{token}:0"
 
             # First login
-            client.cookies.set(STATE_COOKIE_NAME, f"{state}:0")
+            client.cookies.set(STATE_COOKIE_NAME, token)
             client.get(
                 "/auth/callback/github",
                 params={"code": "first_code", "state": state},
@@ -96,7 +97,7 @@ class TestAccountMergingBehavior:
             )
 
             # Second login
-            client.cookies.set(STATE_COOKIE_NAME, f"{state}:0")
+            client.cookies.set(STATE_COOKIE_NAME, token)
             client.get(
                 "/auth/callback/github",
                 params={"code": "second_code", "state": state},
@@ -133,8 +134,9 @@ class TestAccountMergingBehavior:
 
             mock_upsert.side_effect = ExistingAccountError("github")
 
-            state = "validstate123456789012345678901234"
-            client.cookies.set(STATE_COOKIE_NAME, f"{state}:0")
+            token = "validstate123456789012345678901234"
+            state = f"login:{token}:0"
+            client.cookies.set(STATE_COOKIE_NAME, token)
 
             response = client.get(
                 "/auth/callback/google",
@@ -159,12 +161,14 @@ class TestAccountLinkingFlow:
 
     def test_link_callback_requires_authentication(self, client):
         """Unauthenticated user cannot complete link callback"""
-        state = "linkstate1234567890123456789012345"
-        client.cookies.set(LINK_STATE_COOKIE_NAME, state)
+        token = "linkstate1234567890123456789012345"
+        state = f"link:{token}"
+        client.cookies.set(STATE_COOKIE_NAME, token)
 
         response = client.get(
-            "/auth/link/callback/github",
+            "/auth/callback/github",
             params={"code": "valid_code", "state": state},
+            headers={"X-Device-Fingerprint": "test_fp"},
         )
 
         assert response.status_code == 302
@@ -182,8 +186,9 @@ class TestAccountLinkingFlow:
         """User denying OAuth consent redirects with error"""
         # Even without valid session, error param takes precedence
         response = client.get(
-            "/auth/link/callback/github",
+            "/auth/callback/github",
             params={"error": "access_denied"},
+            headers={"X-Device-Fingerprint": "test_fp"},
         )
 
         # First checks auth so will get not_authenticated
@@ -193,7 +198,7 @@ class TestAccountLinkingFlow:
         """Verify link callback endpoint exists and validates state parameter."""
         # Without state cookie, should redirect with csrf_failed
         response = client.get(
-            "/auth/link/callback/google",
+            "/auth/callback/google",
             params={"code": "valid_code", "state": "orphan_state"},
             headers={"X-Device-Fingerprint": "test_fp"},
         )

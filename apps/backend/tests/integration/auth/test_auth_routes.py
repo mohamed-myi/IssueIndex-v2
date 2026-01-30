@@ -49,26 +49,42 @@ class TestLoginEndpoint:
         assert "state=" in location
 
     def test_login_sets_state_cookie(self, client):
-        """Verify state cookie is set with HttpOnly flag."""
+        """Verify state cookie is set (contains just the token)."""
         response = client.get("/auth/login/github")
 
         assert STATE_COOKIE_NAME in response.cookies
         cookie = response.cookies[STATE_COOKIE_NAME]
-        assert len(cookie) > 32  # state:remember_me format
+        # Cookie should be just the token (43 chars for 32 bytes), no colons
+        assert ":" not in cookie
+        assert len(cookie) > 30
 
     def test_login_with_remember_me(self, client):
-        """Verify remember_me flag is encoded in state cookie."""
+        """Verify remember_me flag is encoded in state PARAMS, not cookie."""
         response = client.get("/auth/login/github?remember_me=true")
 
-        cookie_value = response.cookies[STATE_COOKIE_NAME]
-        assert cookie_value.endswith(":1")
+        location = response.headers["location"]
+        # Extract state param from URL
+        import urllib.parse
+        parsed = urllib.parse.urlparse(location)
+        params = urllib.parse.parse_qs(parsed.query)
+        state = params["state"][0]
+        
+        # Format: login:token:1
+        assert state.startswith("login:")
+        assert state.endswith(":1")
 
     def test_login_without_remember_me(self, client):
-        """Verify remember_me=false is encoded in state cookie."""
+        """Verify remember_me=false is encoded in state PARAMS."""
         response = client.get("/auth/login/github?remember_me=false")
 
-        cookie_value = response.cookies[STATE_COOKIE_NAME]
-        assert cookie_value.endswith(":0")
+        location = response.headers["location"]
+        import urllib.parse
+        parsed = urllib.parse.urlparse(location)
+        params = urllib.parse.parse_qs(parsed.query)
+        state = params["state"][0]
+        
+        assert state.startswith("login:")
+        assert state.endswith(":0")
 
     def test_invalid_provider_redirects_with_error(self, client):
         """Verify invalid provider redirects to login with error."""
@@ -84,12 +100,16 @@ class TestCallbackEndpoint:
 
     def test_callback_rejects_missing_fingerprint(self, client):
         """Verify 400 when X-Device-Fingerprint header missing."""
-        # Set required cookies
-        client.cookies.set(STATE_COOKIE_NAME, "validstate123456789012345678901234:0")
+        token = "validtoken1234567890123456789012"
+        state = f"login:{token}:0"
+        
+        # Cookie has just the token
+        client.cookies.set(STATE_COOKIE_NAME, token)
 
         response = client.get(
             "/auth/callback/github",
-            params={"code": "test_code", "state": "validstate123456789012345678901234"}
+            # URL params have full state
+            params={"code": "test_code", "state": state}
         )
 
         assert response.status_code == 400
@@ -105,15 +125,17 @@ class TestCallbackEndpoint:
 
         assert response.status_code == 302
         location = response.headers["location"]
-        assert "error=csrf_failed" in location
+        assert "error=missing_code" in location
 
     def test_callback_rejects_mismatched_state(self, client):
         """Verify redirect with csrf_failed when state mismatches cookie."""
-        client.cookies.set(STATE_COOKIE_NAME, "stored_state_123456789012345678:0")
+        client.cookies.set(STATE_COOKIE_NAME, "stored_token_12345")
 
+        state = "login:different_token_67890:0"
+        
         response = client.get(
             "/auth/callback/github",
-            params={"code": "test_code", "state": "different_state_901234567890123"},
+            params={"code": "test_code", "state": state},
             headers={"X-Device-Fingerprint": "test_fingerprint"},
         )
 
@@ -200,8 +222,10 @@ class TestCallbackSuccessFlow:
 
     def test_callback_success_redirects_to_dashboard(self, client, mock_oauth_flow):
         """Verify successful callback redirects to /dashboard."""
-        state = "validstate123456789012345678901234"
-        client.cookies.set(STATE_COOKIE_NAME, f"{state}:0")
+        token = "validtoken1234567890123456789012"
+        state = f"login:{token}:0"
+        
+        client.cookies.set(STATE_COOKIE_NAME, token)
 
         response = client.get(
             "/auth/callback/github",
@@ -215,8 +239,11 @@ class TestCallbackSuccessFlow:
 
     def test_callback_success_sets_session_cookie(self, client, mock_oauth_flow):
         """Verify session cookie is set after successful auth."""
-        state = "validstate123456789012345678901234"
-        client.cookies.set(STATE_COOKIE_NAME, f"{state}:1")
+        token = "validtoken1234567890123456789012"
+        # remember_me=1
+        state = f"login:{token}:1"
+        
+        client.cookies.set(STATE_COOKIE_NAME, token)
 
         response = client.get(
             "/auth/callback/github",
@@ -226,15 +253,17 @@ class TestCallbackSuccessFlow:
 
         assert "session_id" in response.cookies
 
-        # Verify session_id is a valid UUID format (not empty/malformed)
+        # Verify session_id is a valid UUID format
         from uuid import UUID
         session_value = response.cookies.get("session_id")
-        UUID(session_value)  # Raises ValueError if invalid
+        UUID(session_value)
 
     def test_callback_success_clears_state_cookie(self, client, mock_oauth_flow):
         """State cookie must be cleared to prevent replay attacks."""
-        state = "validstate123456789012345678901234"
-        client.cookies.set(STATE_COOKIE_NAME, f"{state}:0")
+        token = "validtoken1234567890123456789012"
+        state = f"login:{token}:0"
+        
+        client.cookies.set(STATE_COOKIE_NAME, token)
 
         response = client.get(
             "/auth/callback/github",
