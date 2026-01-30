@@ -6,6 +6,7 @@ import type { Route } from "next";
 import type { OAuthProvider } from "@/lib/api/types";
 import { authLinkCallback } from "@/lib/api/endpoints";
 import { getApiErrorMessage } from "@/lib/api/client";
+import { getFingerprint } from "@/lib/fingerprint";
 
 function isOAuthProvider(value: string): value is OAuthProvider {
   return value === "github" || value === "google";
@@ -37,7 +38,8 @@ export default function OAuthLinkCallbackClient() {
       }
 
       try {
-        await authLinkCallback({ provider, code, state, error });
+        const fingerprint = await getFingerprint();
+        await authLinkCallback({ provider, code, state, error, fingerprint });
         if (!cancelled) {
           router.replace("/profile?tab=accounts" as Route);
         }

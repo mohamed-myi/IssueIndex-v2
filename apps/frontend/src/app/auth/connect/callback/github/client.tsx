@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { Route } from "next";
 import { authConnectGithubCallback } from "@/lib/api/endpoints";
 import { getApiErrorMessage } from "@/lib/api/client";
+import { getFingerprint } from "@/lib/fingerprint";
 
 export default function GithubConnectCallbackClient() {
   const router = useRouter();
@@ -21,7 +22,8 @@ export default function GithubConnectCallbackClient() {
 
     async function run() {
       try {
-        await authConnectGithubCallback({ code, state, error });
+        const fingerprint = await getFingerprint();
+        await authConnectGithubCallback({ code, state, error, fingerprint });
         if (!cancelled) {
           router.replace("/profile?tab=onboarding&connected=github" as Route);
         }

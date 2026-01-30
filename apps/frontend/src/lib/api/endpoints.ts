@@ -94,7 +94,7 @@ export async function authCallback(params: {
   await api.get(`/auth/callback/${provider}`, {
     params: { code, state, error },
     headers: {
-      "X-Fingerprint": fingerprint,
+      "X-Device-Fingerprint": fingerprint,
     },
     maxRedirects: 0,
     validateStatus: (status) => status >= 200 && status < 400,
@@ -106,19 +106,31 @@ export async function authLinkCallback(params: {
   code?: string;
   state?: string;
   error?: string;
+  fingerprint: string;
 }) {
-  const { provider, code, state, error } = params;
+  const { provider, code, state, error, fingerprint } = params;
   await api.get(`/auth/link/callback/${provider}`, {
     params: { code, state, error },
+    headers: {
+      "X-Device-Fingerprint": fingerprint,
+    },
     maxRedirects: 0,
     validateStatus: (status) => status >= 200 && status < 400,
   });
 }
 
-export async function authConnectGithubCallback(params: { code?: string; state?: string; error?: string }) {
-  const { code, state, error } = params;
+export async function authConnectGithubCallback(params: {
+  code?: string;
+  state?: string;
+  error?: string;
+  fingerprint: string;
+}) {
+  const { code, state, error, fingerprint } = params;
   await api.get(`/auth/connect/callback/github`, {
     params: { code, state, error },
+    headers: {
+      "X-Device-Fingerprint": fingerprint,
+    },
     maxRedirects: 0,
     validateStatus: (status) => status >= 200 && status < 400,
   });
