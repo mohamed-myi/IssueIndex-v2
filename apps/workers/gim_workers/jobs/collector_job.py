@@ -1,10 +1,11 @@
 """
 Collector job: Scout repositories and gather issues to Pub/Sub.
 
-This is Job 1 of the event-driven pipeline:
-1. Scout: Discover top repositories
-2. Gather: Stream issues with Q-Score filtering
-3. Publish: Send issues to Pub/Sub for async embedding
+This is the entry point for the event-driven pipeline:
+1. Discover top repositories
+2. Filter for workload sharding
+3. Stream issues with Q-Score filtering
+4. Publish: Send issues to Pub/Sub for async embedding
 
 The embedding worker consumes messages from Pub/Sub and generates embeddings.
 Runs fast (1-2 minutes) with concurrent repo processing.
@@ -27,9 +28,10 @@ logger = logging.getLogger(__name__)
 async def run_collector_job() -> dict:
     """
     Executes the collection pipeline:
-    1. Scout: Discover top repositories
-    2. Gather: Stream issues with Q-Score filtering
-    3. Publish: Send to Pub/Sub for async embedding
+    1. Discover top repositories
+    2. Filter via dynamic sharding
+    3. Stream issues with Q-Score filtering
+    4. Publish issues to Pub/Sub for async embedding
     
     Returns stats dict with repos_discovered and issues_published.
     """
@@ -53,23 +55,44 @@ async def run_collector_job() -> dict:
     )
 
     async with GitHubGraphQLClient(settings.git_token) as client:
-        # Phase 1: Scout
+        # Discover repositories via GitHub GraphQL
         scout_start = time.monotonic()
-        logger.info("Phase 1/3: Starting Scout - discovering repositories")
+        logger.info("Starting Scout - discovering repositories")
         scout = Scout(client)
-        repos = await scout.discover_repositories()
+        all_repos = await scout.discover_repositories()
+        
+        # Filter repositories to process only ~1/24th based on current hour
+        # This implements Dynamic Workload Sharding to respect API rate limits
+        from binascii import crc32
+        from datetime import UTC, datetime
+        
+        current_shard = datetime.now(UTC).hour
+        repos = []
+        
+        for repo in all_repos:
+            # Stable shard ID based on node_id (0-23)
+            shard_id = crc32(repo.node_id.encode("utf-8")) % 24
+            if shard_id == current_shard:
+                repos.append(repo)
+                
         scout_elapsed = time.monotonic() - scout_start
         
         logger.info(
-            f"Phase 1/3: Scout complete in {scout_elapsed:.1f}s - discovered {len(repos)} repositories",
-            extra={"repos_discovered": len(repos), "scout_duration_s": round(scout_elapsed, 1)},
+            f"Scout complete in {scout_elapsed:.1f}s - "
+            f"Selected {len(repos)}/{len(all_repos)} repositories for shard {current_shard}",
+            extra={
+                "repos_discovered": len(all_repos),
+                "repos_selected": len(repos),
+                "shard_id": current_shard,
+                "scout_duration_s": round(scout_elapsed, 1)
+            },
         )
 
         if not repos:
-            logger.warning("No repositories discovered; skipping collection")
-            return {"repos_discovered": 0, "issues_published": 0}
+            logger.warning(f"No repositories selected for shard {current_shard}; skipping collection")
+            return {"repos_discovered": len(all_repos), "issues_published": 0}
 
-        # Phase 1.5: Persist repositories (FK constraint for issues)
+        # Persist repositories (FK constraint for issues)
         persist_start = time.monotonic()
         async with async_session_factory() as session:
             persistence = StreamingPersistence(session)
@@ -81,11 +104,11 @@ async def run_collector_job() -> dict:
             extra={"repos_upserted": repos_upserted, "persist_duration_s": round(persist_elapsed, 1)},
         )
 
-        # Phase 2: Gather issues
+        # Gather issues (fetch from GitHub)
         gather_start = time.monotonic()
         
         logger.info(
-            f"Phase 2/3: Starting Gather with concurrency={settings.gatherer_concurrency}",
+            f"Starting Gather with concurrency={settings.gatherer_concurrency}",
             extra={"concurrency": settings.gatherer_concurrency},
         )
         
@@ -96,9 +119,9 @@ async def run_collector_job() -> dict:
         )
         issue_stream = gatherer.harvest_issues(repos)
         
-        # Phase 3: Publish to Pub/Sub (replaces GCS + embedder trigger)
+        # Publish messages to Pub/Sub
         logger.info(
-            f"Phase 3/3: Publishing issues to Pub/Sub topic {settings.pubsub_issues_topic}",
+            f"Publishing issues to Pub/Sub topic {settings.pubsub_issues_topic}",
             extra={"topic": settings.pubsub_issues_topic},
         )
         
@@ -115,7 +138,7 @@ async def run_collector_job() -> dict:
         gather_elapsed = time.monotonic() - gather_start
         
         logger.info(
-            f"Phase 2-3/3: Gather + Publish complete in {gather_elapsed:.1f}s - {total} issues published",
+            f"Gather + Publish complete in {gather_elapsed:.1f}s - {total} issues published",
             extra={
                 "issues_published": total,
                 "gather_publish_duration_s": round(gather_elapsed, 1),

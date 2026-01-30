@@ -174,7 +174,7 @@ async def run_embedding_worker(embedder: NomicMoEEmbedder) -> None:
                 # Loop through batch with atomic shutdown checks
                 try:
                     for received_message in response.received_messages:
-                        # 1. Check shutdown BEFORE starting work
+                        # Check shutdown BEFORE starting work to prevent partial batch processing
                         if shutdown.should_stop:
                             logger.info("Shutdown signaled mid-batch; yielding remaining messages")
                             nack_ids.append(received_message.ack_id)
@@ -195,7 +195,7 @@ async def run_embedding_worker(embedder: NomicMoEEmbedder) -> None:
                             failure_count += 1
 
                 finally:
-                    # 2. Atomic Commit/Rollback for the batch
+                    # Atomic Commit/Rollback for the batch
                     if ack_ids:
                         await subscriber.acknowledge(
                             request={
