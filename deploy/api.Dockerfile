@@ -29,4 +29,4 @@ RUN pip install --no-cache-dir \
 ENV PORT=8080
 ENV EMBEDDING_MODE=nomic
 
-CMD ["uvicorn", "gim_backend.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "gim_backend.main:app", "--host", "0.0.0.0", "--port", "8080", "--proxy-headers", "--forwarded-allow-ips", "*"]
