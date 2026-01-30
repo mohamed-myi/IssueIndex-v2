@@ -118,7 +118,10 @@ class IssueEmbeddingConsumer:
         # Parse github_created_at
         github_created_at = data.get("github_created_at")
         if isinstance(github_created_at, str):
-            github_created_at = datetime.fromisoformat(github_created_at.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(github_created_at.replace("Z", "+00:00"))
+            # Convert to UTC and make naive to match DB column type
+            from datetime import UTC
+            github_created_at = dt.astimezone(UTC).replace(tzinfo=None)
 
         # Calculate survival score
         days_old = days_since(github_created_at)

@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     pubsub_profiles_topic: str = "issueindex-profiles"
     pubsub_dlq_topic: str = "issueindex-dlq"
 
+    # Janitor config
+    janitor_min_issues: int = 10000  # Only prune if table exceeds this count
+
     # Embedding config for local Nomic MoE model
     embedding_model: str = "nomic-embed-text-v2-moe"
     embedding_dim: int = 256  # Matryoshka truncation from 768 to 256

@@ -35,6 +35,13 @@ def janitor(mock_session, monkeypatch):
     monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext", mock_sqlmodel_ext)
     monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio", mock_sqlmodel_ext_asyncio)
     monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio.session", mock_sqlmodel_ext_asyncio_session)
+    
+    # Mock settings
+    mock_settings = MagicMock()
+    mock_settings.janitor_min_issues = 0
+    
+    mock_get_settings = MagicMock(return_value=mock_settings)
+    monkeypatch.setattr("gim_backend.ingestion.janitor.get_settings", mock_get_settings)
 
     # Now import Janitor
     from gim_backend.ingestion.janitor import Janitor
@@ -160,6 +167,20 @@ class TestExecutePruning:
 
         # Should be called 3 times: stats, delete, stats
         assert mock_session.execute.call_count == 3
+
+    async def test_respects_min_issues_threshold(self, janitor, mock_session):
+        janitor._min_count = 1000
+        
+        stats_result = MagicMock()
+        stats_result.fetchone.return_value = MagicMock(cnt=500) # Below threshold
+        mock_session.execute.return_value = stats_result
+
+        result = await janitor.execute_pruning()
+
+        assert result["deleted_count"] == 0
+        assert result["remaining_count"] == 500
+        # Should check stats but not call delete
+        assert mock_session.execute.call_count == 1
 
 
 class TestEdgeCases:

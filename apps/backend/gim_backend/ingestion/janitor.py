@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import text
 
+from gim_backend.core.config import get_settings
+
 if TYPE_CHECKING:
     from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -27,6 +29,7 @@ class Janitor:
 
     def __init__(self, session: AsyncSession):
         self._session = session
+        self._min_count = get_settings().janitor_min_issues
 
     async def execute_pruning(self) -> dict:
         """
@@ -36,11 +39,13 @@ class Janitor:
         """
         stats_before = await self._get_table_stats()
 
-        if stats_before["row_count"] == 0:
-            logger.info("Janitor: No issues to prune (table empty)")
+        if stats_before["row_count"] == 0 or stats_before["row_count"] < self._min_count:
+            logger.info(
+                f"Janitor: Skipping prune (row count {stats_before['row_count']} < {self._min_count})"
+            )
             return {
                 "deleted_count": 0,
-                "remaining_count": 0,
+                "remaining_count": stats_before["row_count"],
             }
 
         deleted_count = await self._delete_bottom_percentile()
