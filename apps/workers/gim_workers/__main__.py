@@ -16,28 +16,23 @@ import os
 import signal
 import sys
 
-import uvicorn
+
 
 from gim_workers.logging_config import setup_logging
 from gim_backend.ingestion.nomic_moe_embedder import NomicMoEEmbedder
 
 
+
 class GracefulShutdown:
-    """Manages graceful shutdown for both health server and worker."""
+    """Manages graceful shutdown for worker jobs."""
     
     def __init__(self):
         self._shutdown_event = asyncio.Event()
-        self._server: uvicorn.Server | None = None
-    
-    def register_server(self, server: uvicorn.Server) -> None:
-        self._server = server
     
     def signal_handler(self, signum: int) -> None:
         logger = logging.getLogger(__name__)
         logger.info(f"Received signal {signum}, initiating graceful shutdown...")
         self._shutdown_event.set()
-        if self._server:
-            self._server.should_exit = True
     
     @property
     def shutdown_event(self) -> asyncio.Event:
@@ -47,27 +42,8 @@ class GracefulShutdown:
 
 
 
-async def run_health_server(shutdown: GracefulShutdown, embedder: NomicMoEEmbedder | None = None) -> None:
-    """Run uvicorn health server as an asyncio task."""
-    from gim_workers.health import app as health_app
-    
-    # Inject singleton embedder if available
-    if embedder:
-        health_app.state.embedder = embedder
-    
-    config = uvicorn.Config(
-        app=health_app,
-        host="0.0.0.0",
-        port=int(os.getenv("PORT", 8080)),
-        log_level="warning",
-    )
-    server = uvicorn.Server(config)
-    shutdown.register_server(server)
-    
-    logger = logging.getLogger(__name__)
-    logger.info("Health server starting on port 8080")
-    
-    await server.serve()
+
+
 
 
 async def run_worker_task(

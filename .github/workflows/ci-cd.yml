@@ -217,7 +217,7 @@ jobs:
           echo "CORS_ORIGINS: ${{ secrets.PROD_CORS_ORIGINS }}" >> api-env.yaml
           echo "FRONTEND_BASE_URL: ${{ secrets.PROD_FRONTEND_BASE_URL }}" >> api-env.yaml
 
-          gcloud run services update issueindex-api \
+          gcloud run services deploy issueindex-api \
             --image=${{ env.REGISTRY }}/api:${{ github.sha }} \
             --region=${{ env.REGION }} \
              --memory=2Gi \
@@ -242,7 +242,7 @@ jobs:
 
       - name: Deploy embed worker service
         run: |
-          gcloud run services update issueindex-worker-embed \
+          gcloud run services deploy issueindex-worker-embed \
             --image=${{ env.REGISTRY }}/worker-embed:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --memory=2Gi \
@@ -254,7 +254,7 @@ jobs:
 
       - name: Deploy resume worker service
         run: |
-          gcloud run services update issueindex-worker-resume \
+          gcloud run services deploy issueindex-worker-resume \
             --image=${{ env.REGISTRY }}/worker-resume:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --memory=4Gi \
@@ -266,7 +266,7 @@ jobs:
 
       - name: Update embedder job
         run: |
-          gcloud run jobs update issueindex-embedder \
+          gcloud run jobs deploy issueindex-embedder \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --memory=8Gi \
@@ -278,7 +278,7 @@ jobs:
 
       - name: Update collector job
         run: |
-          gcloud run jobs update issueindex-collector \
+          gcloud run jobs deploy issueindex-collector \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --vpc-connector=issue-index-connector \
@@ -287,7 +287,7 @@ jobs:
 
       - name: Update janitor job
         run: |
-          gcloud run jobs update issueindex-janitor \
+          gcloud run jobs deploy issueindex-janitor \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --vpc-connector=issue-index-connector \
@@ -296,7 +296,7 @@ jobs:
 
       - name: Update reco-flush job
         run: |
-          gcloud run jobs update issueindex-reco-flush \
+          gcloud run jobs deploy issueindex-reco-flush \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --vpc-connector=issue-index-connector \
