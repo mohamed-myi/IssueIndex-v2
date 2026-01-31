@@ -14,7 +14,6 @@ dependencies = [
     
     # Configuration
     "pydantic-settings>=2.0.0",
-    "google-cloud-pubsub>=2.19.0",
     
     # Internal packages (not on PyPI) - install in editable mode before this package:
     # pip install -e packages/shared -e packages/database -e apps/backend -e apps/workers

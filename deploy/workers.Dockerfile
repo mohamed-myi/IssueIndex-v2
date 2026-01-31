@@ -20,7 +20,6 @@ RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cpu
 
 # Install packages and ML dependencies
-# Install packages and ML dependencies
 # - huggingface_hub[cli]: For faster model download (avoids QEMU)
 # - einops: Required by nomic-embed-text-v2-moe
 RUN pip install --no-cache-dir \
@@ -28,7 +27,6 @@ RUN pip install --no-cache-dir \
     -e packages/database \
     -e apps/backend \
     -e apps/workers \
-    "google-cloud-pubsub>=2.19.0" \
     "sentence-transformers>=3.3.1" \
     einops \
     "huggingface_hub>=0.23.0"

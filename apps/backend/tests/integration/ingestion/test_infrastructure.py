@@ -1,7 +1,5 @@
 """Integration tests for Cloud SQL pgvector and Pub/Sub infrastructure validation"""
 
-import json
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -298,95 +296,7 @@ class TestCloudSQLVectorOperations:
         assert stored_hash == "abc123def456"
 
 
-class TestPubSubPublishSubscribe:
-    """Test Pub/Sub message publish and subscribe with mocked client"""
 
-    def test_publish_message_includes_content_hash(self):
-        """Verify published messages include content_hash attribute"""
-        mock_publisher = MagicMock()
-        mock_future = MagicMock()
-        mock_publisher.publish.return_value = mock_future
-
-        # Simulate publishing a message
-        message_data = {
-            "node_id": "I_pubsub_test",
-            "title": "Test issue",
-            "body_text": "Test body",
-            "content_hash": "sha256_abc123",
-        }
-
-        mock_publisher.publish(
-            "projects/test/topics/issueindex-issues",
-            json.dumps(message_data).encode("utf-8"),
-            content_hash="sha256_abc123",
-        )
-
-        # Verify publish was called with content_hash attribute
-        call_args = mock_publisher.publish.call_args
-        assert call_args[1]["content_hash"] == "sha256_abc123"
-
-    def test_message_roundtrip_preserves_data(self):
-        """Verify message data survives JSON serialization roundtrip"""
-        original_data = {
-            "node_id": "I_roundtrip",
-            "repo_id": "R_test",
-            "title": "Test issue title",
-            "body_text": "Test body content with unicode: \u2713",
-            "labels": ["bug", "enhancement"],
-            "github_created_at": "2026-01-14T12:00:00Z",
-            "state": "open",
-            "q_score": 0.75,
-            "q_components": {
-                "has_code": True,
-                "has_headers": False,
-                "tech_weight": 0.3,
-            },
-            "content_hash": "sha256_roundtrip",
-        }
-
-        # Serialize and deserialize
-        encoded = json.dumps(original_data).encode("utf-8")
-        decoded = json.loads(encoded.decode("utf-8"))
-
-        assert decoded == original_data
-        assert decoded["q_components"]["has_code"] is True
-
-
-class TestPubSubDLQRouting:
-    """Test Dead Letter Queue routing behavior with mocked client"""
-
-    def test_dlq_topic_configured(self):
-        """Verify DLQ topic is configured in settings"""
-        from gim_backend.core.config import get_settings
-
-        settings = get_settings()
-
-        assert settings.pubsub_dlq_topic == "issueindex-dlq"
-
-    def test_max_delivery_attempts_configured(self):
-        """Verify subscription configured for 3 max delivery attempts"""
-        # This is a documentation test - actual configuration is in gcloud commands
-        max_delivery_attempts = 3
-
-        # Per REFACTOR.md, subscription should have max_delivery_attempts=3
-        assert max_delivery_attempts == 3, "DLQ should trigger after 3 failed attempts"
-
-    def test_failed_message_schema_for_dlq(self):
-        """Verify failed message contains enough info for debugging"""
-        failed_message = {
-            "node_id": "I_failed",
-            "title": "Failed issue",
-            "body_text": "Content that caused failure",
-            "content_hash": "sha256_failed",
-            "error": "Embedding generation failed",
-            "attempt_count": 3,
-        }
-
-        # Verify all debugging fields present
-        assert "node_id" in failed_message
-        assert "content_hash" in failed_message
-        assert "error" in failed_message
-        assert "attempt_count" in failed_message
 
 
 class TestPubSubIdempotency:
