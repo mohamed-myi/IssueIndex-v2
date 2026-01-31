@@ -48,7 +48,7 @@ class Gatherer:
     PAGE_SIZE: int = 100
     MAX_RETRIES: int = 3
     RETRY_DELAY_SECONDS: float = 2.0
-    Q_SCORE_THRESHOLD: float = 0.6
+    Q_SCORE_THRESHOLD: float = 0.3
 
     def __init__(
         self,

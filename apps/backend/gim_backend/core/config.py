@@ -57,12 +57,8 @@ class Settings(BaseSettings):
     gatherer_concurrency: int = 10  # Max concurrent repo fetches
     max_issues_per_repo: int = 100  # Cap issues per repository (reduced for rate limits)
 
-    # Pub/Sub config for event-driven ingestion
-    pubsub_project: str = ""
-    pubsub_repo_topic: str = "issueindex-repo-tasks"
-    pubsub_issues_topic: str = "issueindex-issues"
-    pubsub_profiles_topic: str = "issueindex-profiles"
-    pubsub_dlq_topic: str = "issueindex-dlq"
+    # Embedder job config (two-phase pipeline)
+    embedder_batch_size: int = 250  # Issues per embedder batch
 
     # Janitor config
     janitor_min_issues: int = 10000  # Only prune if table exceeds this count

@@ -264,22 +264,17 @@ jobs:
             --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest,HF_TOKEN=hf-token:latest" \
             --set-env-vars="EMBEDDING_MODE=nomic"
 
-      - name: Deploy embedding worker service
+      - name: Update embedder job
         run: |
-          gcloud run services update issueindex-embedding-worker \
+          gcloud run jobs update issueindex-embedder \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
             --memory=8Gi \
             --cpu=2 \
-            --min-instances=0 \
-            --max-instances=5 \
-            --timeout=600s \
+            --task-timeout=600s \
             --vpc-connector=issue-index-connector \
-            --cpu-boost \
-            --no-cpu-throttling \
-            --startup-probe="httpGet.path=/health,initialDelaySeconds=5,timeoutSeconds=10,periodSeconds=10,failureThreshold=30" \
-            --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest,HF_TOKEN=hf-token:latest" \
-            --set-env-vars="JOB_TYPE=embedding,PUBSUB_PROJECT=${{ env.PROJECT_ID }}"
+            --set-secrets="DATABASE_URL=database-url:latest,HF_TOKEN=hf-token:latest" \
+            --set-env-vars="JOB_TYPE=embedder"
 
       - name: Update collector job
         run: |
@@ -288,7 +283,7 @@ jobs:
             --region=${{ env.REGION }} \
             --vpc-connector=issue-index-connector \
             --set-secrets="DATABASE_URL=database-url:latest,GIT_TOKEN=github-token:latest" \
-            --set-env-vars="JOB_TYPE=collector,PUBSUB_PROJECT=${{ env.PROJECT_ID }}"
+            --set-env-vars="JOB_TYPE=collector"
 
       - name: Update janitor job
         run: |
@@ -336,9 +331,9 @@ jobs:
           echo "- issueindex-frontend" >> $GITHUB_STEP_SUMMARY
           echo "- issueindex-worker-embed" >> $GITHUB_STEP_SUMMARY
           echo "- issueindex-worker-resume" >> $GITHUB_STEP_SUMMARY
-          echo "- issueindex-embedding-worker" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Jobs Updated:" >> $GITHUB_STEP_SUMMARY
           echo "- issueindex-collector" >> $GITHUB_STEP_SUMMARY
+          echo "- issueindex-embedder" >> $GITHUB_STEP_SUMMARY
           echo "- issueindex-janitor" >> $GITHUB_STEP_SUMMARY
           echo "- issueindex-reco-flush" >> $GITHUB_STEP_SUMMARY

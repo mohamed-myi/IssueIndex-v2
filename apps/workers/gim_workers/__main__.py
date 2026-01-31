@@ -2,12 +2,12 @@
 Single entrypoint for IssueIndex worker jobs.
 
 Usage:
-    JOB_TYPE=collector python -m gim_workers    # Job 1: Scout + Gather -> Pub/Sub
-    JOB_TYPE=embedding python -m gim_workers    # Job 2: Pub/Sub -> Nomic MoE -> DB (long-running)
+    JOB_TYPE=collector python -m gim_workers    # Scout + Gather -> staging table
+    JOB_TYPE=embedder python -m gim_workers     # staging table -> Nomic MoE -> DB
     JOB_TYPE=janitor python -m gim_workers      # Prune low-survival issues
     JOB_TYPE=reco_flush python -m gim_workers   # Flush recommendation events to analytics
 
-Health check runs on port 8080 for embedding worker (via asyncio, not threading).
+Embedder job needs 8GB+ memory for the Nomic model.
 """
 
 import asyncio
@@ -82,12 +82,11 @@ async def run_worker_task(
             from gim_workers.jobs.collector_job import run_collector_job
             return await run_collector_job()
         
-        case "embedding":
+        case "embedder":
             if not embedder:
-                raise ValueError("Embedding worker requires embedder instance")
-            from gim_workers.jobs.embedding_worker import run_embedding_worker
-            await run_embedding_worker(embedder)
-            return {"status": "shutdown"}
+                raise ValueError("Embedder job requires embedder instance")
+            from gim_workers.jobs.embedder_job import run_embedder_job
+            return await run_embedder_job(embedder)
         
         case "janitor":
             from gim_workers.jobs.janitor_job import run_janitor_job
@@ -121,20 +120,15 @@ async def main() -> None:
         loop.add_signal_handler(sig, lambda s=sig: shutdown.signal_handler(s))
 
     try:
-        if job_type == "embedding":
+        if job_type == "embedder":
             # Initialize singleton embedder model (shared state)
-            # Large size (~1GB), so do it once here
+            # Large size (~1GB)
             logger.info("Initializing shared NomicMoEEmbedder")
             embedder = NomicMoEEmbedder(max_workers=2)
             embedder.warmup()
             
-            # Embedding worker needs health server running alongside
-            async with asyncio.TaskGroup() as tg:
-                tg.create_task(run_health_server(shutdown, embedder))
-                tg.create_task(run_worker_task(job_type, shutdown, embedder))
-            result = {"status": "shutdown"}
+            result = await run_worker_task(job_type, shutdown, embedder)
         else:
-            # Other jobs don't need health server (short-running Cloud Run Jobs)
             result = await run_worker_task(job_type, shutdown)
 
         logger.info(

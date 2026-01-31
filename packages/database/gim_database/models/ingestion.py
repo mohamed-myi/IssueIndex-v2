@@ -40,7 +40,7 @@ class Issue(SQLModel, table=True):
     node_id: str = Field(primary_key=True)
     repo_id: str = Field(foreign_key="ingestion.repository.node_id", index=True)
 
-    # Q-Score components (0.0 to 1.0); enables AlloyDB Columnar Engine scans
+    # Q-Score components (0.0 to 1.0)
     has_code: bool = Field(default=False)
     has_template_headers: bool = Field(default=False)
     tech_stack_weight: float = Field(default=0.0)
