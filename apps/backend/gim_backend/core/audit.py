@@ -18,6 +18,7 @@ class AuditEvent(str, Enum):
     SESSION_EVICTED = "session_evicted"
     SESSION_DEVIATION = "session_deviation"
     SESSION_KILLED = "session_killed"
+    SESSION_FINGERPRINT_BOUND = "session_fingerprint_bound"
     ACCOUNT_LINKED = "account_linked"
     RATE_LIMITED = "rate_limited"
     SEARCH = "search"

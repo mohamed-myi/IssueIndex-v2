@@ -145,8 +145,12 @@ async def hybrid_search(
     """
     search_id = uuid4()
 
+    # Redact user queries in logs to prevent PII leakage
+    def _redact(q: str, max_len: int = 20) -> str:
+        return q if len(q) <= max_len else q[:max_len] + "..."
+
     logger.info(
-        f"Search request: search_id={search_id}, query={request.query!r}, "
+        f"Search request: search_id={search_id}, query={_redact(request.query)!r}, "
         f"filters={request.filters}, page={request.page}"
     )
 

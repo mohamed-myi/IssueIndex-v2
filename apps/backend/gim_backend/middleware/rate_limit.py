@@ -131,7 +131,10 @@ async def get_rate_limiter() -> RateLimiterBackend:
         logger.info("Rate limiter using Redis backend")
     else:
         _rate_limiter = InMemoryRateLimiter()
-        logger.info("Rate limiter using in-memory backend (development mode)")
+        logger.warning(
+            "SECURITY: Rate limiter using in-memory backend - "
+            "limits not shared across instances"
+        )
 
     return _rate_limiter
 

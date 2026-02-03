@@ -216,6 +216,7 @@ jobs:
           echo "EMBEDDING_MODE: nomic" > api-env.yaml
           echo "CORS_ORIGINS: ${{ secrets.PROD_CORS_ORIGINS }}" >> api-env.yaml
           echo "FRONTEND_BASE_URL: ${{ secrets.PROD_FRONTEND_BASE_URL }}" >> api-env.yaml
+          echo "API_BASE_URL: ${{ secrets.PROD_API_BASE_URL }}" >> api-env.yaml
 
           gcloud run deploy issueindex-api \
             --image=${{ env.REGISTRY }}/api:${{ github.sha }} \

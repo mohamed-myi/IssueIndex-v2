@@ -1,9 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Bookmark, ExternalLink } from "lucide-react";
+import { Bookmark, ExternalLink, Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { Route } from "next";
+
+export type WhyThisItem = {
+  entity: string;
+  score: number;
+};
 
 export type IssueListItemModel = {
   nodeId: string;
@@ -14,6 +19,7 @@ export type IssueListItemModel = {
   qScore: number | null;
   createdAt: string | null;
   bodyPreview?: string | null;
+  whyThis?: WhyThisItem[] | null;
 };
 
 type IssueListItemProps = {
@@ -70,6 +76,24 @@ export function IssueListItem({ issue, href, isSaved, onToggleSaved }: IssueList
                 </div>
               </>
             ) : null}
+            {/* Why This? tooltip - shows matched profile entities */}
+            {issue.whyThis && issue.whyThis.length > 0 && (
+              <>
+                <div className="h-0.5 w-0.5 rounded-full" style={{ backgroundColor: "#8A90B2" }} />
+                <div
+                  className="flex items-center gap-1 cursor-help"
+                  title={`Why this matches your profile: ${issue.whyThis.map((w) => w.entity).join(", ")}`}
+                >
+                  <Sparkles className="h-3 w-3" style={{ color: "#10B981" }} />
+                  <span className="text-[11px] font-medium" style={{ color: "#10B981" }}>
+                    {issue.whyThis
+                      .slice(0, 3)
+                      .map((w) => w.entity)
+                      .join(", ")}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

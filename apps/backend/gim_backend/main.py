@@ -25,6 +25,7 @@ from gim_backend.core.config import get_settings
 from gim_backend.core.errors import ProfileError, profile_exception_handler
 from gim_backend.core.redis import close_redis
 from gim_backend.middleware.auth import session_cookie_sync_middleware
+from gim_backend.middleware.security_headers import SecurityHeadersMiddleware
 from gim_backend.services.embedding_service import close_embedder
 
 logging.basicConfig(
@@ -58,13 +59,19 @@ app = FastAPI(
 
 app.add_exception_handler(ProfileError, profile_exception_handler)
 
+# P1 Security: CORS must be explicitly configured in production
+if settings.environment == "production" and not settings.cors_origins:
+    raise ValueError("CORS_ORIGINS must be configured in production")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins.split(",") if settings.cors_origins else ["*"],
+    allow_origins=settings.cors_origins.split(",") if settings.cors_origins else ["http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.middleware("http")(session_cookie_sync_middleware)
 

@@ -95,8 +95,20 @@ async def require_auth(
     session: Session = Depends(get_current_session),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(lambda: None),
+    ctx: RequestContext = Depends(get_request_context),
 ) -> tuple[User, Session]:
     """Stores new expires_at in request state for response middleware"""
+    # Bind fingerprint if session was created without one (OAuth flow)
+    if session.fingerprint is None and ctx.fingerprint_hash:
+        session.fingerprint = ctx.fingerprint_hash
+        await db.commit()
+        log_audit_event(
+            AuditEvent.SESSION_FINGERPRINT_BOUND,
+            user_id=session.user_id,
+            session_id=session.id,
+            ip_address=ctx.ip_address,
+        )
+
     new_expires = await refresh_session(db, session)
     if new_expires:
         request.state.session_expires_at = new_expires

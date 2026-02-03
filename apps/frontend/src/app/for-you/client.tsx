@@ -48,6 +48,7 @@ export default function ForYouClient() {
         qScore: r.q_score,
         createdAt: r.github_created_at,
         bodyPreview: r.body_preview,
+        whyThis: r.why_this ?? null,
       }));
   }, [feedQuery.data, q, lang, label, repo]);
 
