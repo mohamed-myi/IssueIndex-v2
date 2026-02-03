@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     max_sessions_per_user: int = 5
 
     frontend_base_url: str = "http://localhost:3000"
+    api_base_url: str = "http://localhost:8000"
 
     redis_url: str = ""
 

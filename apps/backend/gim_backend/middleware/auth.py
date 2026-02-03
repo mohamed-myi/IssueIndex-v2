@@ -117,6 +117,13 @@ def require_fingerprint(
     return ctx.fingerprint_hash
 
 
+def optional_fingerprint(
+    ctx: RequestContext = Depends(get_request_context),
+) -> str | None:
+    """Returns fingerprint if present, None otherwise. Used for OAuth callbacks."""
+    return ctx.fingerprint_hash
+
+
 async def session_cookie_sync_middleware(request: Request, call_next) -> Response:
     """Injects updated session cookie if refresh_session updated expires_at"""
     response = await call_next(request)

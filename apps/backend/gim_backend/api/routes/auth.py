@@ -28,7 +28,7 @@ from gim_backend.core.oauth import (
     get_authorization_url,
     get_profile_authorization_url,
 )
-from gim_backend.middleware.auth import get_current_session, get_current_user, require_fingerprint
+from gim_backend.middleware.auth import get_current_session, get_current_user, optional_fingerprint
 from gim_backend.middleware.context import RequestContext, get_request_context
 from gim_backend.middleware.rate_limit import check_auth_rate_limit
 from gim_backend.services.linked_account_service import (
@@ -115,8 +115,8 @@ async def login(
     state_token = secrets.token_urlsafe(32)
     state_value = f"{AuthIntent.LOGIN.value}:{state_token}:{1 if remember_me else 0}"
 
-    # Redirect to frontend callback page to pick up fingerprint
-    redirect_uri = f"{settings.frontend_base_url}/auth/callback/{provider}"
+    # Redirect directly to backend callback (fixes cross-domain cookie issue)
+    redirect_uri = f"{settings.api_base_url}/auth/callback/{provider}"
     auth_url = get_authorization_url(oauth_provider, redirect_uri, state_value)
     response = RedirectResponse(url=auth_url, status_code=302)
 
@@ -136,7 +136,7 @@ async def callback(
     code: str | None = Query(default=None),
     state: str | None = Query(default=None),
     error: str | None = Query(default=None),
-    fingerprint_hash: str = Depends(require_fingerprint),
+    fingerprint_hash: str | None = Depends(optional_fingerprint),
     ctx: RequestContext = Depends(get_request_context),
     db: AsyncSession = Depends(get_db),
     client: httpx.AsyncClient = Depends(get_http_client),
@@ -193,8 +193,8 @@ async def callback(
             status_code=302,
         )
 
-    # Unified Redirect URI - Matches frontend callback URL
-    redirect_uri = f"{settings.frontend_base_url}/auth/callback/{provider}"
+    # Unified Redirect URI - Matches backend callback URL
+    redirect_uri = f"{settings.api_base_url}/auth/callback/{provider}"
 
     # Dispatch Logic
     if intent == AuthIntent.LOGIN.value:
@@ -262,8 +262,8 @@ async def link(
     state_token = secrets.token_urlsafe(32)
     state_value = f"{AuthIntent.LINK.value}:{state_token}"
 
-    # Callback to frontend
-    redirect_uri = f"{settings.frontend_base_url}/auth/callback/{provider}"
+    # Callback to backend
+    redirect_uri = f"{settings.api_base_url}/auth/callback/{provider}"
 
     auth_url = get_authorization_url(oauth_provider, redirect_uri, state_value)
     response = RedirectResponse(url=auth_url, status_code=302)
@@ -471,7 +471,7 @@ async def connect_github(
 
     # Note: connect/github is specific, but it routes through generalized callback
     # The callback will see Intent=CONNECT and Provider=GITHUB
-    redirect_uri = f"{settings.frontend_base_url}/auth/callback/github"
+    redirect_uri = f"{settings.api_base_url}/auth/callback/github"
 
     auth_url = get_profile_authorization_url(OAuthProvider.GITHUB, redirect_uri, state_value)
 

@@ -127,7 +127,7 @@ async def link_provider(
 async def create_session(
     db: AsyncSession,
     user_id: UUID,
-    fingerprint_hash: str,
+    fingerprint_hash: str | None,
     remember_me: bool,
     ip_address: str | None = None,
     user_agent: str | None = None,

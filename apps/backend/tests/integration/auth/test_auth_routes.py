@@ -100,22 +100,6 @@ class TestCallbackEndpoint:
 
 
 
-    def test_callback_rejects_missing_fingerprint(self, client):
-        """Verify 400 when X-Device-Fingerprint header missing."""
-        token = "validtoken1234567890123456789012"
-        state = f"login:{token}:0"
-        
-        # Cookie has just the token
-        client.cookies.set(STATE_COOKIE_NAME, token)
-
-        response = client.get(
-            "/auth/callback/github",
-            # URL params have full state
-            params={"code": "test_code", "state": state}
-        )
-
-        assert response.status_code == 400
-        assert "JavaScript" in response.json().get("detail", "")
 
     def test_callback_rejects_missing_state(self, client):
         """Verify redirect with csrf_failed when state missing."""
@@ -221,6 +205,23 @@ class TestCallbackSuccessFlow:
                 "upsert": mock_upsert,
                 "session": mock_session,
             }
+
+    def test_callback_proceeds_without_fingerprint(self, client, mock_oauth_flow):
+        """Verify callback proceeds without X-Device-Fingerprint header (fingerprint now optional)."""
+        token = "validtoken1234567890123456789012"
+        state = f"login:{token}:0"
+        
+        client.cookies.set(STATE_COOKIE_NAME, token)
+
+        response = client.get(
+            "/auth/callback/github",
+            params={"code": "valid_code", "state": state}
+        )
+
+        # Should redirect to dashboard (not reject with 400 for missing fingerprint)
+        assert response.status_code == 302
+        location = response.headers["location"]
+        assert "dashboard" in location
 
     @patch("gim_backend.api.routes.auth.get_settings")
     def test_callback_success_redirects_to_dashboard(self, mock_settings, client, mock_oauth_flow):
