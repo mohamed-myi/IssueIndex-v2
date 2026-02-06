@@ -1,5 +1,5 @@
 import secrets
-from enum import Enum
+from enum import StrEnum
 from urllib.parse import urlencode
 from uuid import UUID
 
@@ -61,7 +61,7 @@ STATE_COOKIE_NAME = "oauth_state"
 STATE_COOKIE_MAX_AGE = 300
 
 
-class AuthIntent(str, Enum):
+class AuthIntent(StrEnum):
     LOGIN = "login"
     LINK = "link"
     CONNECT = "connect"

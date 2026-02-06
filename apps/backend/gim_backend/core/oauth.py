@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from urllib.parse import urlencode
 
 import httpx
@@ -7,7 +7,7 @@ import httpx
 from .config import get_settings
 
 
-class OAuthProvider(str, Enum):
+class OAuthProvider(StrEnum):
     GITHUB = "github"
     GOOGLE = "google"
 

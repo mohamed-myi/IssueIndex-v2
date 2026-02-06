@@ -2,13 +2,13 @@
 import json
 import logging
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from uuid import UUID
 
 logger = logging.getLogger("audit")
 
 
-class AuditEvent(str, Enum):
+class AuditEvent(StrEnum):
     LOGIN_SUCCESS = "login_success"
     LOGIN_FAILED = "login_failed"
     LOGOUT = "logout"
