@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
-import { MockModeIndicator } from "@/components/common/MockModeIndicator";
 
 export const metadata: Metadata = {
   title: {
@@ -15,7 +14,7 @@ export const metadata: Metadata = {
     siteName: "IssueIndex",
     images: [
       {
-        url: "/og-image.png", // We don't have this image yet but good practice to link
+        url: "/og-image.png", // I don't have this image yet but good practice to link
         width: 1200,
         height: 630,
         alt: "IssueIndex Platform",
@@ -34,7 +33,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <Providers>{children}</Providers>
-        <MockModeIndicator />
       </body>
     </html>
   );
