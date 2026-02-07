@@ -86,7 +86,7 @@ class TestTrendingRoute:
         data = response.json()
         assert "results" in data
         assert "total" in data
-        assert "limit" in data
+        assert "page_size" in data
 
     def test_trending_results_have_expected_fields(self, client):
         """Each result has expected issue fields."""
@@ -108,7 +108,7 @@ class TestTrendingRoute:
         assert "github_created_at" in result
 
     def test_trending_limit_is_10(self, client):
-        """Public endpoint has limit of 10."""
+        """Public endpoint defaults to page_size of 10."""
         with patch(
             "gim_backend.api.routes.public._get_trending_feed",
             return_value=_FeedResponse(count=10),
@@ -116,7 +116,7 @@ class TestTrendingRoute:
             response = client.get("/feed/trending")
 
         data = response.json()
-        assert data["limit"] == 10
+        assert data["page_size"] == 10
 
     def test_trending_returns_empty_for_empty_db(self, client):
         """Returns empty results gracefully."""
