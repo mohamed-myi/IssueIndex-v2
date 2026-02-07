@@ -46,7 +46,12 @@ class Session(SQLModel, table=True):
     user_id: UUID = Field(foreign_key="public.users.id")
     fingerprint: Optional[str] = Field(default=None)
     jti: str = Field(unique=True)
-    expires_at: datetime
+    expires_at: datetime = Field(
+        sa_column=sa.Column(
+            sa.DateTime(timezone=True),
+            nullable=False,
+        )
+    )
     remember_me: bool = Field(default=False)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),

@@ -228,9 +228,8 @@ jobs:
             --cpu=1 \
             --timeout=300s \
             --max-instances=3 \
-            --vpc-egress=all-traffic \
             --allow-unauthenticated \
-            --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest,SESSION_SECRET=session-secret:latest,GITHUB_CLIENT_ID=github-client-id:latest,GITHUB_CLIENT_SECRET=github-client-secret:latest,GOOGLE_CLIENT_ID=google-client-id:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest" \
+            --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest,SESSION_SECRET=session-secret:latest,GITHUB_CLIENT_ID=github-client-id:latest,GITHUB_CLIENT_SECRET=github-client-secret:latest,GOOGLE_CLIENT_ID=google-client-id:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest,REDIS_URL=redis-url:latest" \
             --env-vars-file=api-env.yaml
 
           rm api-env.yaml
