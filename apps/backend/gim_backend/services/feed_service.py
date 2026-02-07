@@ -75,7 +75,7 @@ async def get_feed(
     """
     Returns personalized feed using combined_vector; falls back to trending.
     Applies preferred_languages and min_heat_threshold filters when personalized.
-    
+
     Filter params override profile preferences when provided.
     """
     if page < 1:

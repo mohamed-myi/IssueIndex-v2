@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from gim_backend.api.dependencies import get_db
-from gim_backend.services.feed_service import _get_trending_feed, MAX_PAGE_SIZE
+from gim_backend.services.feed_service import MAX_PAGE_SIZE, _get_trending_feed
 from gim_backend.services.stats_service import get_platform_stats
 
 router = APIRouter()
