@@ -228,7 +228,7 @@ jobs:
             --cpu=1 \
             --timeout=300s \
             --max-instances=3 \
-            --add-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:issueindex-sql \
+            --set-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:issueindex-sql \
             --vpc-connector=issue-index-connector \
             --vpc-egress=private-ranges-only \
             --allow-unauthenticated \
@@ -257,7 +257,7 @@ jobs:
             --cpu=1 \
             --timeout=600s \
             --max-instances=3 \
-            --add-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:issueindex-sql \
+            --set-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:issueindex-sql \
             --vpc-connector=issue-index-connector \
             --vpc-egress=private-ranges-only \
             --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest" \
@@ -272,7 +272,7 @@ jobs:
             --cpu=2 \
             --timeout=600s \
             --max-instances=3 \
-            --add-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:issueindex-sql \
+            --set-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:issueindex-sql \
             --vpc-connector=issue-index-connector \
             --vpc-egress=private-ranges-only \
             --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest,HF_TOKEN=hf-token:latest" \
@@ -286,7 +286,7 @@ jobs:
             --memory=8Gi \
             --cpu=2 \
             --task-timeout=1800s \
-            --add-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:issueindex-sql \
+            --set-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:issueindex-sql \
             --vpc-connector=issue-index-connector \
             --vpc-egress=private-ranges-only \
             --set-secrets="DATABASE_URL=database-url:latest,GIT_TOKEN=github-token:latest,HF_TOKEN=hf-token:latest" \
@@ -297,7 +297,7 @@ jobs:
           gcloud run jobs deploy issueindex-janitor \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --add-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:issueindex-sql \
+            --set-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:issueindex-sql \
             --vpc-connector=issue-index-connector \
             --vpc-egress=private-ranges-only \
             --set-secrets="DATABASE_URL=database-url:latest,FINGERPRINT_SECRET=fingerprint-secret:latest,FERNET_KEY=fernet-key:latest" \
@@ -308,7 +308,7 @@ jobs:
           gcloud run jobs deploy issueindex-reco-flush \
             --image=${{ env.REGISTRY }}/workers:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --add-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:issueindex-sql \
+            --set-cloudsql-instances=${{ env.PROJECT_ID }}:${{ env.REGION }}:issueindex-sql \
             --vpc-connector=issue-index-connector \
             --vpc-egress=private-ranges-only \
             --set-secrets="DATABASE_URL=database-url:latest" \
