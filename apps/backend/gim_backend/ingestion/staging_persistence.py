@@ -213,7 +213,7 @@ class StagingPersistence:
             text("""
                 DELETE FROM staging.pending_issue
                 WHERE status = 'completed'
-                AND created_at < NOW() - INTERVAL ':hours hours'
+                AND created_at < NOW() - make_interval(hours => :hours)
             """),
             {"hours": older_than_hours},
         )

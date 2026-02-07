@@ -59,7 +59,7 @@ CREATE TABLE ingestion.issue (
     title VARCHAR NOT NULL,
     body_text VARCHAR NOT NULL,
     labels TEXT[],
-    embedding vector(768),
+    embedding vector(256),
     github_created_at TIMESTAMPTZ NOT NULL,
     state VARCHAR NOT NULL DEFAULT 'open',
     ingested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -73,8 +73,8 @@ CREATE INDEX ix_issue_search_vector ON ingestion.issue USING GIN (search_vector)
 CREATE INDEX ix_issue_embedding_hnsw ON ingestion.issue USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 """
 
-# Sample 768-dim embedding (normalized random vector for testing)
-SAMPLE_EMBEDDING = [0.01] * 768
+# Sample 256-dim embedding (normalized random vector for testing)
+SAMPLE_EMBEDDING = [0.01] * 256
 
 
 @pytest.fixture(scope="module")
