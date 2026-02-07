@@ -4,11 +4,11 @@ Revision ID: d2e3f4a5b6c7
 Revises: c1e2a3b4d5f6
 Create Date: 2025-12-28 14:53:00.000000
 
+NEUTRALIZED: The fingerprint column is actively used by the auth middleware,
+session service, and risk assessment. Dropping it breaks the application.
+A safety-net migration at HEAD ensures the column exists via ADD COLUMN IF NOT EXISTS.
 """
 from typing import Sequence, Union
-
-from alembic import op
-import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
@@ -19,12 +19,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.drop_column('session', 'fingerprint', schema='public')
+    # Intentionally empty -- see module docstring.
+    pass
 
 
 def downgrade() -> None:
-    op.add_column(
-        'session',
-        sa.Column('fingerprint', sa.VARCHAR(), nullable=False, server_default=''),
-        schema='public'
-    )
+    # Intentionally empty -- see module docstring.
+    pass

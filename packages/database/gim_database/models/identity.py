@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, List, Optional
 from uuid import UUID, uuid4
 
@@ -21,6 +21,7 @@ class User(SQLModel, table=True):
     google_id: Optional[str] = Field(default=None, unique=True)
     email: str = Field(unique=True, index=True)
     created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
         sa_column=sa.Column(
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
@@ -43,11 +44,12 @@ class Session(SQLModel, table=True):
     
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="public.users.id")
-    fingerprint: str = Field(default="")
+    fingerprint: Optional[str] = Field(default=None)
     jti: str = Field(unique=True)
     expires_at: datetime
     remember_me: bool = Field(default=False)
     created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
         sa_column=sa.Column(
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
@@ -55,6 +57,7 @@ class Session(SQLModel, table=True):
         )
     )
     last_active_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
         sa_column=sa.Column(
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
@@ -101,6 +104,7 @@ class LinkedAccount(SQLModel, table=True):
     expires_at: Optional[datetime] = Field(default=None)
     
     created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
         sa_column=sa.Column(
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),

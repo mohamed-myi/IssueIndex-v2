@@ -1,5 +1,5 @@
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, List
 import sqlalchemy as sa
 from sqlmodel import SQLModel, Field, Relationship
@@ -19,6 +19,7 @@ class BookmarkedIssue(SQLModel, table=True):
     
     is_resolved: bool = Field(default=False)
     created_at: datetime = Field(
+        default_factory=lambda: datetime.now(UTC),
         sa_column=sa.Column(
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),

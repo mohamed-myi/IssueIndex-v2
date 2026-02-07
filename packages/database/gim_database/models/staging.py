@@ -18,6 +18,18 @@ class PendingIssue(SQLModel, table=True):
             "status IN ('pending', 'processing', 'completed', 'failed')",
             name='ck_pending_issue_status'
         ),
+        # Partial index for claim_pending_batch(): WHERE status='pending' ORDER BY created_at
+        sa.Index(
+            "ix_pending_issue_claim",
+            "created_at",
+            postgresql_where=sa.text("status = 'pending'"),
+        ),
+        # Partial index for cleanup_completed(): WHERE status='completed' AND created_at < ...
+        sa.Index(
+            "ix_pending_issue_cleanup",
+            "created_at",
+            postgresql_where=sa.text("status = 'completed'"),
+        ),
         {"schema": "staging"},
     )
 

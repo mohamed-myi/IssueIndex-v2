@@ -12,7 +12,7 @@ from alembic import context
 from pgvector.sqlalchemy import Vector
 
 # Import all models so SQLModel.metadata is populated for migrations
-from gim_database.models import identity, ingestion, persistence, profiles  # noqa: F401
+from gim_database.models import identity, ingestion, persistence, profiles, staging, analytics  # noqa: F401
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
 load_dotenv(os.path.join(project_root, '.env.local'))
@@ -35,6 +35,58 @@ if config.config_file_name is not None:
 target_metadata = SQLModel.metadata
 
 
+def _compare_type(context, inspected_column, metadata_column, inspected_type, metadata_type):
+    """Custom type comparator that ignores equivalent PostgreSQL types.
+
+    SQLModel's AutoString and SQLAlchemy's Text/String both map to PostgreSQL TEXT
+    or VARCHAR. Without this, Alembic reports a perpetual cosmetic diff for every
+    string column that the model declares as ``str`` (AutoString) but the DB
+    reflects as TEXT.
+    """
+    from sqlmodel.sql.sqltypes import AutoString  # noqa: F811
+    import sqlalchemy.types as satypes
+
+    # TEXT/VARCHAR/String and AutoString are equivalent in PostgreSQL
+    is_inspected_text = isinstance(inspected_type, (satypes.Text, satypes.String))
+    is_metadata_auto = isinstance(metadata_type, AutoString)
+    if is_inspected_text and is_metadata_auto:
+        return False
+
+    is_inspected_auto = isinstance(inspected_type, AutoString)
+    is_metadata_text = isinstance(metadata_type, (satypes.Text, satypes.String))
+    if is_inspected_auto and is_metadata_text:
+        return False
+
+    # Fall back to default comparison
+    return None
+
+
+def include_object(obj, name, type_, reflected, compare_to):
+    """Exclude database-managed objects from autogenerate comparison.
+
+    search_vector: A GENERATED ALWAYS AS ... STORED tsvector column on ingestion.issue,
+    created via raw SQL migrations. Not in the Python model but actively used by the
+    search service for BM25 full-text ranking. Its GIN index is also excluded.
+
+    public-schema FKs: When include_schemas=True, PostgreSQL reflects public-schema
+    FK references without the 'public.' prefix, but our models declare schema="public"
+    explicitly. This creates a permanent cosmetic diff (e.g. users.id vs public.users.id)
+    that is functionally identical. We suppress these to keep alembic check clean.
+    """
+    # Exclude the search_vector generated column
+    if type_ == "column" and name == "search_vector":
+        return False
+    # Exclude the GIN index on search_vector
+    if type_ == "index" and name == "ix_issue_search_vector":
+        return False
+    if type_ == "foreign_key_constraint":
+        table = getattr(obj, "parent", None)
+        schema = getattr(table, "schema", None) if table is not None else None
+        if schema is None or schema == "public":
+            return False
+    return True
+
+
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
@@ -42,6 +94,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -55,9 +108,10 @@ def do_run_migrations(connection: Connection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        compare_type=True,
+        compare_type=_compare_type,
         render_as_batch=True,
         include_schemas=True,
+        include_object=include_object,
     )
 
     with context.begin_transaction():
