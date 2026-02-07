@@ -135,6 +135,20 @@ async def run_embedder_job(embedder: NomicMoEEmbedder | None = None) -> dict:
         if close_embedder:
             embedder.close()
     
+    # Clean up completed staging rows older than 24 hours
+    staging_cleaned = 0
+    try:
+        async with async_session_factory() as session:
+            staging = StagingPersistence(session)
+            staging_cleaned = await staging.cleanup_completed(older_than_hours=24)
+        if staging_cleaned > 0:
+            logger.info(
+                f"Staging cleanup: removed {staging_cleaned} completed rows",
+                extra={"staging_cleaned": staging_cleaned},
+            )
+    except Exception as e:
+        logger.warning(f"Staging cleanup failed (non-fatal): {e}")
+    
     elapsed = time.monotonic() - job_start
     
     logger.info(
@@ -149,6 +163,7 @@ async def run_embedder_job(embedder: NomicMoEEmbedder | None = None) -> dict:
     return {
         "issues_processed": total_processed,
         "issues_failed": total_failed,
+        "staging_cleaned": staging_cleaned,
         "duration_s": round(elapsed, 1),
     }
 
