@@ -11,6 +11,7 @@ import { LoadMoreButton } from "@/components/common/LoadMoreButton";
 import { IssueListItem, type IssueListItemModel } from "@/components/issues/IssueListItem";
 import { useBookmarks, useDeleteBookmark, usePatchBookmark } from "@/lib/api/hooks";
 import { getApiErrorMessage } from "@/lib/api/client";
+import { useAuthGuard } from "@/lib/hooks/use-auth-guard";
 import { cn } from "@/lib/cn";
 
 type FilterTab = "all" | "unresolved" | "resolved";
@@ -41,6 +42,7 @@ export default function SavedClient() {
   const [page, setPage] = useState(1);
   const [filterTab, setFilterTab] = useState<FilterTab>("all");
 
+  const { isRedirecting } = useAuthGuard();
   const bookmarksQuery = useBookmarks(page, 50);
   const deleteBookmarkMutation = useDeleteBookmark();
   const patchBookmarkMutation = usePatchBookmark();
@@ -82,6 +84,8 @@ export default function SavedClient() {
   function handleLoadMore() {
     setPage((p) => p + 1);
   }
+
+  if (isRedirecting) return null;
 
   return (
     <AppShell activeTab={null}>

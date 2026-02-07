@@ -8,6 +8,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/common/EmptyState";
 import { getApiErrorMessage } from "@/lib/api/client";
 import { addNote, deleteNote, getBookmark, listNotes, updateNote } from "@/lib/api/endpoints";
+import { useAuthGuard } from "@/lib/hooks/use-auth-guard";
 
 export default function SavedDetailPage() {
   const params = useParams<{ bookmarkId: string }>();
@@ -15,6 +16,7 @@ export default function SavedDetailPage() {
 
   const qc = useQueryClient();
   const [newNote, setNewNote] = useState("");
+  const { isRedirecting } = useAuthGuard();
 
   const bookmarkQuery = useQuery({
     queryKey: ["bookmarks", bookmarkId],
@@ -49,6 +51,8 @@ export default function SavedDetailPage() {
       await qc.invalidateQueries({ queryKey: ["bookmarks", bookmarkId, "notes"] });
     },
   });
+
+  if (isRedirecting) return null;
 
   if (bookmarkQuery.isError) {
     return (

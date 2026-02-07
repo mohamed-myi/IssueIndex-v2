@@ -8,7 +8,8 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonList } from "@/components/common/SkeletonList";
 import { IssueListItem, type IssueListItemModel } from "@/components/issues/IssueListItem";
 import { IssueDetailPanel, type IssueDetailModel } from "@/components/issues/IssueDetailPanel";
-import { useMe, useTrending, useBookmarkCheck, useCreateBookmark, useDeleteBookmark } from "@/lib/api/hooks";
+import { useTrending, useBookmarkCheck, useCreateBookmark, useDeleteBookmark } from "@/lib/api/hooks";
+import { useAuthGuard } from "@/lib/hooks/use-auth-guard";
 
 function matchesText(haystack: string, needle: string) {
   return haystack.toLowerCase().includes(needle.toLowerCase());
@@ -25,7 +26,7 @@ export default function DashboardClient() {
 
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
 
-  const meQuery = useMe();
+  const { me: meQuery, isRedirecting } = useAuthGuard();
   const trendingQuery = useTrending(20);
 
   const items = useMemo(() => {
@@ -90,6 +91,8 @@ export default function DashboardClient() {
       bodyPreview: found.bodyPreview,
     } as IssueDetailModel;
   }, [selectedIssueId, items]);
+
+  if (isRedirecting) return null;
 
   return (
     <AppShell activeTab="dashboard">

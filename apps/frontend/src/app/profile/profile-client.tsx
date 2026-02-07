@@ -23,6 +23,7 @@ import {
   skipOnboarding,
   startOnboarding,
 } from "@/lib/api/endpoints";
+import { useAuthGuard } from "@/lib/hooks/use-auth-guard";
 
 type TabId = "overview" | "onboarding" | "preferences" | "accounts" | "danger";
 
@@ -38,6 +39,7 @@ export default function ProfileClient(props: { initialTab: string; connected: st
   const [tab, setTab] = useState<TabId>(() => toTabId(props.initialTab));
   const [toast, setToast] = useState<string | null>(null);
 
+  const { isRedirecting } = useAuthGuard();
   const meQuery = useQuery({ queryKey: ["auth", "me"], queryFn: fetchMe, retry: false });
   const profileQuery = useQuery({ queryKey: ["profile"], queryFn: fetchProfile, retry: false });
   const onboardingQuery = useQuery({ queryKey: ["profile", "onboarding"], queryFn: fetchProfileOnboarding, retry: false });
@@ -133,6 +135,8 @@ export default function ProfileClient(props: { initialTab: string; connected: st
       calculating: p.is_calculating,
     };
   }, [profileQuery.data]);
+
+  if (isRedirecting) return null;
 
   return (
     <AppShell activeTab={null}>

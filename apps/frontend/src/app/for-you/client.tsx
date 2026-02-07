@@ -11,7 +11,8 @@ import { IssueListItem, type IssueListItemModel } from "@/components/issues/Issu
 import { IssueDetailPanel, type IssueDetailModel } from "@/components/issues/IssueDetailPanel";
 import { ProfileCTA } from "@/components/issues/ProfileCTA";
 import { getApiErrorMessage } from "@/lib/api/client";
-import { useFeed, useBookmarkCheck, useCreateBookmark, useDeleteBookmark, useMe } from "@/lib/api/hooks";
+import { useFeed, useBookmarkCheck, useCreateBookmark, useDeleteBookmark } from "@/lib/api/hooks";
+import { useAuthGuard } from "@/lib/hooks/use-auth-guard";
 
 function matchesText(haystack: string, needle: string) {
   return haystack.toLowerCase().includes(needle.toLowerCase());
@@ -29,7 +30,7 @@ export default function ForYouClient() {
   const [page, setPage] = useState(1);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
 
-  const meQuery = useMe();
+  const { me: meQuery, isRedirecting } = useAuthGuard();
   const feedQuery = useFeed(page, 20);
 
   const items = useMemo(() => {
@@ -104,6 +105,8 @@ export default function ForYouClient() {
   function handleLoadMore() {
     setPage((p) => p + 1);
   }
+
+  if (isRedirecting) return null;
 
   return (
     <AppShell activeTab="for-you">
