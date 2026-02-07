@@ -212,7 +212,7 @@ class TestClearSessionCookie:
 
             # Must match creation attributes
             assert attrs["httponly"] is True
-            assert attrs["samesite"].lower() == "lax"
+            assert attrs["samesite"].lower() == "none"
             assert attrs["secure"] is True
             assert attrs["path"] == "/"
             get_settings.cache_clear()
