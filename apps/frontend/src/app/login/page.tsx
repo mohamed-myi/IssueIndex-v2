@@ -1,17 +1,60 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { authInit } from "@/lib/api/endpoints";
 import { getApiErrorMessage } from "@/lib/api/client";
 import { getApiBaseUrl } from "@/lib/api/base-url";
 import type { OAuthProvider } from "@/lib/api/types";
 
+// Map backend error codes to user-friendly messages.
+function getOAuthErrorMessage(code: string, provider: string | null): string {
+  const providerName = provider
+    ? provider.charAt(0).toUpperCase() + provider.slice(1)
+    : "another provider";
+
+  switch (code) {
+    case "existing_account":
+      return `An account with this email already exists via ${providerName}. Please sign in with ${providerName} instead, or use a different account.`;
+    case "consent_denied":
+      return "Login was cancelled. You can try again whenever you're ready.";
+    case "code_expired":
+      return "The login session expired. Please try again.";
+    case "email_not_verified":
+      return `Your ${providerName} email is not verified. Please verify it and try again.`;
+    case "no_email":
+      return `We couldn't retrieve an email from ${providerName}. Make sure your email is public or try a different provider.`;
+    case "csrf_failed":
+      return "Login could not be verified (security check failed). Please try again.";
+    case "invalid_provider":
+      return "Invalid login provider. Please try again.";
+    case "missing_code":
+      return "Login did not complete. Please try again.";
+    default:
+      return "Something went wrong during login. Please try again.";
+  }
+}
+
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState<OAuthProvider | null>(null);
+
+  // Handle backend OAuth error redirects.
+  useEffect(() => {
+    const errorCode = searchParams.get("error");
+    if (errorCode) {
+      const provider = searchParams.get("provider");
+      setError(getOAuthErrorMessage(errorCode, provider));
+      // Remove error from URL.
+      router.replace("/login");
+    }
+  }, [searchParams, router]);
 
   async function startLogin(provider: OAuthProvider) {
     setError(null);
@@ -32,7 +75,7 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-6 sm:px-8 lg:px-12">
-      {/* Back to home - subtle, top-left */}
+
       <Link
         href="/"
         className="absolute top-8 left-8 inline-flex items-center gap-1.5 text-xs opacity-60 transition-opacity hover:opacity-100"
@@ -42,9 +85,9 @@ export default function LoginPage() {
         Back to home
       </Link>
 
-      {/* Main content - centered */}
+
       <div className="w-full max-w-xl flex flex-col items-center text-center">
-        {/* Logo */}
+
         <div className="mb-10 sm:mb-12">
           <h1 className="text-2xl sm:text-3xl lg:text-4xl tracking-tight">
             <span className="font-extrabold text-foreground">ISSUE</span>
@@ -52,7 +95,7 @@ export default function LoginPage() {
           </h1>
         </div>
 
-        {/* OAuth buttons */}
+
         <div className="w-full max-w-sm space-y-3 mb-8">
           <button
             type="button"
@@ -104,7 +147,7 @@ export default function LoginPage() {
           </button>
         </div>
 
-        {/* Remember me */}
+
         <label className="flex items-center gap-2.5 cursor-pointer mb-4">
           <div className="relative">
             <input
@@ -134,7 +177,7 @@ export default function LoginPage() {
           </span>
         </label>
 
-        {/* Error message */}
+
         {error && (
           <div
             className="w-full max-w-sm rounded-xl px-4 py-3 text-sm"
@@ -149,7 +192,7 @@ export default function LoginPage() {
         )}
       </div>
 
-      {/* Footer */}
+
       <div className="absolute bottom-8 left-0 right-0">
         <p className="text-center text-xs" style={{ color: "rgba(138, 144, 178, 0.6)" }}>
           By signing in, you agree to our terms of service

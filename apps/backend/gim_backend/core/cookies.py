@@ -12,15 +12,19 @@ def create_session_cookie(
     session_id: str,
     expires_at: datetime | None = None,
 ) -> None:
-    """If expires_at is None; creates session cookie that expires when browser closes"""
+    """Creates session cookie. If expires_at is None, expires on browser close."""
     settings = get_settings()
     is_production = settings.environment == "production"
+
+    # Production uses cross-origin requests, requiring SameSite=None and Secure=True.
+    # Local dev uses localhost, so Lax is sufficient.
+    samesite_policy = "none" if is_production else "lax"
 
     cookie_params = {
         "key": SESSION_COOKIE_NAME,
         "value": session_id,
         "httponly": True,
-        "samesite": "lax",
+        "samesite": samesite_policy,
         "secure": is_production,
         "path": "/",
     }
@@ -34,11 +38,12 @@ def create_session_cookie(
 def clear_session_cookie(response: Response) -> None:
     settings = get_settings()
     is_production = settings.environment == "production"
+    samesite_policy = "none" if is_production else "lax"
 
     response.delete_cookie(
         key=SESSION_COOKIE_NAME,
         httponly=True,
-        samesite="lax",
+        samesite=samesite_policy,
         secure=is_production,
         path="/",
     )
