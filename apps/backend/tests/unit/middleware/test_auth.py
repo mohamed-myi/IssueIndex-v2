@@ -328,3 +328,39 @@ class TestCookieSyncMiddleware:
 
             mock_cookie.assert_not_called()
 
+
+class TestDependencyWiring:
+    """
+    Regression tests for FastAPI dependency injection wiring.
+
+    Validates that auth functions use Depends(get_db) rather than placeholder
+    lambdas. This class of bug is invisible to unit tests that call functions
+    directly and to integration tests that override require_auth entirely.
+    """
+
+    @pytest.mark.parametrize("func_name", [
+        "get_current_session",
+        "get_current_user",
+        "require_auth",
+    ])
+    def test_db_parameter_uses_get_db(self, func_name):
+        """Each auth function must use Depends(get_db) for its db parameter."""
+        import inspect
+
+        from gim_backend.api.dependencies import get_db
+        from gim_backend.middleware import auth
+
+        func = getattr(auth, func_name)
+        sig = inspect.signature(func)
+        db_param = sig.parameters.get("db")
+
+        assert db_param is not None, f"{func_name} is missing a db parameter"
+
+        depends_obj = db_param.default
+        assert hasattr(depends_obj, "dependency"), (
+            f"{func_name}.db default is not a Depends(); got {type(depends_obj)}"
+        )
+        assert depends_obj.dependency is get_db, (
+            f"{func_name}.db must use Depends(get_db), not a placeholder lambda"
+        )
+

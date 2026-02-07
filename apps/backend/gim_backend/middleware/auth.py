@@ -6,6 +6,7 @@ from gim_database.models.identity import Session, User
 from sqlmodel.ext.asyncio.session import AsyncSession
 from starlette.responses import Response
 
+from gim_backend.api.dependencies import get_db
 from gim_backend.core.audit import AuditEvent, log_audit_event
 from gim_backend.core.cookies import SESSION_COOKIE_NAME, create_session_cookie
 from gim_backend.middleware.context import RequestContext, get_request_context
@@ -39,7 +40,7 @@ async def _log_and_update_deviation(
 async def get_current_session(
     request: Request,
     ctx: RequestContext = Depends(get_request_context),
-    db: AsyncSession = Depends(lambda: None),
+    db: AsyncSession = Depends(get_db),
 ) -> Session:
     """Validates session and performs risk assessment; rejects high-risk requests"""
     session_id_str = request.cookies.get(SESSION_COOKIE_NAME)
@@ -82,7 +83,7 @@ async def get_current_session(
 
 async def get_current_user(
     session: Session = Depends(get_current_session),
-    db: AsyncSession = Depends(lambda: None),
+    db: AsyncSession = Depends(get_db),
 ) -> User:
     user = await db.get(User, session.user_id)
     if user is None:
@@ -94,7 +95,7 @@ async def require_auth(
     request: Request,
     session: Session = Depends(get_current_session),
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(lambda: None),
+    db: AsyncSession = Depends(get_db),
     ctx: RequestContext = Depends(get_request_context),
 ) -> tuple[User, Session]:
     """Stores new expires_at in request state for response middleware"""
