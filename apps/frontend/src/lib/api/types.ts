@@ -49,7 +49,9 @@ export type FeedResponse = {
 export type TrendingResponse = {
   results: Array<Omit<FeedIssue, "similarity_score" | "why_this">>;
   total: number;
-  limit: number;
+  page: number;
+  page_size: number;
+  has_more: boolean;
 };
 
 export type SearchRequest = {

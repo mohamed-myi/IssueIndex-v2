@@ -6,10 +6,11 @@ export const dynamic = "force-dynamic";
 export default function ProfilePage({
   searchParams,
 }: {
-  searchParams?: { tab?: string; connected?: string };
+  searchParams?: { tab?: string; connected?: string; error?: string };
 }) {
   const tab = searchParams?.tab ?? "overview";
   const connected = searchParams?.connected ?? null;
+  const error = searchParams?.error ?? null;
 
   return (
     <Suspense
@@ -21,8 +22,7 @@ export default function ProfilePage({
         </main>
       }
     >
-      <ProfileClient initialTab={tab} connected={connected} />
+      <ProfileClient initialTab={tab} connected={connected} initialError={error} />
     </Suspense>
   );
 }
-

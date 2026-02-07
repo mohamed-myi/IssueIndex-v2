@@ -69,10 +69,12 @@ class AuthIntent(StrEnum):
 
 def _get_state_cookie_params(settings) -> dict:
     is_production = settings.environment == "production"
+    # Production uses cross-origin requests, requiring SameSite=None + Secure.
+    samesite_policy = "none" if is_production else "lax"
     return {
         "httponly": True,
         "secure": is_production,
-        "samesite": "lax",
+        "samesite": samesite_policy,
         "max_age": STATE_COOKIE_MAX_AGE,
         "path": "/",
     }
@@ -600,6 +602,66 @@ async def get_linked_accounts_list(
             for account in accounts
         ]
     }
+
+
+@router.delete("/link/{provider}")
+async def unlink_provider(
+    provider: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Unlinks an OAuth provider from the user's account.
+
+    Cannot unlink the provider the user originally signed up with
+    (created_via).
+    """
+    try:
+        oauth_provider = OAuthProvider(provider)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid provider")
+
+    ctx = await get_request_context(request)
+
+    try:
+        session = await get_current_session(request, ctx, db)
+        user = await get_current_user(session, db)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Prevent unlinking the primary login method
+    if user.created_via == provider:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot unlink your primary login method ({provider}). "
+                   "You must always have at least one way to sign in.",
+        )
+
+    # Clear provider-specific fields on the user record
+    if oauth_provider == OAuthProvider.GITHUB:
+        if user.github_node_id is None and user.github_username is None:
+            raise HTTPException(status_code=404, detail="GitHub is not linked to this account")
+        user.github_node_id = None
+        user.github_username = None
+    elif oauth_provider == OAuthProvider.GOOGLE:
+        if user.google_id is None:
+            raise HTTPException(status_code=404, detail="Google is not linked to this account")
+        user.google_id = None
+
+    # Mark linked_account record as revoked (if one exists)
+    await mark_revoked(db, user.id, provider)
+
+    await db.commit()
+
+    log_audit_event(
+        AuditEvent.ACCOUNT_LINKED,
+        user_id=user.id,
+        session_id=session.id,
+        ip_address=ctx.ip_address,
+        provider=provider,
+        metadata={"action": "unlinked"},
+    )
+
+    return {"unlinked": True, "provider": provider}
 
 
 @router.get("/sessions/count")

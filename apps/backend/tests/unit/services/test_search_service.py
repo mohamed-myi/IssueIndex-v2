@@ -338,7 +338,7 @@ class TestSearchResultItem:
         item = SearchResultItem(
             node_id="MDU6SXNzdWUx",
             title="Test Issue",
-            body_text="Test body content",
+            body_preview="Test body content",
             labels=["bug", "help wanted"],
             q_score=0.75,
             repo_name="facebook/react",
@@ -379,7 +379,7 @@ class TestSearchResponse:
         item1 = SearchResultItem(
             node_id="1",
             title="Issue 1",
-            body_text="Body 1",
+            body_preview="Body 1",
             labels=[],
             q_score=0.8,
             repo_name="repo1",
@@ -390,7 +390,7 @@ class TestSearchResponse:
         item2 = SearchResultItem(
             node_id="2",
             title="Issue 2",
-            body_text="Body 2",
+            body_preview="Body 2",
             labels=["bug"],
             q_score=0.7,
             repo_name="repo2",

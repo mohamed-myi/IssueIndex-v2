@@ -6,10 +6,10 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonList } from "@/components/common/SkeletonList";
-import { LoadMoreButton } from "@/components/common/LoadMoreButton";
 import { IssueListItem, type IssueListItemModel } from "@/components/issues/IssueListItem";
 import { IssueDetailPanel, type IssueDetailModel } from "@/components/issues/IssueDetailPanel";
 import { useSearch, useTrending, useBookmarkCheck, useCreateBookmark, useDeleteBookmark, useMe } from "@/lib/api/hooks";
+import { useInfiniteScroll } from "@/lib/hooks/use-infinite-scroll";
 
 export default function BrowseClient() {
   const sp = useSearchParams();
@@ -20,56 +20,45 @@ export default function BrowseClient() {
   const label = sp.get("label") ?? null;
   const repo = sp.get("repo") ?? null;
 
-  const [page, setPage] = useState(1);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
 
   const meQuery = useMe();
 
-  const searchQuery = useSearch({
-    query: q,
-    filters: {
+  const filters = useMemo(
+    () => ({
       languages: lang ? [lang] : undefined,
       labels: label ? [label] : undefined,
       repos: repo ? [repo] : undefined,
-    },
-    page,
+    }),
+    [lang, label, repo]
+  );
+
+  const searchQuery = useSearch({
+    query: q,
+    filters,
     pageSize: 20,
     enabled: q.trim().length > 0,
   });
 
-  const trendingQuery = useTrending(20);
+  const trendingQuery = useTrending(20, filters);
+
+  const activeQuery = q.trim().length > 0 ? searchQuery : trendingQuery;
 
   const items = useMemo(() => {
-    if (q.trim().length > 0) {
-      const results = searchQuery.data?.results ?? [];
-      return results.map<IssueListItemModel>((r) => ({
-        nodeId: r.node_id,
-        title: r.title,
-        repoName: r.repo_name,
-        primaryLanguage: r.primary_language,
-        labels: r.labels,
-        qScore: r.q_score,
-        createdAt: r.github_created_at,
-        bodyPreview: r.body_preview,
-      }));
-    }
-
-    const results = trendingQuery.data?.results ?? [];
-    return results
-      .filter((r) => (lang ? r.primary_language === lang : true))
-      .filter((r) => (repo ? r.repo_name === repo : true))
-      .filter((r) => (label ? r.labels.includes(label) : true))
-      .map<IssueListItemModel>((r) => ({
-        nodeId: r.node_id,
-        title: r.title,
-        repoName: r.repo_name,
-        primaryLanguage: r.primary_language,
-        labels: r.labels,
-        qScore: r.q_score,
-        createdAt: r.github_created_at,
-        bodyPreview: r.body_preview,
-      }));
-  }, [q, searchQuery.data, trendingQuery.data, lang, label, repo]);
+    const pages = activeQuery.data?.pages ?? [];
+    const allResults = pages.flatMap((page) => page.results);
+    
+    return allResults.map<IssueListItemModel>((r) => ({
+      nodeId: r.node_id,
+      title: r.title,
+      repoName: r.repo_name,
+      primaryLanguage: r.primary_language,
+      labels: r.labels,
+      qScore: r.q_score,
+      createdAt: r.github_created_at,
+      bodyPreview: r.body_preview,
+    }));
+  }, [activeQuery.data]);
 
   // Bookmark handling
   const issueNodeIds = useMemo(() => items.map((i) => i.nodeId), [items]);
@@ -115,14 +104,14 @@ export default function BrowseClient() {
     } as IssueDetailModel;
   }, [selectedIssueId, items]);
 
-  const isLoading = q.trim().length > 0 ? searchQuery.isLoading : trendingQuery.isLoading;
-  const hasMore = q.trim().length > 0 ? (searchQuery.data?.has_more ?? false) : false;
-  const total = q.trim().length > 0 ? (searchQuery.data?.total ?? 0) : items.length;
-  const remaining = Math.max(0, total - items.length);
+  const sentinelRef = useInfiniteScroll({
+    hasNextPage: activeQuery.hasNextPage,
+    isFetchingNextPage: activeQuery.isFetchingNextPage,
+    fetchNextPage: activeQuery.fetchNextPage,
+  });
 
-  function handleLoadMore() {
-    setPage((p) => p + 1);
-  }
+  const isLoading = activeQuery.isLoading;
+  const total = activeQuery.data?.pages[0]?.total ?? 0;
 
   return (
     <AppShell activeTab="browse">
@@ -140,7 +129,7 @@ export default function BrowseClient() {
                 </h1>
                 <p className="mt-1 text-sm" style={{ color: "rgba(138, 144, 178, 1)" }}>
                   {q.trim().length > 0
-                    ? `${searchQuery.data?.total ?? 0} results for "${q}"`
+                    ? `${total} results for "${q}"`
                     : "Search issues or explore trending ones"}
                 </p>
               </div>
@@ -187,12 +176,11 @@ export default function BrowseClient() {
                 ))}
               </div>
 
-              {hasMore && (
-                <LoadMoreButton
-                  onClick={handleLoadMore}
-                  isLoading={searchQuery.isFetching && page > 1}
-                  remaining={remaining}
-                />
+              {/* Infinite scroll */}
+              {activeQuery.hasNextPage && (
+                <div ref={sentinelRef} className="py-8 flex justify-center">
+                  <div className="animate-spin h-6 w-6 border-2 border-purple-500 border-t-transparent rounded-full" />
+                </div>
               )}
             </>
           )}

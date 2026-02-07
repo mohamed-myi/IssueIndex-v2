@@ -68,10 +68,15 @@ async def get_feed(
     user_id: UUID,
     page: int = 1,
     page_size: int = DEFAULT_PAGE_SIZE,
+    languages: list[str] | None = None,
+    labels: list[str] | None = None,
+    repos: list[str] | None = None,
 ) -> FeedPage:
     """
     Returns personalized feed using combined_vector; falls back to trending.
     Applies preferred_languages and min_heat_threshold filters when personalized.
+    
+    Filter params override profile preferences when provided.
     """
     if page < 1:
         page = 1
@@ -87,16 +92,21 @@ async def get_feed(
             db=db,
             profile=profile,
             combined_vector=profile.combined_vector,
-            preferred_languages=profile.preferred_languages,
+            preferred_languages=languages or profile.preferred_languages,
             min_heat_threshold=profile.min_heat_threshold,
             page=page,
             page_size=page_size,
+            labels=labels,
+            repos=repos,
         )
 
     return await _get_trending_feed(
         db=db,
         page=page,
         page_size=page_size,
+        languages=languages,
+        labels=labels,
+        repos=repos,
     )
 
 
@@ -108,6 +118,8 @@ async def _get_personalized_feed(
     min_heat_threshold: float,
     page: int,
     page_size: int,
+    labels: list[str] | None = None,
+    repos: list[str] | None = None,
 ) -> FeedPage:
     """Vector similarity search against issue embeddings with preference filters."""
     settings = get_settings()
@@ -130,6 +142,14 @@ async def _get_personalized_feed(
     if preferred_languages:
         filter_conditions.append("r.primary_language = ANY(:langs)")
         params["langs"] = preferred_languages
+
+    if labels:
+        filter_conditions.append("i.labels && :labels")
+        params["labels"] = labels
+
+    if repos:
+        filter_conditions.append("r.full_name = ANY(:repos)")
+        params["repos"] = repos
 
     where_clause = " AND ".join(filter_conditions)
 
@@ -253,23 +273,42 @@ async def _get_trending_feed(
     db: AsyncSession,
     page: int,
     page_size: int,
+    languages: list[str] | None = None,
+    labels: list[str] | None = None,
+    repos: list[str] | None = None,
 ) -> FeedPage:
-    """Trending issues: high q_score, recent, open."""
+    """Trending issues: high q_score, recent, open, with optional filters."""
     offset = (page - 1) * page_size
     min_q_score = 0.6
 
-    params = {
+    # Build filter conditions
+    filter_conditions = ["i.q_score >= :min_q_score", "i.state = 'open'"]
+    params: dict = {
         "min_q_score": min_q_score,
         "limit": CANDIDATE_LIMIT,
         "offset": offset,
         "page_size": page_size,
     }
 
-    count_sql = """
+    if languages:
+        filter_conditions.append("r.primary_language = ANY(:langs)")
+        params["langs"] = languages
+
+    if labels:
+        filter_conditions.append("i.labels && :labels")
+        params["labels"] = labels
+
+    if repos:
+        filter_conditions.append("r.full_name = ANY(:repos)")
+        params["repos"] = repos
+
+    where_clause = " AND ".join(filter_conditions)
+
+    count_sql = f"""
     SELECT COUNT(*) as total
     FROM ingestion.issue i
     JOIN ingestion.repository r ON i.repo_id = r.node_id
-    WHERE i.q_score >= :min_q_score AND i.state = 'open'
+    WHERE {where_clause}
     """
 
     count_result = await db.execute(text(count_sql), params)
@@ -286,7 +325,7 @@ async def _get_trending_feed(
             profile_cta=TRENDING_CTA,
         )
 
-    sql = """
+    sql = f"""
     SELECT
         i.node_id,
         i.title,
@@ -299,7 +338,7 @@ async def _get_trending_feed(
         r.topics AS repo_topics
     FROM ingestion.issue i
     JOIN ingestion.repository r ON i.repo_id = r.node_id
-    WHERE i.q_score >= :min_q_score AND i.state = 'open'
+    WHERE {where_clause}
     ORDER BY i.q_score DESC, i.github_created_at DESC
     LIMIT :page_size
     OFFSET :offset
@@ -328,7 +367,8 @@ async def _get_trending_feed(
     has_more = (offset + len(results)) < total
 
     logger.info(
-        f"Trending feed: no combined_vector, returned {len(results)} of {total}"
+        f"Trending feed: returned {len(results)} of {total}, "
+        f"filters: langs={bool(languages)}, labels={bool(labels)}, repos={bool(repos)}"
     )
 
     return FeedPage(

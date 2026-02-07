@@ -44,9 +44,29 @@ export const handlers = [
   // Feed & Trending
   http.get(`${BASE_URL}/feed/trending`, ({ request }) => {
     const url = new URL(request.url);
-    const limit = Number(url.searchParams.get("limit")) || 10;
+    const page = Number(url.searchParams.get("page")) || 1;
+    const pageSize = Number(url.searchParams.get("page_size")) || 10;
+    const languages = url.searchParams.getAll("languages");
+    const labels = url.searchParams.getAll("labels");
+    const repos = url.searchParams.getAll("repos");
 
-    const results = mockIssues.slice(0, limit).map((issue) => ({
+    // Apply filters
+    let filtered = mockIssues;
+    if (languages.length > 0) {
+      filtered = filtered.filter((issue) => languages.includes(issue.primary_language));
+    }
+    if (labels.length > 0) {
+      filtered = filtered.filter((issue) => 
+        issue.labels.some((label) => labels.includes(label))
+      );
+    }
+    if (repos.length > 0) {
+      filtered = filtered.filter((issue) => repos.includes(issue.repo_name));
+    }
+
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    const results = filtered.slice(start, end).map((issue) => ({
       node_id: issue.node_id,
       title: issue.title,
       body_preview: issue.body_preview,
@@ -59,8 +79,10 @@ export const handlers = [
 
     return HttpResponse.json({
       results,
-      total: mockIssues.length,
-      limit,
+      total: filtered.length,
+      page,
+      page_size: pageSize,
+      has_more: end < filtered.length,
     });
   }),
 
@@ -68,10 +90,27 @@ export const handlers = [
     const url = new URL(request.url);
     const page = Number(url.searchParams.get("page")) || 1;
     const pageSize = Number(url.searchParams.get("page_size")) || 20;
+    const languages = url.searchParams.getAll("languages");
+    const labels = url.searchParams.getAll("labels");
+    const repos = url.searchParams.getAll("repos");
+
+    // Apply filters
+    let filtered = mockIssues;
+    if (languages.length > 0) {
+      filtered = filtered.filter((issue) => languages.includes(issue.primary_language));
+    }
+    if (labels.length > 0) {
+      filtered = filtered.filter((issue) => 
+        issue.labels.some((label) => labels.includes(label))
+      );
+    }
+    if (repos.length > 0) {
+      filtered = filtered.filter((issue) => repos.includes(issue.repo_name));
+    }
 
     const start = (page - 1) * pageSize;
     const end = start + pageSize;
-    const results = mockIssues.slice(start, end).map((issue) => ({
+    const results = filtered.slice(start, end).map((issue) => ({
       node_id: issue.node_id,
       title: issue.title,
       body_preview: issue.body_preview,
@@ -89,12 +128,13 @@ export const handlers = [
 
     return HttpResponse.json({
       results,
-      total: mockIssues.length,
+      total: filtered.length,
       page,
       page_size: pageSize,
-      has_more: end < mockIssues.length,
+      has_more: end < filtered.length,
       is_personalized: true,
       profile_cta: null,
+      recommendation_batch_id: `mock-batch-${Date.now()}`,
     });
   }),
 
@@ -276,9 +316,7 @@ export const handlers = [
     });
   }),
 
-  // ==========================================================================
   // Bookmarks
-  // ==========================================================================
   http.get(`${BASE_URL}/bookmarks`, ({ request }) => {
     const url = new URL(request.url);
     const page = Number(url.searchParams.get("page")) || 1;
@@ -352,9 +390,7 @@ export const handlers = [
     return HttpResponse.json({ bookmarks });
   }),
 
-  // ==========================================================================
   // Notes
-  // ==========================================================================
   http.get(`${BASE_URL}/bookmarks/:bookmarkId/notes`, ({ params }) => {
     const bookmarkId = params.bookmarkId as string;
     const notes = getNotes(bookmarkId);

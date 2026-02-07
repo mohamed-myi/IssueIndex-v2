@@ -31,13 +31,31 @@ export async function fetchPublicStats() {
   return data;
 }
 
-export async function fetchTrending(limit = 10) {
-  const { data } = await api.get<TrendingResponse>("/feed/trending", { params: { limit } });
+export async function fetchTrending(
+  page = 1,
+  pageSize = 20,
+  filters?: { languages?: string[]; labels?: string[]; repos?: string[] }
+) {
+  const params: Record<string, any> = { page, page_size: pageSize };
+  if (filters?.languages?.length) params.languages = filters.languages;
+  if (filters?.labels?.length) params.labels = filters.labels;
+  if (filters?.repos?.length) params.repos = filters.repos;
+  
+  const { data } = await api.get<TrendingResponse>("/feed/trending", { params });
   return data;
 }
 
-export async function fetchFeed(page = 1, pageSize = 20) {
-  const { data } = await api.get<FeedResponse>("/feed", { params: { page, page_size: pageSize } });
+export async function fetchFeed(
+  page = 1,
+  pageSize = 20,
+  filters?: { languages?: string[]; labels?: string[]; repos?: string[] }
+) {
+  const params: Record<string, any> = { page, page_size: pageSize };
+  if (filters?.languages?.length) params.languages = filters.languages;
+  if (filters?.labels?.length) params.labels = filters.labels;
+  if (filters?.repos?.length) params.repos = filters.repos;
+  
+  const { data } = await api.get<FeedResponse>("/feed", { params });
   return data;
 }
 
@@ -211,5 +229,12 @@ export async function logoutAll() {
 
 export async function deleteAccount() {
   await api.delete("/auth/account");
+}
+
+export async function unlinkAccount(provider: string) {
+  const { data } = await api.delete<{ unlinked: boolean; provider: string }>(
+    `/auth/link/${provider}`,
+  );
+  return data;
 }
 

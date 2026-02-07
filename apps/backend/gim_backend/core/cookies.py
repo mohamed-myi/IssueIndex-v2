@@ -56,12 +56,14 @@ LOGIN_FLOW_COOKIE_MAX_AGE = 300
 def create_login_flow_cookie(response, flow_id: str) -> None:
     settings = get_settings()
     is_production = settings.environment == "production"
+    # Production uses cross-origin requests, requiring SameSite=None + Secure.
+    samesite_policy = "none" if is_production else "lax"
 
     response.set_cookie(
         key=LOGIN_FLOW_COOKIE_NAME,
         value=flow_id,
         httponly=True,
-        samesite="lax",
+        samesite=samesite_policy,
         secure=is_production,
         path="/",
         max_age=LOGIN_FLOW_COOKIE_MAX_AGE,
@@ -71,11 +73,12 @@ def create_login_flow_cookie(response, flow_id: str) -> None:
 def clear_login_flow_cookie(response) -> None:
     settings = get_settings()
     is_production = settings.environment == "production"
+    samesite_policy = "none" if is_production else "lax"
 
     response.delete_cookie(
         key=LOGIN_FLOW_COOKIE_NAME,
         httponly=True,
-        samesite="lax",
+        samesite=samesite_policy,
         secure=is_production,
         path="/",
     )

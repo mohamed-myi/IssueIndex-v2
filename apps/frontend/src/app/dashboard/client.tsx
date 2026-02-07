@@ -8,12 +8,9 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonList } from "@/components/common/SkeletonList";
 import { IssueListItem, type IssueListItemModel } from "@/components/issues/IssueListItem";
 import { IssueDetailPanel, type IssueDetailModel } from "@/components/issues/IssueDetailPanel";
-import { useTrending, useBookmarkCheck, useCreateBookmark, useDeleteBookmark } from "@/lib/api/hooks";
+import { useSearch, useTrending, useBookmarkCheck, useCreateBookmark, useDeleteBookmark } from "@/lib/api/hooks";
 import { useAuthGuard } from "@/lib/hooks/use-auth-guard";
-
-function matchesText(haystack: string, needle: string) {
-  return haystack.toLowerCase().includes(needle.toLowerCase());
-}
+import { useInfiniteScroll } from "@/lib/hooks/use-infinite-scroll";
 
 export default function DashboardClient() {
   const sp = useSearchParams();
@@ -27,26 +24,42 @@ export default function DashboardClient() {
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
 
   const { me: meQuery, isRedirecting } = useAuthGuard();
-  const trendingQuery = useTrending(20);
+
+  const filters = useMemo(
+    () => ({
+      languages: lang ? [lang] : undefined,
+      labels: label ? [label] : undefined,
+      repos: repo ? [repo] : undefined,
+    }),
+    [lang, label, repo]
+  );
+
+  const searchQuery = useSearch({
+    query: q,
+    filters,
+    pageSize: 20,
+    enabled: q.trim().length > 0,
+  });
+
+  const trendingQuery = useTrending(20, filters);
+
+  const activeQuery = q.trim().length > 0 ? searchQuery : trendingQuery;
 
   const items = useMemo(() => {
-    const results = trendingQuery.data?.results ?? [];
-    return results
-      .filter((r) => (lang ? r.primary_language === lang : true))
-      .filter((r) => (repo ? r.repo_name === repo : true))
-      .filter((r) => (label ? r.labels.includes(label) : true))
-      .filter((r) => (q ? matchesText(r.title, q) || matchesText(r.repo_name, q) : true))
-      .map<IssueListItemModel>((r) => ({
-        nodeId: r.node_id,
-        title: r.title,
-        repoName: r.repo_name,
-        primaryLanguage: r.primary_language,
-        labels: r.labels,
-        qScore: r.q_score,
-        createdAt: r.github_created_at,
-        bodyPreview: r.body_preview,
-      }));
-  }, [trendingQuery.data, q, lang, label, repo]);
+    const pages = activeQuery.data?.pages ?? [];
+    const allResults = pages.flatMap((page) => page.results);
+    
+    return allResults.map<IssueListItemModel>((r) => ({
+      nodeId: r.node_id,
+      title: r.title,
+      repoName: r.repo_name,
+      primaryLanguage: r.primary_language,
+      labels: r.labels,
+      qScore: r.q_score,
+      createdAt: r.github_created_at,
+      bodyPreview: r.body_preview,
+    }));
+  }, [activeQuery.data]);
 
   // Bookmark handling
   const issueNodeIds = useMemo(() => items.map((i) => i.nodeId), [items]);
@@ -92,7 +105,15 @@ export default function DashboardClient() {
     } as IssueDetailModel;
   }, [selectedIssueId, items]);
 
+  const sentinelRef = useInfiniteScroll({
+    hasNextPage: activeQuery.hasNextPage,
+    isFetchingNextPage: activeQuery.isFetchingNextPage,
+    fetchNextPage: activeQuery.fetchNextPage,
+  });
+
   if (isRedirecting) return null;
+
+  const total = activeQuery.data?.pages[0]?.total ?? 0;
 
   return (
     <AppShell activeTab="dashboard">
@@ -106,10 +127,12 @@ export default function DashboardClient() {
                   className="text-xl font-semibold tracking-tight"
                   style={{ color: "rgba(230, 233, 242, 0.95)" }}
                 >
-                  Trending this week
+                  {q.trim().length > 0 ? "Search Results" : "Trending this week"}
                 </h1>
                 <p className="mt-1 text-sm" style={{ color: "rgba(138, 144, 178, 1)" }}>
-                  High-quality issues gaining traction across popular repositories
+                  {q.trim().length > 0
+                    ? `${total} results for "${q}"`
+                    : "High-quality issues gaining traction across popular repositories"}
                 </p>
               </div>
               <div className="text-[12px] font-medium" style={{ color: "#64748B" }}>
@@ -118,41 +141,50 @@ export default function DashboardClient() {
             </div>
           </div>
 
-          {trendingQuery.isLoading ? (
+          {activeQuery.isLoading ? (
             <SkeletonList rows={10} />
           ) : items.length === 0 ? (
-            <EmptyState title="No trending issues match your filters" />
+            <EmptyState title={q.trim().length > 0 ? "No issues match your query" : "No trending issues match your filters"} />
           ) : (
-            <div
-              className="rounded-2xl overflow-hidden"
-              style={{
-                backgroundColor: "rgba(17, 20, 32, 0.5)",
-                border: "1px solid rgba(255, 255, 255, 0.04)",
-              }}
-            >
-              {items.map((issue) => (
-                <div
-                  key={issue.nodeId}
-                  onClick={() => setSelectedIssueId(issue.nodeId)}
-                  className="cursor-pointer"
-                  style={{
-                    backgroundColor:
-                      selectedIssueId === issue.nodeId ? "rgba(138, 92, 255, 0.08)" : "transparent",
-                    boxShadow:
-                      selectedIssueId === issue.nodeId
-                        ? "inset 2px 0 0 rgba(138, 92, 255, 0.6)"
-                        : "none",
-                  }}
-                >
-                  <IssueListItem
-                    issue={issue}
-                    href={`/issues/${issue.nodeId}` as Route}
-                    isSaved={!!bookmarksMap[issue.nodeId]}
-                    onToggleSaved={() => handleToggleBookmark(issue)}
-                  />
+            <>
+              <div
+                className="rounded-2xl overflow-hidden"
+                style={{
+                  backgroundColor: "rgba(17, 20, 32, 0.5)",
+                  border: "1px solid rgba(255, 255, 255, 0.04)",
+                }}
+              >
+                {items.map((issue) => (
+                  <div
+                    key={issue.nodeId}
+                    onClick={() => setSelectedIssueId(issue.nodeId)}
+                    className="cursor-pointer"
+                    style={{
+                      backgroundColor:
+                        selectedIssueId === issue.nodeId ? "rgba(138, 92, 255, 0.08)" : "transparent",
+                      boxShadow:
+                        selectedIssueId === issue.nodeId
+                          ? "inset 2px 0 0 rgba(138, 92, 255, 0.6)"
+                          : "none",
+                    }}
+                  >
+                    <IssueListItem
+                      issue={issue}
+                      href={`/issues/${issue.nodeId}` as Route}
+                      isSaved={!!bookmarksMap[issue.nodeId]}
+                      onToggleSaved={() => handleToggleBookmark(issue)}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Infinite scroll */}
+              {activeQuery.hasNextPage && (
+                <div ref={sentinelRef} className="py-8 flex justify-center">
+                  <div className="animate-spin h-6 w-6 border-2 border-purple-500 border-t-transparent rounded-full" />
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
 

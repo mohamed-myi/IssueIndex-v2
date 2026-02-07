@@ -43,6 +43,9 @@ async def get_feed_route(
         le=MAX_PAGE_SIZE,
         description="Results per page",
     ),
+    languages: list[str] = Query(default=[], description="Filter by programming languages (overrides profile preferences)"),
+    labels: list[str] = Query(default=[], description="Filter by issue labels"),
+    repos: list[str] = Query(default=[], description="Filter by repository full names"),
     auth: tuple[User, Session] = Depends(require_auth),
     db: AsyncSession = Depends(get_db),
 ) -> FeedResponse:
@@ -59,6 +62,9 @@ async def get_feed_route(
         page: 1-indexed page number
         page_size: results per page (max 50)
 
+    Filters:
+        languages, labels, repos: When provided, override profile preferences for this request
+
     Response includes:
         is_personalized: true if using profile-based ranking
         profile_cta: message shown when using trending fallback
@@ -71,6 +77,9 @@ async def get_feed_route(
         user_id=user.id,
         page=page,
         page_size=page_size,
+        languages=languages or None,
+        labels=labels or None,
+        repos=repos or None,
     )
 
     recommendation_batch_id = generate_recommendation_batch_id()

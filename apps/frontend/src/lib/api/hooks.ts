@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchPublicStats,
   fetchTrending,
@@ -33,9 +33,7 @@ import {
 } from "./endpoints";
 import type { SearchRequest, ProfilePreferences, OnboardingStep } from "./types";
 
-// ============================================================================
 // Public / Stats
-// ============================================================================
 
 export function usePublicStats() {
   return useQuery({
@@ -45,22 +43,30 @@ export function usePublicStats() {
   });
 }
 
-// ============================================================================
 // Feed & Search
-// ============================================================================
 
-export function useTrending(limit = 10) {
-  return useQuery({
-    queryKey: ["feed", "trending", limit],
-    queryFn: () => fetchTrending(limit),
+export function useTrending(
+  pageSize = 20,
+  filters?: { languages?: string[]; labels?: string[]; repos?: string[] }
+) {
+  return useInfiniteQuery({
+    queryKey: ["feed", "trending", pageSize, filters],
+    queryFn: ({ pageParam }) => fetchTrending(pageParam, pageSize, filters),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.page + 1 : undefined),
     staleTime: 1000 * 30,
   });
 }
 
-export function useFeed(page = 1, pageSize = 20) {
-  return useQuery({
-    queryKey: ["feed", page, pageSize],
-    queryFn: () => fetchFeed(page, pageSize),
+export function useFeed(
+  pageSize = 20,
+  filters?: { languages?: string[]; labels?: string[]; repos?: string[] }
+) {
+  return useInfiniteQuery({
+    queryKey: ["feed", pageSize, filters],
+    queryFn: ({ pageParam }) => fetchFeed(pageParam, pageSize, filters),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.page + 1 : undefined),
     staleTime: 1000 * 30,
   });
 }
@@ -68,29 +74,29 @@ export function useFeed(page = 1, pageSize = 20) {
 export function useSearch(params: {
   query: string;
   filters?: SearchRequest["filters"];
-  page?: number;
   pageSize?: number;
   enabled?: boolean;
 }) {
-  const { query, filters, page = 1, pageSize = 20, enabled = true } = params;
+  const { query, filters, pageSize = 20, enabled = true } = params;
 
-  return useQuery({
-    queryKey: ["search", query, filters, page, pageSize],
-    queryFn: () =>
+  return useInfiniteQuery({
+    queryKey: ["search", query, filters, pageSize],
+    queryFn: ({ pageParam }) =>
       searchIssues({
         query,
         filters,
-        page,
+        page: pageParam,
         page_size: pageSize,
       }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.page + 1 : undefined),
     enabled: enabled && query.trim().length > 0,
     retry: false,
+    staleTime: 1000 * 30,
   });
 }
 
-// ============================================================================
 // Issues
-// ============================================================================
 
 export function useIssue(nodeId: string | null) {
   return useQuery({
@@ -110,9 +116,7 @@ export function useSimilarIssues(nodeId: string | null, limit = 5) {
   });
 }
 
-// ============================================================================
 // Repositories & Taxonomy
-// ============================================================================
 
 export function useRepositories(params: { q?: string; language?: string; limit?: number } = {}) {
   return useQuery({
@@ -138,9 +142,7 @@ export function useStackAreas() {
   });
 }
 
-// ============================================================================
 // Bookmarks
-// ============================================================================
 
 export function useBookmarks(page = 1, pageSize = 20) {
   return useQuery({
@@ -202,9 +204,7 @@ export function usePatchBookmark() {
   });
 }
 
-// ============================================================================
 // Notes
-// ============================================================================
 
 export function useNotes(bookmarkId: string | null) {
   return useQuery({
@@ -250,9 +250,7 @@ export function useDeleteNote() {
   });
 }
 
-// ============================================================================
 // Auth
-// ============================================================================
 
 export function useMe() {
   return useQuery({
@@ -281,9 +279,7 @@ export function useLinkedAccounts() {
   });
 }
 
-// ============================================================================
 // Profile
-// ============================================================================
 
 export function useProfile() {
   return useQuery({

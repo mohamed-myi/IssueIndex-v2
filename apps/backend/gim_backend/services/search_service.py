@@ -98,7 +98,7 @@ class SearchResultItem(BaseModel):
     """Single search result with issue data and scores."""
     node_id: str
     title: str
-    body_text: str
+    body_preview: str
     labels: list[str]
     q_score: float
     repo_name: str
@@ -325,7 +325,7 @@ async def _execute_stage2(
         results.append(SearchResultItem(
             node_id=row.node_id,
             title=row.title,
-            body_text=row.body_text[:500] if row.body_text else "",
+            body_preview=row.body_text[:500] if row.body_text else "",
             labels=row.labels or [],
             q_score=row.q_score,
             repo_name=row.repo_name,

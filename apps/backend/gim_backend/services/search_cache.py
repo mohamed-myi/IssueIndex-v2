@@ -32,7 +32,7 @@ def _serialize_response(response: SearchResponse) -> str:
             {
                 "node_id": r.node_id,
                 "title": r.title,
-                "body_text": r.body_text,
+                "body_preview": r.body_preview,
                 "labels": r.labels,
                 "q_score": r.q_score,
                 "repo_name": r.repo_name,
@@ -64,7 +64,8 @@ def _deserialize_response(data: str) -> SearchResponse:
         SearchResultItem(
             node_id=r["node_id"],
             title=r["title"],
-            body_text=r["body_text"],
+            # Handle both old (body_text) and new (body_preview) field names for cache backward compat
+            body_preview=r.get("body_preview") or r.get("body_text", ""),
             labels=r["labels"],
             q_score=r["q_score"],
             repo_name=r["repo_name"],

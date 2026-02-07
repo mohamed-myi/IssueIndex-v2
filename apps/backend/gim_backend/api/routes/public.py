@@ -3,19 +3,19 @@ Public API routes for unauthenticated access.
 Landing page content: trending issues and platform statistics.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from gim_backend.api.dependencies import get_db
-from gim_backend.services.feed_service import _get_trending_feed
+from gim_backend.services.feed_service import _get_trending_feed, MAX_PAGE_SIZE
 from gim_backend.services.stats_service import get_platform_stats
 
 router = APIRouter()
 
 
-# Limit for public trending feed (vs 20 for authenticated)
-PUBLIC_TRENDING_LIMIT = 10
+# Default limit for public trending feed (landing page)
+PUBLIC_TRENDING_DEFAULT = 10
 
 
 class TrendingItemOutput(BaseModel):
@@ -34,9 +34,9 @@ class TrendingResponse(BaseModel):
     """Public trending issues response."""
     results: list[TrendingItemOutput]
     total: int
-    limit: int = Field(
-        description="Maximum items returned for public endpoint",
-    )
+    page: int
+    page_size: int
+    has_more: bool
 
 
 class StatsResponse(BaseModel):
@@ -52,22 +52,35 @@ class StatsResponse(BaseModel):
 
 @router.get("/feed/trending", response_model=TrendingResponse)
 async def get_trending_route(
+    page: int = Query(default=1, ge=1, description="Page number"),
+    page_size: int = Query(
+        default=PUBLIC_TRENDING_DEFAULT,
+        ge=1,
+        le=MAX_PAGE_SIZE,
+        description="Results per page",
+    ),
+    languages: list[str] = Query(default=[], description="Filter by programming languages"),
+    labels: list[str] = Query(default=[], description="Filter by issue labels"),
+    repos: list[str] = Query(default=[], description="Filter by repository full names"),
     db: AsyncSession = Depends(get_db),
 ) -> TrendingResponse:
     """
-    Returns trending issues for landing page preview.
+    Returns trending issues for landing page preview and authenticated Browse/Dashboard.
 
     No authentication required.
-    Returns recent open issues ordered by q_score.
-    Limited to 10 items for public access.
+    Returns recent open issues ordered by q_score with optional filters.
+    Defaults to 10 items for backward compatibility with landing page.
 
     Use authenticated /feed endpoint for full personalized recommendations.
     """
-    # Reuse existing trending logic with limited page size
+    # Convert empty lists to None for cleaner service layer
     feed = await _get_trending_feed(
         db=db,
-        page=1,
-        page_size=PUBLIC_TRENDING_LIMIT,
+        page=page,
+        page_size=page_size,
+        languages=languages or None,
+        labels=labels or None,
+        repos=repos or None,
     )
 
     return TrendingResponse(
@@ -85,7 +98,9 @@ async def get_trending_route(
             for item in feed.results
         ],
         total=feed.total,
-        limit=PUBLIC_TRENDING_LIMIT,
+        page=feed.page,
+        page_size=feed.page_size,
+        has_more=feed.has_more,
     )
 
 

@@ -6,17 +6,13 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonList } from "@/components/common/SkeletonList";
-import { LoadMoreButton } from "@/components/common/LoadMoreButton";
 import { IssueListItem, type IssueListItemModel } from "@/components/issues/IssueListItem";
 import { IssueDetailPanel, type IssueDetailModel } from "@/components/issues/IssueDetailPanel";
 import { ProfileCTA } from "@/components/issues/ProfileCTA";
 import { getApiErrorMessage } from "@/lib/api/client";
-import { useFeed, useBookmarkCheck, useCreateBookmark, useDeleteBookmark } from "@/lib/api/hooks";
+import { useSearch, useFeed, useBookmarkCheck, useCreateBookmark, useDeleteBookmark } from "@/lib/api/hooks";
 import { useAuthGuard } from "@/lib/hooks/use-auth-guard";
-
-function matchesText(haystack: string, needle: string) {
-  return haystack.toLowerCase().includes(needle.toLowerCase());
-}
+import { useInfiniteScroll } from "@/lib/hooks/use-infinite-scroll";
 
 export default function ForYouClient() {
   const sp = useSearchParams();
@@ -27,31 +23,46 @@ export default function ForYouClient() {
   const label = sp.get("label") ?? null;
   const repo = sp.get("repo") ?? null;
 
-  const [page, setPage] = useState(1);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
 
   const { me: meQuery, isRedirecting } = useAuthGuard();
-  const feedQuery = useFeed(page, 20);
+
+  const filters = useMemo(
+    () => ({
+      languages: lang ? [lang] : undefined,
+      labels: label ? [label] : undefined,
+      repos: repo ? [repo] : undefined,
+    }),
+    [lang, label, repo]
+  );
+
+  const searchQuery = useSearch({
+    query: q,
+    filters,
+    pageSize: 20,
+    enabled: q.trim().length > 0,
+  });
+
+  const feedQuery = useFeed(20, filters);
+
+  const activeQuery = q.trim().length > 0 ? searchQuery : feedQuery;
 
   const items = useMemo(() => {
-    const results = feedQuery.data?.results ?? [];
-    return results
-      .filter((r) => (lang ? r.primary_language === lang : true))
-      .filter((r) => (repo ? r.repo_name === repo : true))
-      .filter((r) => (label ? r.labels.includes(label) : true))
-      .filter((r) => (q ? matchesText(r.title, q) || matchesText(r.repo_name, q) : true))
-      .map<IssueListItemModel>((r) => ({
-        nodeId: r.node_id,
-        title: r.title,
-        repoName: r.repo_name,
-        primaryLanguage: r.primary_language,
-        labels: r.labels,
-        qScore: r.q_score,
-        createdAt: r.github_created_at,
-        bodyPreview: r.body_preview,
-        whyThis: r.why_this ?? null,
-      }));
-  }, [feedQuery.data, q, lang, label, repo]);
+    const pages = activeQuery.data?.pages ?? [];
+    const allResults = pages.flatMap((page) => page.results);
+    
+    return allResults.map<IssueListItemModel>((r) => ({
+      nodeId: r.node_id,
+      title: r.title,
+      repoName: r.repo_name,
+      primaryLanguage: r.primary_language,
+      labels: r.labels,
+      qScore: r.q_score,
+      createdAt: r.github_created_at,
+      bodyPreview: r.body_preview,
+      whyThis: r.why_this ?? null,
+    }));
+  }, [activeQuery.data]);
 
   // Bookmark handling
   const issueNodeIds = useMemo(() => items.map((i) => i.nodeId), [items]);
@@ -97,14 +108,15 @@ export default function ForYouClient() {
     } as IssueDetailModel;
   }, [selectedIssueId, items]);
 
-  const isPersonalized = feedQuery.data?.is_personalized ?? false;
-  const hasMore = feedQuery.data?.has_more ?? false;
-  const total = feedQuery.data?.total ?? 0;
-  const remaining = Math.max(0, total - items.length);
+  const sentinelRef = useInfiniteScroll({
+    hasNextPage: activeQuery.hasNextPage,
+    isFetchingNextPage: activeQuery.isFetchingNextPage,
+    fetchNextPage: activeQuery.fetchNextPage,
+  });
 
-  function handleLoadMore() {
-    setPage((p) => p + 1);
-  }
+  // is_personalized only exists on feed response, not search response
+  const isPersonalized = q.trim().length === 0 ? (feedQuery.data?.pages[0]?.is_personalized ?? false) : false;
+  const total = activeQuery.data?.pages[0]?.total ?? 0;
 
   if (isRedirecting) return null;
 
@@ -120,10 +132,12 @@ export default function ForYouClient() {
                   className="text-xl font-semibold tracking-tight"
                   style={{ color: "rgba(230, 233, 242, 0.95)" }}
                 >
-                  For You
+                  {q.trim().length > 0 ? "Search Results" : "For You"}
                 </h1>
                 <p className="mt-1 text-sm" style={{ color: "rgba(138, 144, 178, 1)" }}>
-                  {isPersonalized
+                  {q.trim().length > 0
+                    ? `${total} results for "${q}"`
+                    : isPersonalized
                     ? "Issues tailored to your skills and interests"
                     : "Complete your profile for personalized recommendations"}
                 </p>
@@ -134,20 +148,20 @@ export default function ForYouClient() {
             </div>
           </div>
 
-          {/* Show ProfileCTA if not personalized */}
-          {!isPersonalized && !feedQuery.isLoading && !feedQuery.isError && (
+          {/* Show ProfileCTA if not personalized and not searching */}
+          {q.trim().length === 0 && !isPersonalized && !feedQuery.isLoading && !feedQuery.isError && (
             <ProfileCTA />
           )}
 
-          {feedQuery.isLoading ? (
+          {activeQuery.isLoading ? (
             <SkeletonList rows={10} />
-          ) : feedQuery.isError ? (
+          ) : activeQuery.isError ? (
             <EmptyState
               title="Sign in required"
-              description={getApiErrorMessage(feedQuery.error) + " — go to Login to continue."}
+              description={getApiErrorMessage(activeQuery.error) + " — go to Login to continue."}
             />
           ) : items.length === 0 ? (
-            <EmptyState title="No recommendations match your filters" />
+            <EmptyState title={q.trim().length > 0 ? "No issues match your query" : "No recommendations match your filters"} />
           ) : (
             <>
               <div
@@ -181,12 +195,11 @@ export default function ForYouClient() {
                 ))}
               </div>
 
-              {hasMore && (
-                <LoadMoreButton
-                  onClick={handleLoadMore}
-                  isLoading={feedQuery.isFetching && page > 1}
-                  remaining={remaining}
-                />
+              {/* Infinite scroll */}
+              {activeQuery.hasNextPage && (
+                <div ref={sentinelRef} className="py-8 flex justify-center">
+                  <div className="animate-spin h-6 w-6 border-2 border-purple-500 border-t-transparent rounded-full" />
+                </div>
               )}
             </>
           )}

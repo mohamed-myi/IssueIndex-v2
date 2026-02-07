@@ -48,7 +48,7 @@ class TestCacheSerialization:
         item = SearchResultItem(
             node_id="MDU6SXNzdWUx",
             title="Test Issue Title",
-            body_text="This is the body text of the issue.",
+            body_preview="This is the body text of the issue.",
             labels=["bug", "help wanted"],
             q_score=0.75,
             repo_name="facebook/react",
@@ -102,7 +102,7 @@ class TestCacheSerialization:
         result = parsed["results"][0]
         assert result["node_id"] == "MDU6SXNzdWUx"
         assert result["title"] == "Test Issue Title"
-        assert result["body_text"] == "This is the body text of the issue."
+        assert result["body_preview"] == "This is the body text of the issue."
         assert result["labels"] == ["bug", "help wanted"]
         assert result["q_score"] == 0.75
         assert result["repo_name"] == "facebook/react"
@@ -142,7 +142,7 @@ class TestCacheSerialization:
 
         assert result.node_id == original.node_id
         assert result.title == original.title
-        assert result.body_text == original.body_text
+        assert result.body_preview == original.body_preview
         assert result.labels == original.labels
         assert result.q_score == original.q_score
         assert result.repo_name == original.repo_name
@@ -193,7 +193,7 @@ class TestCacheSerialization:
             SearchResultItem(
                 node_id=f"node_{i}",
                 title=f"Issue {i}",
-                body_text=f"Body {i}",
+                body_preview=f"Body {i}",
                 labels=[],
                 q_score=0.5 + (i * 0.1),
                 repo_name=f"repo_{i}",
