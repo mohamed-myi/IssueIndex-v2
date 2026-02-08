@@ -1,20 +1,49 @@
 /**
- * Note (prod / *.run.app):
- * I can't check auth here using the `session_id` cookie because the backend sets it on the API host
- * (issueindex-api-*.a.run.app) and host-only cookies are not visible on the frontend host
- * (issueindex-frontend-*.a.run.app). This caused an infinite redirect back to /login after successful OAuth.
+ * Server-side auth gating via session_id cookie presence.
  *
- * Temporary approach: do auth gating client-side by calling GET /auth/me. Redirect to /login only if /auth/me returns 401.
- * See lib/hooks/use-auth-guard.ts.
+ * Now that frontend (issueindex.dev) and API (api.issueindex.dev) share a
+ * cookie domain (.issueindex.dev), the session_id cookie is visible here.
  *
- * To revert: switch to a custom domain.
+ * This is a fast-path check only (cookie presence, not validity).
+ * The useAuthGuard hook still validates the session against the API as a
+ * secondary check to catch expired/revoked sessions.
  */
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-export function middleware(_request: NextRequest) {
-  // All auth gating is now handled client-side via useAuthGuard().
+const SESSION_COOKIE = "session_id";
+
+/** Paths that require authentication. */
+const PROTECTED_PREFIXES = ["/dashboard", "/for-you", "/saved", "/profile", "/settings"];
+
+/** Paths that authenticated users should be redirected away from. */
+const AUTH_PAGE = "/login";
+
+function isProtected(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+  const hasSession = request.cookies.has(SESSION_COOKIE);
+
+  // Redirect unauthenticated users away from protected pages
+  if (isProtected(pathname) && !hasSession) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // Redirect authenticated users away from the login page
+  if (pathname === AUTH_PAGE && hasSession) {
+    const dashboardUrl = request.nextUrl.clone();
+    dashboardUrl.pathname = "/dashboard";
+    return NextResponse.redirect(dashboardUrl);
+  }
+
   return NextResponse.next();
 }
 

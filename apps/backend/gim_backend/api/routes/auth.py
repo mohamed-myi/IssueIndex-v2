@@ -12,6 +12,7 @@ from gim_backend.api.dependencies import get_db, get_http_client
 from gim_backend.core.audit import AuditEvent, log_audit_event
 from gim_backend.core.config import get_settings
 from gim_backend.core.cookies import (
+    _cookie_domain_or_none,
     clear_session_cookie,
     create_login_flow_cookie,
     create_session_cookie,
@@ -69,15 +70,26 @@ class AuthIntent(StrEnum):
 
 def _get_state_cookie_params(settings) -> dict:
     is_production = settings.environment == "production"
-    # Production uses cross-origin requests, requiring SameSite=None + Secure.
-    samesite_policy = "none" if is_production else "lax"
-    return {
+    params: dict = {
         "httponly": True,
         "secure": is_production,
-        "samesite": samesite_policy,
+        "samesite": "lax",
         "max_age": STATE_COOKIE_MAX_AGE,
         "path": "/",
     }
+    domain = _cookie_domain_or_none()
+    if domain:
+        params["domain"] = domain
+    return params
+
+
+def _delete_state_cookie(response) -> None:
+    """Delete the OAuth state cookie with matching attributes so the browser clears it."""
+    kwargs: dict = {"key": STATE_COOKIE_NAME, "path": "/"}
+    domain = _cookie_domain_or_none()
+    if domain:
+        kwargs["domain"] = domain
+    response.delete_cookie(**kwargs)
 
 
 def _build_error_redirect(error_code: str, provider: str | None = None) -> str:
@@ -769,7 +781,7 @@ async def _handle_login_callback(
             url=f"{settings.frontend_base_url}/dashboard",
             status_code=302,
         )
-        response.delete_cookie(key=STATE_COOKIE_NAME, path="/")
+        _delete_state_cookie(response)
         create_session_cookie(response, str(session.id), expires_at)
 
         return response
@@ -821,7 +833,7 @@ async def _handle_link_callback(
         )
 
         response = RedirectResponse(url=_build_settings_redirect(), status_code=302)
-        response.delete_cookie(key=STATE_COOKIE_NAME, path="/") # Consuming unified cookie
+        _delete_state_cookie(response)
         return response
 
     except InvalidCodeError:
@@ -879,7 +891,7 @@ async def _handle_connect_callback(
         )
 
         response = RedirectResponse(url=_build_profile_redirect(success=True), status_code=302)
-        response.delete_cookie(key=STATE_COOKIE_NAME, path="/") # Consuming unified cookie
+        _delete_state_cookie(response)
         return response
 
     except InvalidCodeError:

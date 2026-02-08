@@ -7,6 +7,7 @@ No mocking of the cookie-setting logic - we verify the actual output.
 Focus areas:
 - HttpOnly, Secure, SameSite enforcement (exact matches)
 - Production vs Development flag switching
+- Domain attribute for shared subdomain cookies
 - Max-Age / Expires consistency
 - Login flow cookie TTL
 """
@@ -54,6 +55,7 @@ def parse_set_cookie(response: Response, cookie_name: str) -> dict:
         "path": "",
         "max-age": "",
         "expires": "",
+        "domain": "",
     }
 
     for part in parts[1:]:
@@ -70,6 +72,8 @@ def parse_set_cookie(response: Response, cookie_name: str) -> dict:
             result["max-age"] = part.split("=", 1)[1]
         elif lower.startswith("expires="):
             result["expires"] = part.split("=", 1)[1]
+        elif lower.startswith("domain="):
+            result["domain"] = part.split("=", 1)[1]
 
     return result
 
@@ -96,7 +100,7 @@ class TestSessionCookieSecurityAttributes:
             assert attrs["httponly"] is True, "HttpOnly MUST be True to prevent XSS"
             get_settings.cache_clear()
 
-    def test_samesite_lax_enforced(self):
+    def test_samesite_lax_in_development(self):
         """SameSite=Lax prevents CSRF - must be exactly 'lax' or 'Lax'."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
             from gim_backend.core.config import get_settings
@@ -107,9 +111,23 @@ class TestSessionCookieSecurityAttributes:
 
             attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
 
-            # Case-insensitive but must be lax (never None or Strict for OAuth flows)
             assert attrs["samesite"].lower() == "lax", \
                 f"SameSite must be 'lax', got '{attrs['samesite']}'"
+            get_settings.cache_clear()
+
+    def test_samesite_lax_in_production(self):
+        """SameSite=Lax in production (same-site subdomain sharing, not cross-origin)."""
+        with patch.dict(os.environ, {"ENVIRONMENT": "production", "COOKIE_DOMAIN": ".issueindex.dev"}):
+            from gim_backend.core.config import get_settings
+            get_settings.cache_clear()
+
+            response = Response()
+            create_session_cookie(response, "test-session-id")
+
+            attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
+
+            assert attrs["samesite"].lower() == "lax", \
+                f"SameSite must be 'lax' in production, got '{attrs['samesite']}'"
             get_settings.cache_clear()
 
     def test_secure_true_in_production(self):
@@ -155,6 +173,57 @@ class TestSessionCookieSecurityAttributes:
             attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
 
             assert attrs["path"] == "/", "Path must be '/' for site-wide access"
+            get_settings.cache_clear()
+
+
+class TestSessionCookieDomain:
+    """
+    Domain attribute tests for shared subdomain cookie architecture.
+    """
+
+    def test_domain_set_when_configured(self):
+        """Cookie domain must be set to shared parent domain in production."""
+        with patch.dict(os.environ, {"ENVIRONMENT": "production", "COOKIE_DOMAIN": ".issueindex.dev"}):
+            from gim_backend.core.config import get_settings
+            get_settings.cache_clear()
+
+            response = Response()
+            create_session_cookie(response, "test-session-id")
+
+            attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
+
+            assert attrs["domain"] == ".issueindex.dev", \
+                f"Domain must be '.issueindex.dev', got '{attrs['domain']}'"
+            get_settings.cache_clear()
+
+    def test_no_domain_when_empty(self):
+        """No domain attribute when COOKIE_DOMAIN is empty (dev mode = host-only cookie)."""
+        with patch.dict(os.environ, {"ENVIRONMENT": "development", "COOKIE_DOMAIN": ""}):
+            from gim_backend.core.config import get_settings
+            get_settings.cache_clear()
+
+            response = Response()
+            create_session_cookie(response, "test-session-id")
+
+            attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
+
+            assert attrs["domain"] == "", \
+                f"Domain should be empty for dev, got '{attrs['domain']}'"
+            get_settings.cache_clear()
+
+    def test_clear_cookie_includes_domain(self):
+        """Clearing a cookie must include the same domain or the browser won't delete it."""
+        with patch.dict(os.environ, {"ENVIRONMENT": "production", "COOKIE_DOMAIN": ".issueindex.dev"}):
+            from gim_backend.core.config import get_settings
+            get_settings.cache_clear()
+
+            response = Response()
+            clear_session_cookie(response)
+
+            attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
+
+            assert attrs["domain"] == ".issueindex.dev", \
+                "clear_session_cookie must include domain to match creation attributes"
             get_settings.cache_clear()
 
 
@@ -212,7 +281,7 @@ class TestClearSessionCookie:
 
             # Must match creation attributes
             assert attrs["httponly"] is True
-            assert attrs["samesite"].lower() == "none"
+            assert attrs["samesite"].lower() == "lax"
             assert attrs["secure"] is True
             assert attrs["path"] == "/"
             get_settings.cache_clear()
@@ -249,6 +318,20 @@ class TestLoginFlowCookie:
             attrs = parse_set_cookie(response, LOGIN_FLOW_COOKIE_NAME)
 
             assert attrs["httponly"] is True
+            get_settings.cache_clear()
+
+    def test_login_flow_cookie_includes_domain(self):
+        """Login flow cookie must include domain when configured."""
+        with patch.dict(os.environ, {"ENVIRONMENT": "production", "COOKIE_DOMAIN": ".issueindex.dev"}):
+            from gim_backend.core.config import get_settings
+            get_settings.cache_clear()
+
+            response = Response()
+            create_login_flow_cookie(response, "flow-123")
+
+            attrs = parse_set_cookie(response, LOGIN_FLOW_COOKIE_NAME)
+
+            assert attrs["domain"] == ".issueindex.dev"
             get_settings.cache_clear()
 
 

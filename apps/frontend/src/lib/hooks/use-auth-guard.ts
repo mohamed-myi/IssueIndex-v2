@@ -10,13 +10,9 @@ function is401(err: unknown): boolean {
 }
 
 /**
- * Client-side auth guard. Calls GET /auth/me and redirects to /login on 401.
+ * Client-side session validity guard.
  *
- * Use this on every page that requires authentication, since the Next.js
- * middleware cannot enforce auth via `session_id` cookie when the API and
- * frontend run on different Cloud Run hosts.
- *
- * @see middleware.ts for full explanation
+ * Use this on every page that requires an authenticated session.
  */
 export function useAuthGuard() {
   const router = useRouter();

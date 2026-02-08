@@ -5,15 +5,22 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Route } from "next";
 import { Search, ArrowDown } from "lucide-react";
-import { usePublicStats } from "@/lib/api/hooks";
+import { usePublicStats, useMe } from "@/lib/api/hooks";
+import { logout } from "@/lib/api/endpoints";
+import { useQueryClient } from "@tanstack/react-query";
 
 const QUICK_TAGS = ["react", "typescript", "rust", "good first issue"];
 
 export default function LandingPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const statsQuery = usePublicStats();
+  const meQuery = useMe();
+
+  const isAuthenticated = meQuery.isSuccess;
+  const isAuthLoading = meQuery.isLoading;
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -21,6 +28,16 @@ export default function LandingPage() {
       router.push(`/browse?q=${encodeURIComponent(query.trim())}` as Route);
     } else {
       router.push("/browse" as Route);
+    }
+  }
+
+  async function handleLogout() {
+    try {
+      await logout();
+      queryClient.clear();
+      router.refresh();
+    } catch {
+      // Cookie is cleared server-side regardless
     }
   }
 
@@ -96,29 +113,58 @@ export default function LandingPage() {
         </p>
       </div>
 
-      {/* Bottom section - Sign in, Learn more, Stats */}
+      {/* Bottom section - Sign in / Browse Issues, Learn more, Stats */}
       <div className="absolute bottom-0 left-0 right-0 pb-8 px-6">
         <div className="max-w-xl mx-auto flex flex-col items-center">
-          {/* Sign in section */}
+          {/* CTA section */}
           <div className="flex flex-col items-center mb-4">
-            <p
-              className="flex items-center gap-1.5 text-[13px] mb-2"
-              style={{ color: "rgba(138, 144, 178, 0.7)" }}
-            >
-              For personalized issues
-              <ArrowDown className="w-3 h-3" />
-            </p>
-            <Link
-              href="/login"
-              className="rounded-full px-5 py-2.5 text-[14px] font-semibold transition-all duration-200 hover:bg-white/10"
-              style={{
-                backgroundColor: "rgba(255, 255, 255, 0.05)",
-                border: "1px solid rgba(255, 255, 255, 0.08)",
-                color: "rgba(230, 233, 242, 0.95)",
-              }}
-            >
-              Sign In
-            </Link>
+            {isAuthLoading ? (
+              /* Neutral placeholder while checking auth */
+              <div className="h-[72px]" />
+            ) : isAuthenticated ? (
+              <>
+                <Link
+                  href={"/dashboard" as Route}
+                  className="rounded-full px-5 py-2.5 text-[14px] font-semibold transition-all duration-200 hover:bg-white/10"
+                  style={{
+                    backgroundColor: "rgba(255, 255, 255, 0.05)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    color: "rgba(230, 233, 242, 0.95)",
+                  }}
+                >
+                  Browse Issues
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="mt-2 text-[13px] font-medium transition-colors duration-200 hover:text-white"
+                  style={{ color: "rgba(138, 144, 178, 0.7)" }}
+                >
+                  Log out
+                </button>
+              </>
+            ) : (
+              <>
+                <p
+                  className="flex items-center gap-1.5 text-[13px] mb-2"
+                  style={{ color: "rgba(138, 144, 178, 0.7)" }}
+                >
+                  For personalized issues
+                  <ArrowDown className="w-3 h-3" />
+                </p>
+                <Link
+                  href="/login"
+                  className="rounded-full px-5 py-2.5 text-[14px] font-semibold transition-all duration-200 hover:bg-white/10"
+                  style={{
+                    backgroundColor: "rgba(255, 255, 255, 0.05)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    color: "rgba(230, 233, 242, 0.95)",
+                  }}
+                >
+                  Sign In
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Learn More link */}
@@ -143,11 +189,11 @@ export default function LandingPage() {
           >
             {statsQuery.data ? (
               <>
-                {statsQuery.data.total_issues?.toLocaleString() ?? "—"} issues
-                {" · "}
-                {statsQuery.data.total_repos?.toLocaleString() ?? "—"} repos
-                {" · "}
-                {statsQuery.data.total_languages ?? "—"} languages indexed
+                {statsQuery.data.total_issues?.toLocaleString() ?? "\u2014"} issues
+                {" \u00B7 "}
+                {statsQuery.data.total_repos?.toLocaleString() ?? "\u2014"} repos
+                {" \u00B7 "}
+                {statsQuery.data.total_languages ?? "\u2014"} languages indexed
               </>
             ) : (
               "Loading stats..."

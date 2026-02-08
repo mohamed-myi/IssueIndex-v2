@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     session_default_hours: int = 24
     max_sessions_per_user: int = 5
 
+    cookie_domain: str = ""
+
     frontend_base_url: str = "http://localhost:3000"
     api_base_url: str = "http://localhost:8000"
 

@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { authInit } from "@/lib/api/endpoints";
 import { getApiErrorMessage } from "@/lib/api/client";
 import { getApiBaseUrl } from "@/lib/api/base-url";
+import { useMe } from "@/lib/api/hooks";
 import type { OAuthProvider } from "@/lib/api/types";
 
 // Map backend error codes to user-friendly messages.
@@ -40,10 +41,19 @@ function getOAuthErrorMessage(code: string, provider: string | null): string {
 export default function LoginPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const meQuery = useMe();
 
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState<OAuthProvider | null>(null);
+
+  // Redirect already-authenticated users to dashboard.
+  // Middleware handles the fast path; this is the client-side net.
+  useEffect(() => {
+    if (meQuery.isSuccess) {
+      router.replace("/dashboard");
+    }
+  }, [meQuery.isSuccess, router]);
 
   // Handle backend OAuth error redirects.
   useEffect(() => {
