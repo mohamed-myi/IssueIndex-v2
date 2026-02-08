@@ -122,7 +122,7 @@ export default function LandingPage() {
         <div className="mt-6 mb-8 flex flex-col items-center gap-3">
           {/* Browse Issues — always visible regardless of auth state */}
           <Link
-            href={"/dashboard" as Route}
+            href={"/browse" as Route}
             className="btn-press btn-glow rounded-full px-5 py-2.5 text-[14px] font-semibold transition-all duration-200 hover:bg-white/10"
             style={{
               backgroundColor: "rgba(255, 255, 255, 0.05)",

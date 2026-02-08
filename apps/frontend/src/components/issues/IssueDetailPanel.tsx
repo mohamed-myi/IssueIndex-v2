@@ -222,8 +222,8 @@ export function IssueDetailPanel({
           borderTop: "1px solid rgba(255, 255, 255, 0.08)",
         }}
       >
-        {/* Left side - Secondary actions */}
-        <div className="flex items-center gap-3">
+        {/* Left side - Secondary actions (bottom-left aligned) */}
+        <div className="flex items-end gap-3 self-end">
           {/* Upvote/Downvote */}
           <div
             className="flex items-center rounded-lg overflow-hidden"
@@ -298,12 +298,12 @@ export function IssueDetailPanel({
         </div>
 
         {/* Right side - Primary actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-1.5 items-end min-w-[200px]">
           {onViewSimilar && (
             <button
               type="button"
               onClick={onViewSimilar}
-              className="btn-press flex items-center gap-2 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
+              className="btn-press flex items-center justify-center gap-2 w-full min-w-[200px] px-5 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
               style={{
                 backgroundColor: "rgba(255, 255, 255, 0.05)",
                 color: "rgba(255, 255, 255, 0.85)",
@@ -313,34 +313,32 @@ export function IssueDetailPanel({
               View similar issues
             </button>
           )}
-          <div className="flex flex-col gap-1.5">
-            <button
-              type="button"
-              onClick={handleViewInGitHub}
-              className="btn-press btn-glow flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
-              style={{
-                backgroundColor: "rgba(79, 82, 201, 0.75)",
-                color: "rgba(255, 255, 255, 0.98)",
-                border: "1px solid rgba(79, 82, 201, 0.45)",
-              }}
-            >
-              <ExternalLink className="w-4 h-4" />
-              View Issue
-            </button>
-            <button
-              type="button"
-              onClick={handleViewRepo}
-              className="btn-press btn-glow flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
-              style={{
-                backgroundColor: "rgba(55, 58, 160, 0.65)",
-                color: "rgba(255, 255, 255, 0.98)",
-                border: "1px solid rgba(55, 58, 160, 0.40)",
-              }}
-            >
-              <Github className="w-4 h-4" />
-              View Repository
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleViewInGitHub}
+            className="btn-press btn-glow flex items-center justify-center gap-2 w-full min-w-[200px] px-5 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
+            style={{
+              backgroundColor: "rgba(255, 255, 255, 0.05)",
+              color: "rgba(255, 255, 255, 0.85)",
+              border: "1px solid rgba(138, 92, 255, 0.35)",
+            }}
+          >
+            <ExternalLink className="w-4 h-4" style={{ color: "rgba(138, 92, 255, 0.95)" }} />
+            View Issue
+          </button>
+          <button
+            type="button"
+            onClick={handleViewRepo}
+            className="btn-press btn-glow flex items-center justify-center gap-2 w-full min-w-[200px] px-5 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
+            style={{
+              backgroundColor: "rgba(255, 255, 255, 0.05)",
+              color: "rgba(255, 255, 255, 0.85)",
+              border: "1px solid rgba(138, 92, 255, 0.35)",
+            }}
+          >
+            <Github className="w-4 h-4" style={{ color: "rgba(138, 92, 255, 0.95)" }} />
+            View Repository
+          </button>
         </div>
       </div>
     </div>
