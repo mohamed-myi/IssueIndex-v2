@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Route } from "next";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { usePublicStats, useMe } from "@/lib/api/hooks";
 import { logout } from "@/lib/api/endpoints";
 import { useQueryClient } from "@tanstack/react-query";
@@ -16,6 +16,8 @@ export default function LandingPage() {
   const queryClient = useQueryClient();
   const [query, setQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const statsQuery = usePublicStats();
   const meQuery = useMe();
 
@@ -32,12 +34,16 @@ export default function LandingPage() {
   }
 
   async function handleLogout() {
+    setIsLoggingOut(true);
     try {
       await logout();
-      queryClient.clear();
-      router.refresh();
     } catch {
       // Cookie is cleared server-side regardless
+    } finally {
+      setIsLoggingOut(false);
+      setShowLogoutConfirm(false);
+      (window as unknown as { __HAS_SESSION__: boolean }).__HAS_SESSION__ = false;
+      queryClient.removeQueries({ queryKey: ["auth"] });
     }
   }
 
@@ -114,24 +120,62 @@ export default function LandingPage() {
 
         {/* CTA buttons */}
         <div className="mt-6 mb-8 flex flex-col items-center gap-3">
-          {isAuthLoading ? (
-            <div className="h-[48px]" />
-          ) : isAuthenticated ? (
-            <>
-              <Link
-                href={"/dashboard" as Route}
-                className="btn-press btn-glow rounded-full px-5 py-2.5 text-[14px] font-semibold transition-all duration-200 hover:bg-white/10"
-                style={{
-                  backgroundColor: "rgba(255, 255, 255, 0.05)",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
-                  color: "rgba(230, 233, 242, 0.95)",
-                }}
-              >
-                Browse Issues
-              </Link>
+          {/* Browse Issues — always visible regardless of auth state */}
+          <Link
+            href={"/dashboard" as Route}
+            className="btn-press btn-glow rounded-full px-5 py-2.5 text-[14px] font-semibold transition-all duration-200 hover:bg-white/10"
+            style={{
+              backgroundColor: "rgba(255, 255, 255, 0.05)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              color: "rgba(230, 233, 242, 0.95)",
+            }}
+          >
+            Browse Issues
+          </Link>
+
+          {/* Auth-dependent buttons */}
+          {isAuthenticated ? (
+            showLogoutConfirm ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  className="btn-press rounded-full px-4 py-2 text-[13px] font-semibold transition-all duration-200"
+                  style={{
+                    backgroundColor: "rgba(212, 24, 61, 0.15)",
+                    border: "1px solid rgba(212, 24, 61, 0.3)",
+                    color: "rgba(255, 120, 120, 0.95)",
+                    opacity: isLoggingOut ? 0.7 : 1,
+                  }}
+                >
+                  {isLoggingOut ? (
+                    <span className="flex items-center gap-1.5">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Logging out…
+                    </span>
+                  ) : (
+                    "Confirm"
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowLogoutConfirm(false)}
+                  disabled={isLoggingOut}
+                  className="btn-press rounded-full px-4 py-2 text-[13px] font-semibold transition-all duration-200 hover:bg-white/10"
+                  style={{
+                    backgroundColor: "rgba(255, 255, 255, 0.05)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    color: "rgba(230, 233, 242, 0.7)",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
               <button
                 type="button"
-                onClick={handleLogout}
+                onClick={() => setShowLogoutConfirm(true)}
                 className="btn-press btn-glow rounded-full px-5 py-2.5 text-[13px] font-semibold transition-all duration-200 hover:bg-white/10"
                 style={{
                   backgroundColor: "rgba(138, 92, 255, 0.12)",
@@ -141,28 +185,20 @@ export default function LandingPage() {
               >
                 Log out
               </button>
-            </>
-          ) : (
-            <>
-              <p
-                className="text-[13px]"
-                style={{ color: "rgba(138, 144, 178, 0.7)" }}
-              >
-                For personalized issues
-              </p>
-              <Link
-                href="/login"
-                className="btn-press btn-glow rounded-full px-5 py-2.5 text-[14px] font-semibold transition-all duration-200 hover:bg-white/10"
-                style={{
-                  backgroundColor: "rgba(255, 255, 255, 0.05)",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
-                  color: "rgba(230, 233, 242, 0.95)",
-                }}
-              >
-                Sign In
-              </Link>
-            </>
-          )}
+            )
+          ) : !isAuthLoading ? (
+            <Link
+              href="/login"
+              className="btn-press btn-glow rounded-full px-5 py-2.5 text-[13px] font-semibold transition-all duration-200 hover:bg-white/10"
+              style={{
+                backgroundColor: "rgba(138, 92, 255, 0.12)",
+                border: "1px solid rgba(138, 92, 255, 0.25)",
+                color: "rgba(200, 190, 255, 0.95)",
+              }}
+            >
+              Sign In
+            </Link>
+          ) : null}
         </div>
       </div>
 

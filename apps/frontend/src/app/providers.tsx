@@ -4,7 +4,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { PropsWithChildren, useState, useEffect } from "react";
 
 export function Providers({ children }: PropsWithChildren) {
-  const [queryClient] = useState(() => new QueryClient());
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 1000 * 60,
+            refetchOnWindowFocus: false,
+          },
+        },
+      }),
+  );
   
   // Track whether MSW is ready (or not needed)
   const [mockReady, setMockReady] = useState(

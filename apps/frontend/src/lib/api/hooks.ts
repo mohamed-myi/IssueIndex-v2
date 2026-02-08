@@ -252,12 +252,22 @@ export function useDeleteNote() {
 
 // Auth
 
+/** Server-injected hint from layout.tsx (set before React hydrates). */
+function hasSessionHint(): boolean {
+  if (typeof window !== "undefined" && "__HAS_SESSION__" in window) {
+    return (window as unknown as { __HAS_SESSION__: boolean }).__HAS_SESSION__ === true;
+  }
+  return true; // SSR / fallback: assume session might exist
+}
+
 export function useMe() {
   return useQuery({
     queryKey: ["auth", "me"],
     queryFn: fetchMe,
     retry: false,
-    staleTime: 1000 * 60,
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+    enabled: hasSessionHint(),
   });
 }
 

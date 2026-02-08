@@ -5,6 +5,7 @@ import type { ApiErrorPayload } from "./types";
 export const api = axios.create({
   baseURL: getApiBaseUrl(),
   withCredentials: true,
+  timeout: 10_000,
   headers: {
     "Content-Type": "application/json",
   },
