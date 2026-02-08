@@ -20,6 +20,7 @@ export type IssueListItemModel = {
   createdAt: string | null;
   bodyPreview?: string | null;
   whyThis?: WhyThisItem[] | null;
+  githubUrl?: string | null;
 };
 
 type IssueListItemProps = {
@@ -34,12 +35,12 @@ export function IssueListItem({ issue, href, isSaved, onToggleSaved }: IssueList
 
   return (
     <div
-      className="group relative"
+      className="group relative hover:bg-white/[0.03] transition-colors"
       style={{
         borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
         background: "linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.0))",
         height: "72px",
-        transition: "transform 150ms ease",
+        transition: "transform 150ms ease, background-color 150ms ease",
       }}
     >
       <div className="flex h-full items-center gap-6 pl-6 pr-5">
@@ -143,7 +144,7 @@ export function IssueListItem({ issue, href, isSaved, onToggleSaved }: IssueList
 
           <button
             type="button"
-            className={cn("rounded-xl p-2 transition-colors hover:bg-white/5", onToggleSaved ? "" : "opacity-50")}
+            className={cn("btn-press rounded-xl p-2 transition-colors hover:bg-white/5", onToggleSaved ? "" : "opacity-50")}
             title={isSaved ? "Unsave" : "Save"}
             onClick={onToggleSaved}
             disabled={!onToggleSaved}
@@ -154,13 +155,25 @@ export function IssueListItem({ issue, href, isSaved, onToggleSaved }: IssueList
             />
           </button>
 
-          <Link
-            href={href}
-            className="rounded-xl p-2 transition-colors hover:bg-white/5"
-            title="Open details"
-          >
-            <ExternalLink className="h-4 w-4" style={{ color: "rgba(255, 255, 255, 0.5)" }} />
-          </Link>
+          {issue.githubUrl ? (
+            <a
+              href={issue.githubUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-press rounded-xl p-2 transition-colors hover:bg-white/5"
+              title="View on GitHub"
+            >
+              <ExternalLink className="h-4 w-4" style={{ color: "rgba(255, 255, 255, 0.5)" }} />
+            </a>
+          ) : (
+            <Link
+              href={href}
+              className="btn-press rounded-xl p-2 transition-colors hover:bg-white/5"
+              title="Open details"
+            >
+              <ExternalLink className="h-4 w-4" style={{ color: "rgba(255, 255, 255, 0.5)" }} />
+            </Link>
+          )}
         </div>
       </div>
     </div>

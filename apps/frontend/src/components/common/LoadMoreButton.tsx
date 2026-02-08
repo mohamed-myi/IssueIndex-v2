@@ -26,7 +26,7 @@ export function LoadMoreButton({
         type="button"
         onClick={onClick}
         disabled={isDisabled}
-        className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:translate-y-[-1px]"
+        className="btn-press btn-glow flex items-center gap-2 px-6 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:translate-y-[-1px]"
         style={{
           backgroundColor: "rgba(255, 255, 255, 0.05)",
           border: "1px solid rgba(255, 255, 255, 0.08)",

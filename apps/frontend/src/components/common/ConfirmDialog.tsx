@@ -78,7 +78,7 @@ export function ConfirmDialog({
             <input
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              className="mt-2 w-full rounded-xl border bg-transparent px-3 py-2 text-sm outline-none"
+              className="mt-2 w-full rounded-xl border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-[rgba(138,92,255,0.4)] focus:border-[rgba(138,92,255,0.4)]"
               style={{ borderColor: "rgba(255,255,255,0.10)", color: "rgba(230,233,242,0.95)" }}
               placeholder={requiredConfirmText}
               autoFocus
@@ -93,7 +93,7 @@ export function ConfirmDialog({
               setInputValue("");
               onOpenChange(false);
             }}
-            className="rounded-xl border px-4 py-2 text-sm font-medium transition-colors hover:bg-white/5"
+            className="btn-press rounded-xl border px-4 py-2 text-sm font-medium transition-colors hover:bg-white/5"
             style={{ borderColor: "rgba(255,255,255,0.10)", color: "rgba(230,233,242,0.95)" }}
           >
             {cancelLabel}
@@ -105,7 +105,7 @@ export function ConfirmDialog({
               setInputValue("");
             }}
             disabled={!isConfirmEnabled}
-            className="rounded-xl border px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-40"
+            className="btn-press btn-glow rounded-xl border px-4 py-2 text-sm font-semibold transition-colors disabled:opacity-40"
             style={{
               backgroundColor: confirmBg,
               borderColor: confirmBorder,

@@ -65,7 +65,7 @@ export default function IssueDetailPage() {
       <AppShell activeTab={null}>
         <EmptyState title="Unable to load issue" description={getApiErrorMessage(issueQuery.error)} />
         <div className="mt-4 text-sm" style={{ color: "rgba(138,144,178,1)" }}>
-          <Link className="underline underline-offset-2" href="/login">
+          <Link className="underline underline-offset-2 hover:text-white/80 transition-colors" href="/login">
             Log in
           </Link>{" "}
           if this is an authenticated-only page.
@@ -185,7 +185,7 @@ export default function IssueDetailPage() {
               href={issue.github_url}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
+              className="btn-press btn-glow flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
               style={{
                 backgroundColor: "rgba(99, 102, 241, 0.90)",
                 color: "rgba(255, 255, 255, 0.98)",
@@ -200,7 +200,7 @@ export default function IssueDetailPage() {
               type="button"
               disabled={!meQuery.data || isSaved || createBookmark.isPending}
               onClick={handleSave}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200 disabled:opacity-50"
+              className="btn-press btn-glow flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-medium transition-all duration-200 disabled:opacity-50"
               style={{
                 backgroundColor: isSaved ? "rgba(138, 92, 255, 0.15)" : "rgba(255, 255, 255, 0.05)",
                 border: `1px solid ${isSaved ? "rgba(138, 92, 255, 0.3)" : "rgba(255, 255, 255, 0.08)"}`,
@@ -217,7 +217,7 @@ export default function IssueDetailPage() {
             {!meQuery.data && (
               <Link
                 href="/login"
-                className="px-4 py-2.5 rounded-xl text-[13px] font-medium transition-colors hover:bg-white/5"
+                className="btn-press px-4 py-2.5 rounded-xl text-[13px] font-medium transition-colors hover:bg-white/5"
                 style={{
                   border: "1px solid rgba(255,255,255,0.08)",
                   color: "rgba(255, 255, 255, 0.75)",
@@ -274,7 +274,7 @@ export default function IssueDetailPage() {
                   <Link
                     key={s.node_id}
                     href={`/issues/${s.node_id}` as Route}
-                    className="block p-3 rounded-xl transition-all duration-200 hover:bg-white/5"
+                    className="btn-press block p-3 rounded-xl transition-all duration-200 hover:bg-white/5"
                     style={{ border: "1px solid rgba(255, 255, 255, 0.04)" }}
                   >
                     <div

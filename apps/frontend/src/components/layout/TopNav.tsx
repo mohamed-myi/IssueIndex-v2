@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Menu, Search, Bookmark, User } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { Route } from "next";
 import { setQueryParam } from "@/lib/url";
 import { cn } from "@/lib/cn";
@@ -22,8 +22,6 @@ export function TopNav({ activeTab, sidebarOpen, onToggleSidebar }: TopNavProps)
   const [isFocused, setIsFocused] = useState(false);
 
   const q = searchParams.get("q") ?? "";
-
-  const searchHint = useMemo(() => (q.length === 0 && !isFocused ? "⌘ K" : null), [q, isFocused]);
 
   function updateQuery(nextQ: string) {
     const url = new URL(pathname ?? "/", window.location.origin);
@@ -49,7 +47,7 @@ export function TopNav({ activeTab, sidebarOpen, onToggleSidebar }: TopNavProps)
             type="button"
             onClick={onToggleSidebar}
             className={cn(
-              "rounded-xl p-2 transition-all duration-200 hover:bg-white/5",
+              "btn-press rounded-xl p-2 transition-all duration-200 hover:bg-white/5",
               sidebarOpen ? "opacity-100" : "opacity-90",
             )}
             title="Toggle filters"
@@ -57,7 +55,7 @@ export function TopNav({ activeTab, sidebarOpen, onToggleSidebar }: TopNavProps)
             <Menu className="h-5 w-5" style={{ color: "rgba(255, 255, 255, 0.6)" }} />
           </button>
 
-          <Link href="/" className="flex items-center gap-3">
+          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <div
               className="flex h-8 w-8 items-center justify-center rounded-xl"
               style={{
@@ -87,9 +85,9 @@ export function TopNav({ activeTab, sidebarOpen, onToggleSidebar }: TopNavProps)
           >
             <Link
               href="/browse"
-              className="rounded-lg px-4 py-1.5 text-[13px] font-medium transition-all duration-200"
+              className="btn-press rounded-lg px-4 py-1.5 text-[13px] font-medium transition-all duration-200 hover:bg-white/10"
               style={{
-                backgroundColor: activeTab === "browse" ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                backgroundColor: activeTab === "browse" ? "rgba(99, 102, 241, 0.15)" : undefined,
                 color: activeTab === "browse" ? "rgba(255, 255, 255, 0.95)" : "rgba(255, 255, 255, 0.55)",
               }}
             >
@@ -97,9 +95,9 @@ export function TopNav({ activeTab, sidebarOpen, onToggleSidebar }: TopNavProps)
             </Link>
             <Link
               href="/dashboard"
-              className="rounded-lg px-4 py-1.5 text-[13px] font-medium transition-all duration-200"
+              className="btn-press rounded-lg px-4 py-1.5 text-[13px] font-medium transition-all duration-200 hover:bg-white/10"
               style={{
-                backgroundColor: activeTab === "dashboard" ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                backgroundColor: activeTab === "dashboard" ? "rgba(99, 102, 241, 0.15)" : undefined,
                 color: activeTab === "dashboard" ? "rgba(255, 255, 255, 0.95)" : "rgba(255, 255, 255, 0.55)",
               }}
             >
@@ -107,9 +105,9 @@ export function TopNav({ activeTab, sidebarOpen, onToggleSidebar }: TopNavProps)
             </Link>
             <Link
               href="/for-you"
-              className="rounded-lg px-4 py-1.5 text-[13px] font-medium transition-all duration-200"
+              className="btn-press rounded-lg px-4 py-1.5 text-[13px] font-medium transition-all duration-200 hover:bg-white/10"
               style={{
-                backgroundColor: activeTab === "for-you" ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                backgroundColor: activeTab === "for-you" ? "rgba(99, 102, 241, 0.15)" : undefined,
                 color: activeTab === "for-you" ? "rgba(255, 255, 255, 0.95)" : "rgba(255, 255, 255, 0.55)",
               }}
             >
@@ -151,20 +149,6 @@ export function TopNav({ activeTab, sidebarOpen, onToggleSidebar }: TopNavProps)
                 className="flex-1 bg-transparent text-[14px] font-medium outline-none placeholder:text-white/30"
                 style={{ color: "#E6E9F2", letterSpacing: "-0.01em" }}
               />
-              {searchHint ? (
-                <div
-                  className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium"
-                  style={{
-                    backgroundColor: "rgba(255, 255, 255, 0.05)",
-                    color: "#8A90B2",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                  }}
-                >
-                  {searchHint.split(" ").map((t) => (
-                    <span key={t}>{t}</span>
-                  ))}
-                </div>
-              ) : null}
             </div>
           </div>
         </div>
@@ -172,7 +156,7 @@ export function TopNav({ activeTab, sidebarOpen, onToggleSidebar }: TopNavProps)
         <div className="flex items-center gap-3">
           <Link
             href="/saved"
-            className="rounded-xl p-2 transition-all duration-200 hover:bg-white/5"
+            className="btn-press btn-glow rounded-xl p-2 transition-all duration-200 hover:bg-white/5"
             title="Saved issues"
           >
             <Bookmark className="h-5 w-5" style={{ color: "rgba(255, 255, 255, 0.6)" }} />
@@ -180,7 +164,7 @@ export function TopNav({ activeTab, sidebarOpen, onToggleSidebar }: TopNavProps)
 
           <Link
             href="/profile"
-            className="rounded-xl border px-3 py-2 transition-all duration-200 hover:bg-white/5"
+            className="btn-press btn-glow rounded-xl border px-3 py-2 transition-all duration-200 hover:bg-white/5"
             style={{ borderColor: "rgba(255,255,255,0.05)" }}
             title="Profile"
           >

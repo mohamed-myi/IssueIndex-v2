@@ -54,7 +54,7 @@ export function FilterSidebar({ isVisible, languages, labels, repos, value, onCh
             <button
               type="button"
               onClick={clear}
-              className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors hover:bg-white/5"
+              className="btn-press flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] font-medium transition-colors hover:bg-white/5"
               style={{ color: "rgba(255, 255, 255, 0.45)" }}
             >
               <X className="h-3 w-3" />
@@ -128,11 +128,11 @@ function FilterSection(props: {
           type="button"
           onClick={() => props.onSelect(null)}
           className={cn(
-            "relative w-full rounded-xl px-3 py-1.5 text-left text-[12px] transition-all duration-150",
+            "btn-press relative w-full rounded-xl px-3 py-1.5 text-left text-[12px] transition-all duration-150 hover:bg-white/5 hover:text-[#E6E9F2]",
             props.truncate ? "truncate" : "",
           )}
           style={{
-            backgroundColor: props.selected === null ? "rgba(138, 92, 255, 0.12)" : "transparent",
+            backgroundColor: props.selected === null ? "rgba(138, 92, 255, 0.12)" : undefined,
             color: props.selected === null ? "#E6E9F2" : "#8A90B2",
             fontWeight: props.selected === null ? 600 : 400,
             borderLeft: props.selected === null ? "2px solid rgba(138, 92, 255, 0.6)" : "2px solid transparent",
@@ -149,11 +149,11 @@ function FilterSection(props: {
               type="button"
               onClick={() => props.onSelect(item)}
               className={cn(
-                "relative w-full rounded-xl px-3 py-1.5 text-left text-[12px] transition-all duration-150",
+                "btn-press relative w-full rounded-xl px-3 py-1.5 text-left text-[12px] transition-all duration-150 hover:bg-white/5 hover:text-[#E6E9F2]",
                 props.truncate ? "truncate" : "",
               )}
               style={{
-                backgroundColor: selected ? "rgba(138, 92, 255, 0.12)" : "transparent",
+                backgroundColor: selected ? "rgba(138, 92, 255, 0.12)" : undefined,
                 color: selected ? "#E6E9F2" : "#8A90B2",
                 fontWeight: selected ? 600 : 400,
                 borderLeft: selected ? "2px solid rgba(138, 92, 255, 0.6)" : "2px solid transparent",
@@ -168,7 +168,7 @@ function FilterSection(props: {
           <button
             type="button"
             onClick={props.onToggleExpanded}
-            className="flex w-full items-center gap-1.5 rounded-xl px-3 py-1.5 text-left text-[11px] transition-all duration-150"
+            className="btn-press flex w-full items-center gap-1.5 rounded-xl px-3 py-1.5 text-left text-[11px] transition-all duration-150 hover:bg-white/5"
             style={{ color: "rgba(255, 255, 255, 0.45)" }}
           >
             {props.expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}

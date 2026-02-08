@@ -88,6 +88,25 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+  button, a, [role="button"] {
+    cursor: pointer;
+  }
+  input, textarea, [contenteditable="true"] {
+    cursor: text;
+  }
+}
+
+@layer components {
+  .btn-press {
+    transition: transform 150ms ease, filter 150ms ease;
+  }
+  .btn-press:active {
+    transform: scale(0.97);
+    filter: brightness(0.85);
+  }
+  .btn-glow:hover {
+    box-shadow: 0 0 12px 2px rgba(138, 92, 255, 0.2);
+  }
 }
 
 @theme inline {

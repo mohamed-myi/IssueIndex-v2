@@ -469,7 +469,7 @@ export default function ProfileClient(props: {
                       completeOnboardingMutation.isPending ||
                       !onboardingQuery.data?.can_complete
                     }
-                    className="rounded-xl px-5 py-2.5 text-sm font-semibold transition-colors disabled:opacity-40"
+                    className="btn-press btn-glow rounded-xl px-5 py-2.5 text-sm font-semibold transition-colors disabled:opacity-40 hover:brightness-110"
                     style={{
                       backgroundColor: onboardingQuery.data?.can_complete
                         ? "rgba(99, 102, 241, 0.7)"
@@ -504,7 +504,7 @@ export default function ProfileClient(props: {
                     type="button"
                     onClick={() => skipOnboardingMutation.mutate()}
                     disabled={skipOnboardingMutation.isPending}
-                    className="text-xs font-medium transition-colors hover:underline"
+                    className="btn-press text-xs font-medium transition-colors hover:underline"
                     style={{ color: "rgba(138,144,178,0.8)" }}
                   >
                     {skipOnboardingMutation.isPending
@@ -595,7 +595,7 @@ export default function ProfileClient(props: {
               <div className="mb-5 flex flex-wrap gap-2">
                 {!hasGithubLogin && (
                   <a
-                    className="rounded-xl border px-4 py-2 text-sm font-medium transition-colors hover:bg-white/5"
+                    className="btn-press rounded-xl border px-4 py-2 text-sm font-medium transition-colors hover:bg-white/5"
                     style={{ borderColor: "rgba(255,255,255,0.10)" }}
                     href={linkGithubUrl}
                   >
@@ -604,7 +604,7 @@ export default function ProfileClient(props: {
                 )}
                 {!hasGoogleLogin && (
                   <a
-                    className="rounded-xl border px-4 py-2 text-sm font-medium transition-colors hover:bg-white/5"
+                    className="btn-press rounded-xl border px-4 py-2 text-sm font-medium transition-colors hover:bg-white/5"
                     style={{ borderColor: "rgba(255,255,255,0.10)" }}
                     href={linkGoogleUrl}
                   >
@@ -699,11 +699,11 @@ export default function ProfileClient(props: {
               <div className="mt-6 flex justify-end">
                 <button
                   type="button"
-                  className="rounded-xl border px-5 py-2.5 text-sm font-semibold transition-colors hover:brightness-110"
+                  className="btn-press rounded-xl border px-5 py-2.5 text-sm font-semibold transition-colors hover:brightness-110"
                   style={{
-                    backgroundColor: "rgba(220, 38, 38, 0.8)",
-                    borderColor: "rgba(220, 38, 38, 0.5)",
-                    color: "rgba(255, 255, 255, 0.95)",
+                    backgroundColor: "transparent",
+                    borderColor: "rgba(220, 38, 38, 0.3)",
+                    color: "rgba(248, 113, 113, 1)",
                   }}
                   onClick={() => setDeleteDialogOpen(true)}
                   disabled={deleteAccountMutation.isPending}
@@ -765,11 +765,11 @@ function TabButton(props: {
     <button
       type="button"
       onClick={props.onClick}
-      className="rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors"
+      className="btn-press rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-white/10"
       style={{
         backgroundColor: props.active
           ? "rgba(99, 102, 241, 0.15)"
-          : "rgba(255,255,255,0.03)",
+          : undefined,
         border: "1px solid rgba(255,255,255,0.08)",
         color: props.active
           ? "rgba(255,255,255,0.95)"
@@ -791,7 +791,7 @@ function ActionButton(props: {
       type="button"
       onClick={props.onClick}
       disabled={props.disabled}
-      className="rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50 transition-colors"
+      className="btn-press rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50 transition-colors hover:bg-white/5"
       style={{
         backgroundColor: "rgba(99, 102, 241, 0.15)",
         border: "1px solid rgba(99, 102, 241, 0.35)",
@@ -920,7 +920,7 @@ function SourceCard(props: {
         ) : props.href ? (
           <a
             href={props.href}
-            className="inline-block rounded-xl px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/5"
+            className="btn-press inline-block rounded-xl px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/5"
             style={{
               backgroundColor: "rgba(99, 102, 241, 0.15)",
               border: "1px solid rgba(99, 102, 241, 0.35)",
@@ -933,7 +933,7 @@ function SourceCard(props: {
           <button
             type="button"
             onClick={props.onAction}
-            className="rounded-xl px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/5"
+            className="btn-press rounded-xl px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/5"
             style={{
               backgroundColor: "rgba(99, 102, 241, 0.15)",
               border: "1px solid rgba(99, 102, 241, 0.35)",
@@ -995,7 +995,7 @@ function AccountCard(props: {
         <button
           type="button"
           onClick={props.onUnlink}
-          className="rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/5"
+          className="btn-press rounded-xl border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/5"
           style={{
             borderColor: "rgba(220, 38, 38, 0.3)",
             color: "rgba(248, 113, 113, 1)",
@@ -1046,7 +1046,7 @@ function InputCard(props: {
           setIsDirty(true);
         }}
         placeholder={props.placeholder}
-        className="mt-3 w-full rounded-xl border bg-transparent px-3 py-2 text-sm outline-none placeholder:text-white/20"
+        className="mt-3 w-full rounded-xl border bg-transparent px-3 py-2 text-sm outline-none placeholder:text-white/20 focus:ring-1 focus:ring-[rgba(138,92,255,0.4)] focus:border-[rgba(138,92,255,0.4)]"
         style={{
           borderColor: "rgba(255,255,255,0.10)",
           color: "rgba(230,233,242,0.95)",
@@ -1060,7 +1060,7 @@ function InputCard(props: {
             setIsDirty(false);
           }}
           disabled={!isDirty || props.isSaving}
-          className="rounded-xl px-3 py-1.5 text-xs font-medium disabled:opacity-40 transition-colors"
+          className="btn-press rounded-xl px-3 py-1.5 text-xs font-medium disabled:opacity-40 transition-colors hover:bg-white/5"
           style={{
             backgroundColor: "rgba(99, 102, 241, 0.15)",
             border: "1px solid rgba(99, 102, 241, 0.35)",

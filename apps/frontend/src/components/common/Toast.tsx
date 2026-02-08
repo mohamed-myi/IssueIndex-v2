@@ -66,7 +66,7 @@ export function Toast({ message, variant = "info", duration = 5000, onDismiss }:
           setIsVisible(false);
           setTimeout(onDismiss, 200);
         }}
-        className="flex-shrink-0 rounded-lg p-1 transition-colors hover:bg-white/10"
+        className="btn-press flex-shrink-0 rounded-lg p-1 transition-colors hover:bg-white/10"
         aria-label="Dismiss"
       >
         <X className="h-3.5 w-3.5" />

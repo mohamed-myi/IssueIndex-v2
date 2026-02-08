@@ -61,7 +61,7 @@ export function ProfileCTA({
 
           <Link
             href={ctaHref}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
+            className="btn-press btn-glow inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
             style={{
               backgroundColor: "rgba(99, 102, 241, 0.15)",
               border: "1px solid rgba(99, 102, 241, 0.35)",

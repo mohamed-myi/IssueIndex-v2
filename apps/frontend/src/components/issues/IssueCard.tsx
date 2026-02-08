@@ -52,7 +52,7 @@ export function IssueCard({ issue, href, showMatchReason = false }: IssueCardPro
       href={href}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="group block transition-all duration-500 relative"
+      className="group block btn-press transition-all duration-500 relative"
     >
       {/* Spotlight glow effect */}
       {isHovered && (
@@ -166,7 +166,7 @@ export function IssueCard({ issue, href, showMatchReason = false }: IssueCardPro
                   e.stopPropagation();
                   setIsExpanded(!isExpanded);
                 }}
-                className="flex items-center gap-2 text-xs transition-colors w-full"
+                className="btn-press flex items-center gap-2 text-xs transition-colors w-full hover:text-white/70"
                 style={{ color: "#71717a" }}
               >
                 <span>Why this?</span>

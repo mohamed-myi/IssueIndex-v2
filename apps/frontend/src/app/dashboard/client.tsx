@@ -49,16 +49,20 @@ export default function DashboardClient() {
     const pages = activeQuery.data?.pages ?? [];
     const allResults = pages.flatMap((page) => page.results);
     
-    return allResults.map<IssueListItemModel>((r) => ({
-      nodeId: r.node_id,
-      title: r.title,
-      repoName: r.repo_name,
-      primaryLanguage: r.primary_language,
-      labels: r.labels,
-      qScore: r.q_score,
-      createdAt: r.github_created_at,
-      bodyPreview: r.body_preview,
-    }));
+    return allResults.map<IssueListItemModel>((r) => {
+      const issueNumber = r.node_id.match(/\d+$/)?.[0];
+      return {
+        nodeId: r.node_id,
+        title: r.title,
+        repoName: r.repo_name,
+        primaryLanguage: r.primary_language,
+        labels: r.labels,
+        qScore: r.q_score,
+        createdAt: r.github_created_at,
+        bodyPreview: r.body_preview,
+        githubUrl: issueNumber ? `https://github.com/${r.repo_name}/issues/${issueNumber}` : null,
+      };
+    });
   }, [activeQuery.data]);
 
   // Bookmark handling
@@ -158,10 +162,10 @@ export default function DashboardClient() {
                   <div
                     key={issue.nodeId}
                     onClick={() => setSelectedIssueId(issue.nodeId)}
-                    className="cursor-pointer"
+                    className="btn-press cursor-pointer transition-colors hover:bg-white/[0.02]"
                     style={{
                       backgroundColor:
-                        selectedIssueId === issue.nodeId ? "rgba(138, 92, 255, 0.08)" : "transparent",
+                        selectedIssueId === issue.nodeId ? "rgba(138, 92, 255, 0.08)" : undefined,
                       boxShadow:
                         selectedIssueId === issue.nodeId
                           ? "inset 2px 0 0 rgba(138, 92, 255, 0.6)"

@@ -73,7 +73,7 @@ export default function SavedDetailPage() {
           </div>
           <h1 className="mt-2 text-xl font-semibold tracking-tight">{bookmark?.title_snapshot ?? "Loading…"}</h1>
           <div className="mt-2 text-sm" style={{ color: "rgba(138,144,178,1)" }}>
-            <Link className="underline underline-offset-2" href="/saved">
+            <Link className="underline underline-offset-2 hover:text-white/80 transition-colors" href="/saved">
               Back to saved
             </Link>
           </div>
@@ -84,7 +84,7 @@ export default function SavedDetailPage() {
             href={bookmark.github_url}
             target="_blank"
             rel="noreferrer"
-            className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-white/5 transition-colors"
+            className="btn-press rounded-xl border px-4 py-2 text-sm font-medium hover:bg-white/5 transition-colors"
             style={{ borderColor: "rgba(255,255,255,0.08)" }}
           >
             Open on GitHub
@@ -129,7 +129,7 @@ export default function SavedDetailPage() {
                 value={newNote}
                 onChange={(e) => setNewNote(e.target.value)}
                 placeholder="Add a note…"
-                className="min-h-[96px] w-full resize-y rounded-xl border bg-transparent p-3 text-sm outline-none"
+                className="min-h-[96px] w-full resize-y rounded-xl border bg-transparent p-3 text-sm outline-none focus:ring-1 focus:ring-[rgba(138,92,255,0.4)] focus:border-[rgba(138,92,255,0.4)]"
                 style={{ borderColor: "rgba(255,255,255,0.10)", color: "rgba(230,233,242,0.95)" }}
               />
               <div className="mt-3 flex justify-end">
@@ -137,7 +137,7 @@ export default function SavedDetailPage() {
                   type="button"
                   onClick={() => createNote.mutate()}
                   disabled={!newNote.trim()}
-                  className="rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50"
+                  className="btn-press btn-glow rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
                   style={{
                     backgroundColor: "rgba(99, 102, 241, 0.15)",
                     border: "1px solid rgba(99, 102, 241, 0.35)",
@@ -175,7 +175,7 @@ function NoteRow(props: {
           setValue(e.target.value);
           setIsDirty(true);
         }}
-        className="min-h-[72px] w-full resize-y rounded-xl border bg-transparent p-3 text-sm outline-none"
+        className="min-h-[72px] w-full resize-y rounded-xl border bg-transparent p-3 text-sm outline-none focus:ring-1 focus:ring-[rgba(138,92,255,0.4)] focus:border-[rgba(138,92,255,0.4)]"
         style={{ borderColor: "rgba(255,255,255,0.10)", color: "rgba(230,233,242,0.95)" }}
       />
       <div className="mt-3 flex items-center justify-between">
@@ -186,7 +186,7 @@ function NoteRow(props: {
           <button
             type="button"
             onClick={props.onDelete}
-            className="rounded-xl border px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors"
+            className="btn-press rounded-xl border px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors"
             style={{ borderColor: "rgba(255,255,255,0.08)" }}
           >
             Delete
@@ -198,7 +198,7 @@ function NoteRow(props: {
               setIsDirty(false);
             }}
             disabled={!isDirty}
-            className="rounded-xl px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+            className="btn-press btn-glow rounded-xl px-3 py-1.5 text-xs font-medium disabled:opacity-50 hover:bg-white/5 transition-colors"
             style={{
               backgroundColor: "rgba(99, 102, 241, 0.15)",
               border: "1px solid rgba(99, 102, 241, 0.35)",

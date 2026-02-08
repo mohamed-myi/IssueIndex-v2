@@ -109,7 +109,7 @@ export default function LoginPage() {
         <div className="w-full max-w-sm space-y-3 mb-8">
           <button
             type="button"
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl text-[14px] font-medium transition-all duration-200 hover:bg-white/10 disabled:opacity-50"
+            className="btn-press btn-glow w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl text-[14px] font-medium transition-all duration-200 hover:bg-white/10 disabled:opacity-50"
             style={{
               backgroundColor: "rgba(255, 255, 255, 0.05)",
               border: "1px solid rgba(255, 255, 255, 0.08)",
@@ -126,7 +126,7 @@ export default function LoginPage() {
 
           <button
             type="button"
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl text-[14px] font-medium transition-all duration-200 hover:bg-white/10 disabled:opacity-50"
+            className="btn-press btn-glow w-full flex items-center justify-center gap-3 px-4 py-3 rounded-xl text-[14px] font-medium transition-all duration-200 hover:bg-white/10 disabled:opacity-50"
             style={{
               backgroundColor: "rgba(255, 255, 255, 0.05)",
               border: "1px solid rgba(255, 255, 255, 0.08)",
@@ -158,7 +158,7 @@ export default function LoginPage() {
         </div>
 
 
-        <label className="flex items-center gap-2.5 cursor-pointer mb-4">
+        <label className="flex items-center gap-2.5 cursor-pointer mb-4 rounded-lg px-2 py-1 -mx-2 transition-colors hover:bg-white/[0.03]">
           <div className="relative">
             <input
               type="checkbox"

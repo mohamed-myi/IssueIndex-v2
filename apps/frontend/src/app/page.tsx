@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Route } from "next";
-import { Search, ArrowDown } from "lucide-react";
+import { Search } from "lucide-react";
 import { usePublicStats, useMe } from "@/lib/api/hooks";
 import { logout } from "@/lib/api/endpoints";
 import { useQueryClient } from "@tanstack/react-query";
@@ -111,66 +111,68 @@ export default function LandingPage() {
         >
           Try: {QUICK_TAGS.join(" · ")}
         </p>
+
+        {/* CTA buttons */}
+        <div className="mt-6 mb-8 flex flex-col items-center gap-3">
+          {isAuthLoading ? (
+            <div className="h-[48px]" />
+          ) : isAuthenticated ? (
+            <>
+              <Link
+                href={"/dashboard" as Route}
+                className="btn-press btn-glow rounded-full px-5 py-2.5 text-[14px] font-semibold transition-all duration-200 hover:bg-white/10"
+                style={{
+                  backgroundColor: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  color: "rgba(230, 233, 242, 0.95)",
+                }}
+              >
+                Browse Issues
+              </Link>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="btn-press btn-glow rounded-full px-5 py-2.5 text-[13px] font-semibold transition-all duration-200 hover:bg-white/10"
+                style={{
+                  backgroundColor: "rgba(138, 92, 255, 0.12)",
+                  border: "1px solid rgba(138, 92, 255, 0.25)",
+                  color: "rgba(200, 190, 255, 0.95)",
+                }}
+              >
+                Log out
+              </button>
+            </>
+          ) : (
+            <>
+              <p
+                className="text-[13px]"
+                style={{ color: "rgba(138, 144, 178, 0.7)" }}
+              >
+                For personalized issues
+              </p>
+              <Link
+                href="/login"
+                className="btn-press btn-glow rounded-full px-5 py-2.5 text-[14px] font-semibold transition-all duration-200 hover:bg-white/10"
+                style={{
+                  backgroundColor: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  color: "rgba(230, 233, 242, 0.95)",
+                }}
+              >
+                Sign In
+              </Link>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Bottom section - Sign in / Browse Issues, Learn more, Stats */}
+      {/* Bottom section - Learn more, Stats */}
       <div className="absolute bottom-0 left-0 right-0 pb-8 px-6">
         <div className="max-w-xl mx-auto flex flex-col items-center">
-          {/* CTA section */}
-          <div className="flex flex-col items-center mb-4">
-            {isAuthLoading ? (
-              /* Neutral placeholder while checking auth */
-              <div className="h-[72px]" />
-            ) : isAuthenticated ? (
-              <>
-                <Link
-                  href={"/dashboard" as Route}
-                  className="rounded-full px-5 py-2.5 text-[14px] font-semibold transition-all duration-200 hover:bg-white/10"
-                  style={{
-                    backgroundColor: "rgba(255, 255, 255, 0.05)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    color: "rgba(230, 233, 242, 0.95)",
-                  }}
-                >
-                  Browse Issues
-                </Link>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="mt-2 text-[13px] font-medium transition-colors duration-200 hover:text-white"
-                  style={{ color: "rgba(138, 144, 178, 0.7)" }}
-                >
-                  Log out
-                </button>
-              </>
-            ) : (
-              <>
-                <p
-                  className="flex items-center gap-1.5 text-[13px] mb-2"
-                  style={{ color: "rgba(138, 144, 178, 0.7)" }}
-                >
-                  For personalized issues
-                  <ArrowDown className="w-3 h-3" />
-                </p>
-                <Link
-                  href="/login"
-                  className="rounded-full px-5 py-2.5 text-[14px] font-semibold transition-all duration-200 hover:bg-white/10"
-                  style={{
-                    backgroundColor: "rgba(255, 255, 255, 0.05)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    color: "rgba(230, 233, 242, 0.95)",
-                  }}
-                >
-                  Sign In
-                </Link>
-              </>
-            )}
-          </div>
-
           {/* Learn More link */}
           <Link
             href="/docs"
-            className="mb-6 text-[13px] font-medium underline underline-offset-2 transition-colors duration-200 hover:text-white"
+            className="btn-press mb-6 text-[13px] font-medium underline underline-offset-2 transition-colors duration-200 hover:text-white"
             style={{ color: "rgba(138, 144, 178, 0.8)" }}
           >
             Learn More

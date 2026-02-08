@@ -69,6 +69,7 @@ export default function SavedClient() {
           qScore: null,
           createdAt: b.created_at,
           bodyPreview: b.body_snapshot,
+          githubUrl: b.github_url,
         },
       }));
   }, [bookmarksQuery.data, q, repo, filterTab]);
@@ -165,7 +166,7 @@ export default function SavedClient() {
                 <div className="flex items-center gap-2 px-6 py-3">
                   <button
                     type="button"
-                    className="rounded-xl border px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors"
+                    className="btn-press rounded-xl border px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors"
                     style={{ borderColor: "rgba(255,255,255,0.08)" }}
                     onClick={() =>
                       patchBookmarkMutation.mutate({ bookmarkId, isResolved: !isResolved })
@@ -176,7 +177,7 @@ export default function SavedClient() {
                   </button>
                   <button
                     type="button"
-                    className="rounded-xl border px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors"
+                    className="btn-press rounded-xl border px-3 py-1.5 text-xs font-medium hover:bg-white/5 transition-colors"
                     style={{ borderColor: "rgba(255,255,255,0.08)" }}
                     onClick={() => deleteBookmarkMutation.mutate(bookmarkId)}
                     disabled={deleteBookmarkMutation.isPending}
@@ -185,7 +186,7 @@ export default function SavedClient() {
                   </button>
                   <Link
                     href={`/saved/${bookmarkId}` as Route}
-                    className="ml-auto text-xs underline underline-offset-2"
+                    className="btn-press ml-auto text-xs underline underline-offset-2 hover:text-white/80 transition-colors"
                     style={{ color: "rgba(138,144,178,1)" }}
                   >
                     View notes
@@ -219,7 +220,7 @@ function FilterTabButton(props: {
       type="button"
       onClick={props.onClick}
       className={cn(
-        "flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-medium transition-all duration-200",
+        "btn-press flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-medium transition-all duration-200 hover:bg-white/10",
       )}
       style={{
         backgroundColor: props.active ? "rgba(99, 102, 241, 0.15)" : "rgba(255, 255, 255, 0.03)",

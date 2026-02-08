@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { X, ExternalLink, MessageCircle, ThumbsUp, ThumbsDown, Bookmark } from "lucide-react";
+import { X, ExternalLink, Github, MessageCircle, ThumbsUp, ThumbsDown, Bookmark } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 export type IssueDetailModel = {
@@ -56,6 +56,10 @@ export function IssueDetailPanel({
   function handleViewInGitHub() {
     const url = issue.githubUrl ?? `https://github.com/${issue.repoName}`;
     window.open(url, "_blank");
+  }
+
+  function handleViewRepo() {
+    window.open(`https://github.com/${issue.repoName}`, "_blank");
   }
 
   const score = issue.qScore;
@@ -119,7 +123,7 @@ export function IssueDetailPanel({
         <button
           type="button"
           onClick={onClose}
-          className="p-2 rounded-lg transition-all duration-200 hover:bg-white/5"
+          className="btn-press p-2 rounded-lg transition-all duration-200 hover:bg-white/5"
         >
           <X className="w-4 h-4" style={{ color: "rgba(255, 255, 255, 0.5)" }} />
         </button>
@@ -231,7 +235,7 @@ export function IssueDetailPanel({
             <button
               type="button"
               onClick={handleUpvote}
-              className="p-2 transition-all duration-200 hover:bg-white/5"
+              className="btn-press p-2 transition-all duration-200 hover:bg-white/5"
               style={{
                 backgroundColor: isUpvoted ? "rgba(34, 197, 94, 0.15)" : "transparent",
               }}
@@ -254,7 +258,7 @@ export function IssueDetailPanel({
             <button
               type="button"
               onClick={handleDownvote}
-              className="p-2 transition-all duration-200 hover:bg-white/5"
+              className="btn-press p-2 transition-all duration-200 hover:bg-white/5"
               style={{
                 backgroundColor: isDownvoted ? "rgba(239, 68, 68, 0.15)" : "transparent",
               }}
@@ -275,7 +279,7 @@ export function IssueDetailPanel({
             onClick={onToggleBookmark}
             disabled={!onToggleBookmark}
             className={cn(
-              "p-2 rounded-lg transition-all duration-200",
+              "btn-press p-2 rounded-lg transition-all duration-200",
               onToggleBookmark ? "hover:bg-white/5" : "opacity-50",
             )}
             style={{
@@ -299,7 +303,7 @@ export function IssueDetailPanel({
             <button
               type="button"
               onClick={onViewSimilar}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
+              className="btn-press flex items-center gap-2 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
               style={{
                 backgroundColor: "rgba(255, 255, 255, 0.05)",
                 color: "rgba(255, 255, 255, 0.85)",
@@ -309,21 +313,34 @@ export function IssueDetailPanel({
               View similar issues
             </button>
           )}
-          <button
-            type="button"
-            onClick={handleViewInGitHub}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
-            style={{
-              backgroundColor: "rgba(99, 102, 241, 0.90)",
-              color: "rgba(255, 255, 255, 0.98)",
-              border: "1px solid rgba(99, 102, 241, 0.5)",
-            }}
-          >
-            <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor">
-              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
-            </svg>
-            View in GitHub
-          </button>
+          <div className="flex flex-col gap-1.5">
+            <button
+              type="button"
+              onClick={handleViewInGitHub}
+              className="btn-press btn-glow flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
+              style={{
+                backgroundColor: "rgba(79, 82, 201, 0.75)",
+                color: "rgba(255, 255, 255, 0.98)",
+                border: "1px solid rgba(79, 82, 201, 0.45)",
+              }}
+            >
+              <ExternalLink className="w-4 h-4" />
+              View Issue
+            </button>
+            <button
+              type="button"
+              onClick={handleViewRepo}
+              className="btn-press btn-glow flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 hover:translate-y-[-1px]"
+              style={{
+                backgroundColor: "rgba(55, 58, 160, 0.65)",
+                color: "rgba(255, 255, 255, 0.98)",
+                border: "1px solid rgba(55, 58, 160, 0.40)",
+              }}
+            >
+              <Github className="w-4 h-4" />
+              View Repository
+            </button>
+          </div>
         </div>
       </div>
     </div>
