@@ -3,14 +3,15 @@ import { Suspense } from "react";
 
 export const dynamic = "force-dynamic";
 
-export default function ProfilePage({
+export default async function ProfilePage({
   searchParams,
 }: {
-  searchParams?: { tab?: string; connected?: string; error?: string };
+  searchParams?: Promise<{ tab?: string; connected?: string; error?: string }>;
 }) {
-  const tab = searchParams?.tab ?? "overview";
-  const connected = searchParams?.connected ?? null;
-  const error = searchParams?.error ?? null;
+  const resolvedParams = searchParams ? await searchParams : undefined;
+  const tab = resolvedParams?.tab ?? "overview";
+  const connected = resolvedParams?.connected ?? null;
+  const error = resolvedParams?.error ?? null;
 
   return (
     <Suspense

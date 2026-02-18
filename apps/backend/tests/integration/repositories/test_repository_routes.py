@@ -1,11 +1,11 @@
 """Integration tests for repository routes."""
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from gim_backend.services.repository_service import RepositoryItem
 
 from gim_backend.main import app
+from gim_backend.services.repository_service import RepositoryItem
 
 
 @pytest.fixture

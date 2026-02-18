@@ -3,7 +3,9 @@ import {
   fetchPublicStats,
   fetchTrending,
   fetchFeed,
+  logRecommendationEvents,
   searchIssues,
+  logSearchInteraction,
   fetchIssue,
   fetchSimilarIssues,
   fetchRepositories,
@@ -31,7 +33,13 @@ import {
   completeOnboarding,
   saveOnboardingStep,
 } from "./endpoints";
-import type { SearchRequest, ProfilePreferences, OnboardingStep } from "./types";
+import type {
+  SearchRequest,
+  ProfilePreferences,
+  OnboardingStep,
+  RecommendationEventsRequest,
+  SearchInteractionInput,
+} from "./types";
 
 // Public / Stats
 
@@ -93,6 +101,18 @@ export function useSearch(params: {
     enabled: enabled && query.trim().length > 0,
     retry: false,
     staleTime: 1000 * 30,
+  });
+}
+
+export function useLogRecommendationEvents() {
+  return useMutation({
+    mutationFn: (payload: RecommendationEventsRequest) => logRecommendationEvents(payload),
+  });
+}
+
+export function useLogSearchInteraction() {
+  return useMutation({
+    mutationFn: (payload: SearchInteractionInput) => logSearchInteraction(payload),
   });
 }
 

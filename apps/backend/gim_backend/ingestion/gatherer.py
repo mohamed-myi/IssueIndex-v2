@@ -40,6 +40,8 @@ class IssueData:
     q_score: float
     q_components: QScoreComponents
     state: str
+    issue_number: int | None = None
+    github_url: str | None = None
 
 
 class Gatherer:
@@ -73,7 +75,7 @@ class Gatherer:
             issues(first: $first, after: $after, orderBy: {field: CREATED_AT, direction: DESC}) {
               pageInfo { hasNextPage endCursor }
               nodes {
-                id title bodyText createdAt state
+                id number url title bodyText createdAt state
                 labels(first: 10) { nodes { name } }
               }
             }
@@ -288,6 +290,8 @@ class Gatherer:
             return None
 
         node_id = node.get("id")
+        issue_number_raw = node.get("number")
+        github_url_raw = node.get("url")
         title = node.get("title", "")
         created_at_str = node.get("createdAt")
 
@@ -295,6 +299,8 @@ class Gatherer:
             return None
 
         body = (node.get("bodyText") or "")[:BODY_TRUNCATE_LENGTH]
+        issue_number = issue_number_raw if isinstance(issue_number_raw, int) and issue_number_raw > 0 else None
+        github_url = github_url_raw.strip() if isinstance(github_url_raw, str) and github_url_raw.strip() else None
 
         labels_data = node.get("labels", {}).get("nodes", [])
         labels = [
@@ -323,10 +329,11 @@ class Gatherer:
             repo_id=repo.node_id,
             title=title,
             body_text=body,
+            issue_number=issue_number,
+            github_url=github_url,
             labels=labels,
             github_created_at=github_created_at,
             q_score=q_score,
             q_components=components,
             state=state,
         )
-

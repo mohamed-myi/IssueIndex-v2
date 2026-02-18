@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { authInit } from "@/lib/api/endpoints";
@@ -46,6 +46,12 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState<OAuthProvider | null>(null);
+  const oauthError = useMemo(() => {
+    const errorCode = searchParams.get("error");
+    if (!errorCode) return null;
+    const provider = searchParams.get("provider");
+    return getOAuthErrorMessage(errorCode, provider);
+  }, [searchParams]);
 
   // Redirect already-authenticated users to dashboard.
   // Middleware handles the fast path; this is the client-side net.
@@ -57,14 +63,11 @@ export default function LoginPage() {
 
   // Handle backend OAuth error redirects.
   useEffect(() => {
-    const errorCode = searchParams.get("error");
-    if (errorCode) {
-      const provider = searchParams.get("provider");
-      setError(getOAuthErrorMessage(errorCode, provider));
+    if (oauthError) {
       // Remove error from URL.
       router.replace("/login");
     }
-  }, [searchParams, router]);
+  }, [oauthError, router]);
 
   async function startLogin(provider: OAuthProvider) {
     setError(null);
@@ -188,7 +191,7 @@ export default function LoginPage() {
         </label>
 
 
-        {error && (
+        {(error ?? oauthError) && (
           <div
             className="w-full max-w-sm rounded-xl px-4 py-3 text-sm"
             style={{
@@ -197,7 +200,7 @@ export default function LoginPage() {
               color: "#f87171",
             }}
           >
-            {error}
+            {error ?? oauthError}
           </div>
         )}
       </div>

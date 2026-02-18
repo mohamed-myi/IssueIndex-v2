@@ -57,8 +57,7 @@ async def get_issue_by_node_id(
         i.q_score,
         r.full_name AS repo_name,
         'https://github.com/' || r.full_name AS repo_url,
-        'https://github.com/' || r.full_name || '/issues/' ||
-            SUBSTRING(i.node_id FROM '[0-9]+$') AS github_url,
+        COALESCE(i.github_url, 'https://github.com/' || r.full_name) AS github_url,
         r.primary_language,
         i.github_created_at,
         i.state

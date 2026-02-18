@@ -54,13 +54,13 @@ class StagingPersistence:
                 text("""
                     INSERT INTO staging.pending_issue (
                         node_id, repo_id, title, body_text, labels,
-                        github_created_at, has_code, has_template_headers,
+                        issue_number, github_url, github_created_at, has_code, has_template_headers,
                         tech_stack_weight, q_score, state, content_hash,
                         status, attempts
                     )
                     VALUES (
                         :node_id, :repo_id, :title, :body_text, :labels,
-                        :github_created_at, :has_code, :has_template_headers,
+                        :issue_number, :github_url, :github_created_at, :has_code, :has_template_headers,
                         :tech_stack_weight, :q_score, :state, :content_hash,
                         'pending', 0
                     )
@@ -72,6 +72,8 @@ class StagingPersistence:
                     "title": issue.title,
                     "body_text": issue.body_text,
                     "labels": issue.labels,
+                    "issue_number": issue.issue_number,
+                    "github_url": issue.github_url,
                     "github_created_at": issue.github_created_at,
                     "has_code": issue.q_components.has_code,
                     "has_template_headers": issue.q_components.has_headers,
@@ -114,7 +116,8 @@ class StagingPersistence:
                 FROM claimed c
                 WHERE p.node_id = c.node_id
                 RETURNING p.node_id, p.repo_id, p.title, p.body_text, p.labels,
-                          p.github_created_at, p.has_code, p.has_template_headers,
+                          p.issue_number, p.github_url, p.github_created_at,
+                          p.has_code, p.has_template_headers,
                           p.tech_stack_weight, p.q_score, p.state, p.content_hash,
                           p.attempts
             """),
@@ -131,6 +134,8 @@ class StagingPersistence:
                 "title": row.title,
                 "body_text": row.body_text,
                 "labels": row.labels or [],
+                "issue_number": row.issue_number,
+                "github_url": row.github_url,
                 "github_created_at": row.github_created_at,
                 "has_code": row.has_code,
                 "has_template_headers": row.has_template_headers,

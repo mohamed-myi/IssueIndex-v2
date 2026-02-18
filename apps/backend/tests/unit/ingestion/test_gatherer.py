@@ -41,6 +41,8 @@ def sample_repo():
 
 def make_issue_node(
     node_id: str = "I_kwDOHDq123",
+    issue_number: int | None = 123,
+    issue_url: str | None = "https://github.com/facebook/react/issues/123",
     title: str = "Bug report",
     body: str = "## Description\n```typescript\nthrow new TypeError()\n```",
     created_at: str = "2024-01-15T12:00:00Z",
@@ -49,6 +51,8 @@ def make_issue_node(
 ):
     return {
         "id": node_id,
+        "number": issue_number,
+        "url": issue_url,
         "title": title,
         "bodyText": body,
         "createdAt": created_at,
@@ -74,6 +78,8 @@ class TestParseIssue:
         assert issue is not None
         assert issue.node_id == "I_123"
         assert issue.repo_id == sample_repo.node_id
+        assert issue.issue_number == 123
+        assert issue.github_url == "https://github.com/facebook/react/issues/123"
         assert issue.title == "TypeError in component"
         assert "bug" in issue.labels
         assert issue.q_score >= 0.0
@@ -103,6 +109,15 @@ class TestParseIssue:
 
         assert issue is not None
         assert issue.body_text == ""
+
+    def test_handles_missing_issue_number_and_url(self, gatherer, sample_repo):
+        node = make_issue_node(issue_number=None, issue_url=None)
+
+        issue = gatherer._parse_issue(node, sample_repo)
+
+        assert issue is not None
+        assert issue.issue_number is None
+        assert issue.github_url is None
 
     def test_parses_created_at_with_z_suffix(self, gatherer, sample_repo):
         node = make_issue_node(created_at="2024-01-15T12:00:00Z")
@@ -815,4 +830,3 @@ class TestConcurrentHarvesting:
 
         # Assert - should default to 10 as specified in PERF-005
         assert gatherer._concurrency == 10
-

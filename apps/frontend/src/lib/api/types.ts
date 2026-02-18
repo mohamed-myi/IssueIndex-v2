@@ -27,6 +27,7 @@ export type FeedIssue = {
   node_id: string;
   title: string;
   body_preview: string;
+  github_url?: string | null;
   labels: string[];
   q_score: number;
   repo_name: string;
@@ -44,6 +45,7 @@ export type FeedResponse = {
   has_more: boolean;
   is_personalized: boolean;
   profile_cta: string | null;
+  recommendation_batch_id: string;
 };
 
 export type TrendingResponse = {
@@ -69,6 +71,7 @@ export type SearchResult = {
   node_id: string;
   title: string;
   body_preview: string;
+  github_url?: string | null;
   labels: string[];
   q_score: number;
   repo_name: string;
@@ -84,6 +87,12 @@ export type SearchResponse = {
   page: number;
   page_size: number;
   has_more: boolean;
+};
+
+export type SearchInteractionInput = {
+  search_id: string;
+  selected_node_id: string;
+  position: number;
 };
 
 export type IssueDetailResponse = {
@@ -202,6 +211,37 @@ export type ProfilePreferences = {
 
 export type ProfilePreferencesResponse = ProfilePreferences;
 
+export type ResumeUploadAcceptedResponse = {
+  job_id: string;
+  status: string;
+  message: string;
+};
+
+export type ResumeDataResponse = {
+  status: string;
+  skills: string[];
+  job_titles: string[];
+  vector_status: string | null;
+  uploaded_at: string | null;
+};
+
+export type GitHubAcceptedResponse = {
+  job_id: string;
+  status: string;
+  message: string;
+};
+
+export type GitHubDataResponse = {
+  status: string;
+  username: string;
+  starred_count: number;
+  contributed_repos: number;
+  languages: string[];
+  topics: string[];
+  vector_status: string | null;
+  fetched_at: string | null;
+};
+
 export type LinkedAccount = {
   provider: string;
   connected: boolean;
@@ -240,3 +280,17 @@ export type OnboardingStepResponse = {
   payload: unknown;
 };
 
+export type RecommendationEventInput = {
+  event_id: string;
+  event_type: "impression" | "click";
+  issue_node_id: string;
+  position: number;
+  surface?: string;
+  occurred_at?: string;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type RecommendationEventsRequest = {
+  recommendation_batch_id: string;
+  events: RecommendationEventInput[];
+};

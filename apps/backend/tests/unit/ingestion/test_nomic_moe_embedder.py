@@ -325,20 +325,20 @@ class TestMatryoshkaTruncationPublicApi:
     async def test_embed_documents_truncates_output(self):
         """Public embed_documents should return 256-dim embeddings"""
         embedder = NomicMoEEmbedder()
-        
+
         # Mock the synchronous encode method to return 768-dim vectors
         # This simulates the real model output before truncation
-        with patch.object(embedder, "_encode_sync") as mock_encode:
+        with patch.object(embedder, "_encode_sync"):
             # The internal _encode_sync is called by public async methods.
             # However, in the real implementation, _encode_sync handles the truncation.
             # Wait, the CURRENT implementation has _encode_sync doing the truncation.
             # So if we mock _encode_sync, we mock the truncation too, which defeats the purpose.
-            
+
             # We want to test that calling `embed_documents` results in 256-dim vectors.
             # But we can't load the real model (too heavy/slow/missing dependency).
             # We need to rely on the fact that `embed_documents` calls `_encode_sync`,
             # and `_encode_sync` calls `model.encode` then `_truncate_and_normalize`.
-            
+
             # A better test here is to verify that `_truncate_and_normalize` is actually CALLED
             # with the output of the model, OR test `_encode_sync` logic directly by mocking ONLY the model.
             pass
@@ -349,21 +349,20 @@ class TestMatryoshkaTruncationPublicApi:
             # Model returns (batch, 768)
             mock_model.encode.return_value = np.random.rand(2, 768).astype(np.float32)
             mock_load.return_value = mock_model
-            
+
             # Call the public sync method (which is what runs in the executor)
             # or simply call the async public API and await it (which runs the sync method)
-            
+
             public_api_results = await embedder.embed_documents(["doc1", "doc2"])
-            
+
             # Verify output dimensions
             assert len(public_api_results) == 2
             assert len(public_api_results[0]) == 256
             assert len(public_api_results[1]) == 256
-            
+
             # Verify prefix was added (implementation detail, but important for correctness)
             mock_model.encode.assert_called_once()
             call_args = mock_model.encode.call_args[0][0]
             assert call_args[0].startswith("search_document: ")
-            
-            embedder.close()
 
+            embedder.close()

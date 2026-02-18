@@ -4,12 +4,14 @@ import type { Route } from "next";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonList } from "@/components/common/SkeletonList";
 import { LoadMoreButton } from "@/components/common/LoadMoreButton";
 import { IssueListItem, type IssueListItemModel } from "@/components/issues/IssueListItem";
-import { useBookmarks, useDeleteBookmark, usePatchBookmark } from "@/lib/api/hooks";
+import { listBookmarks } from "@/lib/api/endpoints";
+import { useDeleteBookmark, usePatchBookmark } from "@/lib/api/hooks";
 import { getApiErrorMessage } from "@/lib/api/client";
 import { useAuthGuard } from "@/lib/hooks/use-auth-guard";
 import { cn } from "@/lib/cn";
@@ -34,22 +36,32 @@ function matchesText(haystack: string, needle: string) {
 }
 
 export default function SavedClient() {
+  const PAGE_SIZE = 50;
   const sp = useSearchParams();
 
   const q = sp.get("q") ?? "";
   const repo = sp.get("repo") ?? null;
 
-  const [page, setPage] = useState(1);
   const [filterTab, setFilterTab] = useState<FilterTab>("all");
 
   const { isRedirecting } = useAuthGuard();
-  const bookmarksQuery = useBookmarks(page, 50);
+  const bookmarksQuery = useInfiniteQuery({
+    queryKey: ["bookmarks", "saved", PAGE_SIZE],
+    queryFn: ({ pageParam }) => listBookmarks(pageParam, PAGE_SIZE),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.page + 1 : undefined),
+    staleTime: 1000 * 10,
+  });
   const deleteBookmarkMutation = useDeleteBookmark();
   const patchBookmarkMutation = usePatchBookmark();
 
+  const allBookmarks = useMemo(
+    () => bookmarksQuery.data?.pages.flatMap((pageData) => pageData.results) ?? [],
+    [bookmarksQuery.data],
+  );
+
   const items = useMemo(() => {
-    const results = bookmarksQuery.data?.results ?? [];
-    return results
+    return allBookmarks
       .filter((b) => {
         if (filterTab === "resolved") return b.is_resolved;
         if (filterTab === "unresolved") return !b.is_resolved;
@@ -72,18 +84,18 @@ export default function SavedClient() {
           githubUrl: b.github_url,
         },
       }));
-  }, [bookmarksQuery.data, q, repo, filterTab]);
+  }, [allBookmarks, q, repo, filterTab]);
 
-  const totalAll = bookmarksQuery.data?.results?.length ?? 0;
-  const totalResolved = bookmarksQuery.data?.results?.filter((b) => b.is_resolved).length ?? 0;
-  const totalUnresolved = bookmarksQuery.data?.results?.filter((b) => !b.is_resolved).length ?? 0;
+  const totalAll = allBookmarks.length;
+  const totalResolved = allBookmarks.filter((b) => b.is_resolved).length;
+  const totalUnresolved = allBookmarks.filter((b) => !b.is_resolved).length;
 
-  const hasMore = bookmarksQuery.data?.has_more ?? false;
-  const total = bookmarksQuery.data?.total ?? 0;
-  const remaining = Math.max(0, total - (bookmarksQuery.data?.results?.length ?? 0));
+  const hasMore = bookmarksQuery.hasNextPage ?? false;
+  const total = bookmarksQuery.data?.pages[0]?.total ?? 0;
+  const remaining = Math.max(0, total - allBookmarks.length);
 
   function handleLoadMore() {
-    setPage((p) => p + 1);
+    void bookmarksQuery.fetchNextPage();
   }
 
   if (isRedirecting) return null;
@@ -196,13 +208,13 @@ export default function SavedClient() {
             ))}
           </div>
 
-          {hasMore && (
-            <LoadMoreButton
-              onClick={handleLoadMore}
-              isLoading={bookmarksQuery.isFetching && page > 1}
-              remaining={remaining}
-            />
-          )}
+              {hasMore && (
+                <LoadMoreButton
+                  onClick={handleLoadMore}
+                  isLoading={bookmarksQuery.isFetchingNextPage}
+                  remaining={remaining}
+                />
+              )}
         </>
       )}
     </AppShell>

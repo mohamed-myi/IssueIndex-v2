@@ -68,7 +68,7 @@ class TestLoginEndpoint:
         parsed = urllib.parse.urlparse(location)
         params = urllib.parse.parse_qs(parsed.query)
         state = params["state"][0]
-        
+
         # Format: login:token:1
         assert state.startswith("login:")
         assert state.endswith(":1")
@@ -82,7 +82,7 @@ class TestLoginEndpoint:
         parsed = urllib.parse.urlparse(location)
         params = urllib.parse.parse_qs(parsed.query)
         state = params["state"][0]
-        
+
         assert state.startswith("login:")
         assert state.endswith(":0")
 
@@ -118,7 +118,7 @@ class TestCallbackEndpoint:
         client.cookies.set(STATE_COOKIE_NAME, "stored_token_12345")
 
         state = "login:different_token_67890:0"
-        
+
         response = client.get(
             "/auth/callback/github",
             params={"code": "test_code", "state": state},
@@ -210,7 +210,7 @@ class TestCallbackSuccessFlow:
         """Verify callback proceeds without X-Device-Fingerprint header (fingerprint now optional)."""
         token = "validtoken1234567890123456789012"
         state = f"login:{token}:0"
-        
+
         client.cookies.set(STATE_COOKIE_NAME, token)
 
         response = client.get(
@@ -227,10 +227,10 @@ class TestCallbackSuccessFlow:
     def test_callback_success_redirects_to_dashboard(self, mock_settings, client, mock_oauth_flow):
         """Verify successful callback redirects to /dashboard."""
         mock_settings.return_value.frontend_base_url = "http://localhost:3000"
-        
+
         token = "validtoken1234567890123456789012"
         state = f"login:{token}:0"
-        
+
         client.cookies.set(STATE_COOKIE_NAME, token)
 
         response = client.get(
@@ -248,7 +248,7 @@ class TestCallbackSuccessFlow:
         token = "validtoken1234567890123456789012"
         # remember_me=1
         state = f"login:{token}:1"
-        
+
         client.cookies.set(STATE_COOKIE_NAME, token)
 
         response = client.get(
@@ -268,7 +268,7 @@ class TestCallbackSuccessFlow:
         """State cookie must be cleared to prevent replay attacks."""
         token = "validtoken1234567890123456789012"
         state = f"login:{token}:0"
-        
+
         client.cookies.set(STATE_COOKIE_NAME, token)
 
         response = client.get(

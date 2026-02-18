@@ -60,6 +60,8 @@ CREATE TABLE ingestion.issue (
     survival_score REAL NOT NULL DEFAULT 0.0,
     title VARCHAR NOT NULL,
     body_text VARCHAR NOT NULL,
+    issue_number INTEGER,
+    github_url TEXT,
     labels TEXT[],
     embedding vector(256),
     content_hash VARCHAR(64) NOT NULL,
@@ -541,4 +543,3 @@ class TestVectorEmbedding:
         dim = result.scalar()
 
         assert dim == 256
-

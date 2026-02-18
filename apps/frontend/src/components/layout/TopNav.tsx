@@ -12,9 +12,10 @@ type TopNavProps = {
   activeTab: "browse" | "dashboard" | "for-you" | null;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
+  showSidebarToggle?: boolean;
 };
 
-export function TopNav({ activeTab, sidebarOpen, onToggleSidebar }: TopNavProps) {
+export function TopNav({ activeTab, sidebarOpen, onToggleSidebar, showSidebarToggle = true }: TopNavProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -43,17 +44,19 @@ export function TopNav({ activeTab, sidebarOpen, onToggleSidebar }: TopNavProps)
     >
       <div className="mx-auto flex h-full max-w-[1800px] items-center justify-between gap-6 px-6">
         <div className="flex items-center gap-6">
-          <button
-            type="button"
-            onClick={onToggleSidebar}
-            className={cn(
-              "btn-press rounded-xl p-2 transition-all duration-200 hover:bg-white/5",
-              sidebarOpen ? "opacity-100" : "opacity-90",
-            )}
-            title="Toggle filters"
-          >
-            <Menu className="h-5 w-5" style={{ color: "rgba(255, 255, 255, 0.6)" }} />
-          </button>
+          {showSidebarToggle ? (
+            <button
+              type="button"
+              onClick={onToggleSidebar}
+              className={cn(
+                "btn-press rounded-xl p-2 transition-all duration-200 hover:bg-white/5",
+                sidebarOpen ? "opacity-100" : "opacity-90",
+              )}
+              title="Toggle filters"
+            >
+              <Menu className="h-5 w-5" style={{ color: "rgba(255, 255, 255, 0.6)" }} />
+            </button>
+          ) : null}
 
           <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
             <div
@@ -182,4 +185,3 @@ export function TopNav({ activeTab, sidebarOpen, onToggleSidebar }: TopNavProps)
     </nav>
   );
 }
-

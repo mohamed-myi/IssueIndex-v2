@@ -1,10 +1,8 @@
 """Tests for fingerprint binding security feature."""
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-import pytest
-from gim_database.models.identity import Session, User
+from gim_database.models.identity import Session
 
 from gim_backend.middleware.context import RequestContext
 from gim_backend.services.risk_assessment import assess_session_risk
@@ -65,7 +63,7 @@ class TestFingerprintBinding:
         )
 
         risk = assess_session_risk(session, ctx)
-        
+
         assert "fingerprint" in risk.factors
         assert risk.score > 0
 
@@ -88,7 +86,7 @@ class TestLogSanitization:
 
         long_query = "this is a very long search query with potential PII"
         redacted = _redact(long_query)
-        
+
         assert len(redacted) == 23  # 20 + "..."
         assert redacted.endswith("...")
         assert "PII" not in redacted

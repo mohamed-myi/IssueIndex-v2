@@ -1,14 +1,15 @@
 import { redirect } from "next/navigation";
 import type { Route } from "next";
 
-export default function ProfileOnboardingRedirectPage({
+export default async function ProfileOnboardingRedirectPage({
   searchParams,
 }: {
-  searchParams?: { connected?: string; error?: string };
+  searchParams?: Promise<{ connected?: string; error?: string }>;
 }) {
+  const resolvedParams = searchParams ? await searchParams : undefined;
   const params = new URLSearchParams();
   params.set("tab", "onboarding");
-  if (searchParams?.connected) params.set("connected", searchParams.connected);
-  if (searchParams?.error) params.set("error", searchParams.error);
+  if (resolvedParams?.connected) params.set("connected", resolvedParams.connected);
+  if (resolvedParams?.error) params.set("error", resolvedParams.error);
   redirect(`/profile?${params.toString()}` as Route);
 }

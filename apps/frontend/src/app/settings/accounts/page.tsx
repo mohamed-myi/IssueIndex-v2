@@ -1,12 +1,13 @@
 import { redirect } from "next/navigation";
 import type { Route } from "next";
 
-export default function SettingsAccountsRedirectPage({
+export default async function SettingsAccountsRedirectPage({
   searchParams,
 }: {
-  searchParams?: { error?: string };
+  searchParams?: Promise<{ error?: string }>;
 }) {
-  const error = searchParams?.error;
+  const resolvedParams = searchParams ? await searchParams : undefined;
+  const error = resolvedParams?.error;
   const target = error
     ? `/profile?tab=accounts&error=${encodeURIComponent(error)}`
     : "/profile?tab=accounts";

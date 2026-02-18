@@ -99,6 +99,7 @@ class SearchResultItem(BaseModel):
     node_id: str
     title: str
     body_preview: str
+    github_url: str | None = None
     labels: list[str]
     q_score: float
     repo_name: str
@@ -306,6 +307,7 @@ async def _execute_stage2(
         i.node_id,
         i.title,
         i.body_text,
+        i.github_url,
         i.labels,
         i.q_score,
         i.github_created_at,
@@ -326,6 +328,7 @@ async def _execute_stage2(
             node_id=row.node_id,
             title=row.title,
             body_preview=row.body_text[:500] if row.body_text else "",
+            github_url=row.github_url,
             labels=row.labels or [],
             q_score=row.q_score,
             repo_name=row.repo_name,

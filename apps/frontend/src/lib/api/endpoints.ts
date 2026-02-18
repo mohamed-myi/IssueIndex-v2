@@ -5,12 +5,16 @@ import type {
   BookmarkBatchCheckResponse,
   BookmarksListResponse,
   FeedResponse,
+  RecommendationEventsRequest,
+  SearchInteractionInput,
   IssueDetailResponse,
   LinkedAccountsResponse,
   NotesListResponse,
   OnboardingStep,
   OnboardingStepResponse,
   OAuthProvider,
+  GitHubAcceptedResponse,
+  GitHubDataResponse,
   ProfileOnboardingResponse,
   ProfilePreferences,
   ProfilePreferencesResponse,
@@ -21,6 +25,8 @@ import type {
   SearchResponse,
   SessionsResponse,
   SimilarIssuesResponse,
+  ResumeUploadAcceptedResponse,
+  ResumeDataResponse,
   TaxonomyLanguagesResponse,
   TaxonomyStackAreasResponse,
   TrendingResponse,
@@ -40,7 +46,7 @@ export async function fetchTrending(
   if (filters?.languages?.length) params.languages = filters.languages;
   if (filters?.labels?.length) params.labels = filters.labels;
   if (filters?.repos?.length) params.repos = filters.repos;
-  
+
   const { data } = await api.get<TrendingResponse>("/feed/trending", { params });
   return data;
 }
@@ -54,14 +60,22 @@ export async function fetchFeed(
   if (filters?.languages?.length) params.languages = filters.languages;
   if (filters?.labels?.length) params.labels = filters.labels;
   if (filters?.repos?.length) params.repos = filters.repos;
-  
+
   const { data } = await api.get<FeedResponse>("/feed", { params });
   return data;
+}
+
+export async function logRecommendationEvents(body: RecommendationEventsRequest) {
+  await api.post("/recommendations/events", body);
 }
 
 export async function searchIssues(body: SearchRequest) {
   const { data } = await api.post<SearchResponse>("/search", body);
   return data;
+}
+
+export async function logSearchInteraction(body: SearchInteractionInput) {
+  await api.post("/search/interact", body);
 }
 
 export async function fetchIssue(nodeId: string) {
@@ -99,9 +113,6 @@ export async function fetchMe() {
   const { data } = await api.get<AuthMeResponse>("/auth/me");
   return data;
 }
-
-// OAuth callbacks now handled by backend directly via browser redirects
-// Removed: authCallback, authLinkCallback, authConnectGithubCallback
 
 export async function listBookmarks(page = 1, pageSize = 20) {
   const { data } = await api.get<BookmarksListResponse>("/bookmarks", {
@@ -191,6 +202,30 @@ export async function saveOnboardingStep(step: OnboardingStep, payload: unknown)
   return data;
 }
 
+export async function uploadResume(file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post<ResumeUploadAcceptedResponse>("/profile/resume", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function fetchResumeData() {
+  const { data } = await api.get<ResumeDataResponse>("/profile/resume");
+  return data;
+}
+
+export async function initiateGithubFetch() {
+  const { data } = await api.post<GitHubAcceptedResponse>("/profile/github");
+  return data;
+}
+
+export async function fetchGithubData() {
+  const { data } = await api.get<GitHubDataResponse>("/profile/github");
+  return data;
+}
+
 export async function fetchPreferences() {
   const { data } = await api.get<ProfilePreferencesResponse>("/profile/preferences");
   return data;
@@ -237,4 +272,3 @@ export async function unlinkAccount(provider: string) {
   );
   return data;
 }
-

@@ -8,7 +8,15 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { SkeletonList } from "@/components/common/SkeletonList";
 import { IssueListItem, type IssueListItemModel } from "@/components/issues/IssueListItem";
 import { IssueDetailPanel, type IssueDetailModel } from "@/components/issues/IssueDetailPanel";
-import { useSearch, useTrending, useBookmarkCheck, useCreateBookmark, useDeleteBookmark, useMe } from "@/lib/api/hooks";
+import {
+  useSearch,
+  useTrending,
+  useBookmarkCheck,
+  useCreateBookmark,
+  useDeleteBookmark,
+  useMe,
+  useLogSearchInteraction,
+} from "@/lib/api/hooks";
 import { useInfiniteScroll } from "@/lib/hooks/use-infinite-scroll";
 
 export default function BrowseClient() {
@@ -41,15 +49,30 @@ export default function BrowseClient() {
   });
 
   const trendingQuery = useTrending(20, filters);
+  const logSearchInteraction = useLogSearchInteraction();
 
   const activeQuery = q.trim().length > 0 ? searchQuery : trendingQuery;
+
+  const searchContextByNodeId = useMemo(() => {
+    const map = new Map<string, { searchId: string; position: number }>();
+    if (q.trim().length === 0) return map;
+    const pages = searchQuery.data?.pages ?? [];
+    for (const page of pages) {
+      for (const [idx, result] of page.results.entries()) {
+        map.set(result.node_id, {
+          searchId: page.search_id,
+          position: (page.page - 1) * page.page_size + idx + 1,
+        });
+      }
+    }
+    return map;
+  }, [q, searchQuery.data]);
 
   const items = useMemo(() => {
     const pages = activeQuery.data?.pages ?? [];
     const allResults = pages.flatMap((page) => page.results);
     
     return allResults.map<IssueListItemModel>((r) => {
-      const issueNumber = r.node_id.match(/\d+$/)?.[0];
       return {
         nodeId: r.node_id,
         title: r.title,
@@ -59,14 +82,15 @@ export default function BrowseClient() {
         qScore: r.q_score,
         createdAt: r.github_created_at,
         bodyPreview: r.body_preview,
-        githubUrl: issueNumber ? `https://github.com/${r.repo_name}/issues/${issueNumber}` : null,
+        githubUrl: r.github_url ?? null,
       };
     });
   }, [activeQuery.data]);
 
   // Bookmark handling
   const issueNodeIds = useMemo(() => items.map((i) => i.nodeId), [items]);
-  const bookmarkCheckQuery = useBookmarkCheck(issueNodeIds);
+  const canSave = Boolean(meQuery.data);
+  const bookmarkCheckQuery = useBookmarkCheck(canSave ? issueNodeIds : []);
   const createBookmark = useCreateBookmark();
   const deleteBookmarkMutation = useDeleteBookmark();
 
@@ -77,19 +101,23 @@ export default function BrowseClient() {
 
   const handleToggleBookmark = useCallback(
     (issue: IssueListItemModel) => {
+      if (!canSave) {
+        router.push("/login");
+        return;
+      }
       const bookmarkId = bookmarksMap[issue.nodeId];
       if (bookmarkId) {
         deleteBookmarkMutation.mutate(bookmarkId);
       } else {
         createBookmark.mutate({
           issue_node_id: issue.nodeId,
-          github_url: `https://github.com/${issue.repoName}`,
+          github_url: issue.githubUrl ?? `https://github.com/${issue.repoName}`,
           title_snapshot: issue.title,
           body_snapshot: issue.bodyPreview ?? "",
         });
       }
     },
-    [bookmarksMap, createBookmark, deleteBookmarkMutation],
+    [bookmarksMap, canSave, createBookmark, deleteBookmarkMutation, router],
   );
 
   // Selected issue for detail panel
@@ -105,6 +133,7 @@ export default function BrowseClient() {
       labels: found.labels,
       qScore: found.qScore,
       bodyPreview: found.bodyPreview,
+      githubUrl: found.githubUrl ?? undefined,
     } as IssueDetailModel;
   }, [selectedIssueId, items]);
 
@@ -159,7 +188,19 @@ export default function BrowseClient() {
                 {items.map((issue) => (
                   <div
                     key={issue.nodeId}
-                    onClick={() => setSelectedIssueId(issue.nodeId)}
+                    onClick={() => {
+                      setSelectedIssueId(issue.nodeId);
+                      if (q.trim().length > 0) {
+                        const ctx = searchContextByNodeId.get(issue.nodeId);
+                        if (ctx) {
+                          logSearchInteraction.mutate({
+                            search_id: ctx.searchId,
+                            selected_node_id: issue.nodeId,
+                            position: ctx.position,
+                          });
+                        }
+                      }
+                    }}
                     className="btn-press cursor-pointer transition-colors hover:bg-white/[0.02]"
                     style={{
                       backgroundColor:
@@ -174,7 +215,7 @@ export default function BrowseClient() {
                       issue={issue}
                       href={`/issues/${issue.nodeId}` as Route}
                       isSaved={!!bookmarksMap[issue.nodeId]}
-                      onToggleSaved={() => handleToggleBookmark(issue)}
+                      onToggleSaved={canSave ? () => handleToggleBookmark(issue) : undefined}
                     />
                   </div>
                 ))}

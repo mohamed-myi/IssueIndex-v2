@@ -1,7 +1,7 @@
 "use client";
 
 import type { Route } from "next";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -30,8 +30,11 @@ import {
   logout,
   logoutAll,
   patchPreferences,
+  saveOnboardingStep,
   skipOnboarding,
   startOnboarding,
+  uploadResume,
+  initiateGithubFetch,
   unlinkAccount,
 } from "@/lib/api/endpoints";
 import { useAuthGuard } from "@/lib/hooks/use-auth-guard";
@@ -40,10 +43,10 @@ import { useAuthGuard } from "@/lib/hooks/use-auth-guard";
 // Types
 // ---------------------------------------------------------------------------
 
-type TabId = "overview" | "onboarding" | "preferences" | "accounts" | "danger";
+type TabId = "overview" | "onboarding" | "intent" | "preferences" | "accounts" | "danger";
 
 function toTabId(value: string): TabId {
-  const allowed: TabId[] = ["overview", "onboarding", "preferences", "accounts", "danger"];
+  const allowed: TabId[] = ["overview", "onboarding", "intent", "preferences", "accounts", "danger"];
   return (allowed.includes(value as TabId) ? value : "overview") as TabId;
 }
 
@@ -74,14 +77,27 @@ export default function ProfileClient(props: {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [unlinkDialogOpen, setUnlinkDialogOpen] = useState(false);
   const [unlinkProvider, setUnlinkProvider] = useState<string | null>(null);
+  const [intentLanguages, setIntentLanguages] = useState("");
+  const [intentStackAreas, setIntentStackAreas] = useState("");
+  const [intentText, setIntentText] = useState("");
+  const [intentExperience, setIntentExperience] = useState("");
+  const resumeInputRef = useRef<HTMLInputElement>(null);
+  const hasAutoFetchedGithub = useRef(false);
+  const hasInitializedIntent = useRef(false);
 
   const { isRedirecting } = useAuthGuard();
   const meQuery = useQuery({ queryKey: ["auth", "me"], queryFn: fetchMe, retry: false });
-  const profileQuery = useQuery({ queryKey: ["profile"], queryFn: fetchProfile, retry: false });
+  const profileQuery = useQuery({
+    queryKey: ["profile"],
+    queryFn: fetchProfile,
+    retry: false,
+    refetchInterval: (query) => (query.state.data?.is_calculating ? 3000 : false),
+  });
   const onboardingQuery = useQuery({
     queryKey: ["profile", "onboarding"],
     queryFn: fetchProfileOnboarding,
     retry: false,
+    refetchInterval: () => (profileQuery.data?.is_calculating ? 3000 : false),
   });
   const preferencesQuery = useQuery({
     queryKey: ["profile", "preferences"],
@@ -137,6 +153,43 @@ export default function ProfileClient(props: {
     },
     onError: (e) => showToast(getApiErrorMessage(e), "error"),
   });
+
+  const saveIntentMutation = useMutation({
+    mutationFn: (payload: {
+      languages: string[];
+      stack_areas: string[];
+      text: string;
+      experience_level?: string | null;
+    }) => saveOnboardingStep("intent", payload),
+    onSuccess: async () => {
+      showToast("Intent profile saved.", "success");
+      await qc.invalidateQueries({ queryKey: ["profile", "onboarding"] });
+      await qc.invalidateQueries({ queryKey: ["profile"] });
+    },
+    onError: (e) => showToast(getApiErrorMessage(e), "error"),
+  });
+
+  const uploadResumeMutation = useMutation({
+    mutationFn: (file: File) => uploadResume(file),
+    onSuccess: async () => {
+      showToast("Resume uploaded. Processing started.", "success");
+      await qc.invalidateQueries({ queryKey: ["profile", "onboarding"] });
+      await qc.invalidateQueries({ queryKey: ["profile"] });
+    },
+    onError: (e) => showToast(getApiErrorMessage(e), "error"),
+  });
+
+  const fetchGithubMutation = useMutation({
+    mutationFn: initiateGithubFetch,
+    onSuccess: async () => {
+      showToast("GitHub sync started.", "success");
+      await qc.invalidateQueries({ queryKey: ["profile", "onboarding"] });
+      await qc.invalidateQueries({ queryKey: ["profile"] });
+    },
+    onError: (e) => showToast(getApiErrorMessage(e), "error"),
+  });
+  const triggerGithubFetch = fetchGithubMutation.mutate;
+  const isGithubFetchPending = fetchGithubMutation.isPending;
 
   const patchPreferencesMutation = useMutation({
     mutationFn: patchPreferences,
@@ -224,6 +277,40 @@ export default function ProfileClient(props: {
   const createdVia = meQuery.data?.created_via ?? null;
   const hasGithubLogin = !!meQuery.data?.github_username;
   const hasGoogleLogin = !!meQuery.data?.google_id;
+  const githubConnected = !!accountsQuery.data?.accounts?.some(
+    (account) => account.provider === "github" && account.connected,
+  );
+
+  useEffect(() => {
+    const intent = profileQuery.data?.sources?.intent?.data as
+      | { languages?: string[]; stack_areas?: string[]; text?: string; experience_level?: string | null }
+      | undefined;
+    if (!intent || hasInitializedIntent.current) return;
+    setIntentLanguages((intent.languages ?? []).join(", "));
+    setIntentStackAreas((intent.stack_areas ?? []).join(", "));
+    setIntentText(intent.text ?? "");
+    setIntentExperience(intent.experience_level ?? "");
+    hasInitializedIntent.current = true;
+  }, [profileQuery.data?.sources?.intent?.data]);
+
+  useEffect(() => {
+    if (
+      props.connected === "github" &&
+      githubConnected &&
+      !onboardingQuery.data?.completed_steps.includes("github") &&
+      !isGithubFetchPending &&
+      !hasAutoFetchedGithub.current
+    ) {
+      hasAutoFetchedGithub.current = true;
+      triggerGithubFetch();
+    }
+  }, [
+    props.connected,
+    githubConnected,
+    onboardingQuery.data?.completed_steps,
+    isGithubFetchPending,
+    triggerGithubFetch,
+  ]);
 
   if (isRedirecting) return null;
 
@@ -263,6 +350,7 @@ export default function ProfileClient(props: {
               [
                 ["overview", "Overview"],
                 ["onboarding", "Onboarding"],
+                ["intent", "Intent"],
                 ["preferences", "Preferences"],
                 ["accounts", "Accounts"],
                 ["danger", "Account Deletion"],
@@ -377,6 +465,12 @@ export default function ProfileClient(props: {
                     Status:
                   </span>
                   <StatusBadge status={onboardingQuery.data?.status ?? "not_started"} />
+                  {profileQuery.data?.is_calculating ? (
+                    <span className="inline-flex items-center gap-1 text-xs" style={{ color: "rgba(138,144,178,1)" }}>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Processing profile sources
+                    </span>
+                  ) : null}
                 </div>
 
                 {/* Progress checklist */}
@@ -432,7 +526,7 @@ export default function ProfileClient(props: {
                   description="Tell us your preferred languages, stack areas, and what kind of projects interest you."
                   completed={onboardingQuery.data?.completed_steps.includes("intent") ?? false}
                   actionLabel="Set intent"
-                  onAction={() => goToTab("preferences")}
+                  onAction={() => goToTab("intent")}
                 />
                 <SourceCard
                   icon={<FileText className="h-5 w-5" />}
@@ -440,7 +534,9 @@ export default function ProfileClient(props: {
                   weight="30%"
                   description="Upload your resume to automatically extract skills and job titles via AI parsing."
                   completed={onboardingQuery.data?.completed_steps.includes("resume") ?? false}
-                  actionLabel="Upload resume"
+                  actionLabel={uploadResumeMutation.isPending ? "Uploading..." : "Upload resume"}
+                  onAction={() => resumeInputRef.current?.click()}
+                  disabled={uploadResumeMutation.isPending}
                   note="PDF or DOCX, max 5 MB"
                 />
                 <SourceCard
@@ -449,10 +545,31 @@ export default function ProfileClient(props: {
                   weight="20%"
                   description="Connect your GitHub to analyze starred repos and contributions for skill signals."
                   completed={onboardingQuery.data?.completed_steps.includes("github") ?? false}
-                  actionLabel="Connect GitHub"
-                  href={connectGithubUrl}
+                  actionLabel={
+                    githubConnected
+                      ? fetchGithubMutation.isPending
+                        ? "Syncing..."
+                        : "Sync GitHub data"
+                      : "Connect GitHub"
+                  }
+                  href={githubConnected ? undefined : connectGithubUrl}
+                  onAction={githubConnected ? () => fetchGithubMutation.mutate() : undefined}
+                  disabled={fetchGithubMutation.isPending}
                 />
               </div>
+              <input
+                ref={resumeInputRef}
+                type="file"
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    uploadResumeMutation.mutate(file);
+                  }
+                  e.currentTarget.value = "";
+                }}
+              />
 
               {/* Action buttons */}
               <Section title="Finalize">
@@ -514,6 +631,169 @@ export default function ProfileClient(props: {
                 </div>
               </Section>
             </div>
+          )}
+
+          {/* Intent tab */}
+          {tab === "intent" && (
+            <Section title="Intent Profile">
+              <div className="text-sm" style={{ color: "rgba(138,144,178,1)" }}>
+                This source has the strongest personalization weight. Add your target stack and goals.
+              </div>
+
+              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div
+                  className="rounded-2xl border p-4"
+                  style={{
+                    borderColor: "rgba(255,255,255,0.08)",
+                    backgroundColor: "rgba(24, 24, 27, 0.25)",
+                  }}
+                >
+                  <div
+                    className="text-xs font-semibold"
+                    style={{ color: "rgba(230,233,242,0.95)" }}
+                  >
+                    Languages
+                  </div>
+                  <div
+                    className="mt-1 text-[11px] leading-relaxed"
+                    style={{ color: "rgba(138,144,178,0.7)" }}
+                  >
+                    Comma-separated list (at least one).
+                  </div>
+                  <input
+                    value={intentLanguages}
+                    onChange={(e) => setIntentLanguages(e.target.value)}
+                    placeholder="e.g. TypeScript, Python"
+                    className="mt-3 w-full rounded-xl border bg-transparent px-3 py-2 text-sm outline-none placeholder:text-white/20 focus:ring-1 focus:ring-[rgba(138,92,255,0.4)] focus:border-[rgba(138,92,255,0.4)]"
+                    style={{
+                      borderColor: "rgba(255,255,255,0.10)",
+                      color: "rgba(230,233,242,0.95)",
+                    }}
+                  />
+                </div>
+                <div
+                  className="rounded-2xl border p-4"
+                  style={{
+                    borderColor: "rgba(255,255,255,0.08)",
+                    backgroundColor: "rgba(24, 24, 27, 0.25)",
+                  }}
+                >
+                  <div
+                    className="text-xs font-semibold"
+                    style={{ color: "rgba(230,233,242,0.95)" }}
+                  >
+                    Stack Areas
+                  </div>
+                  <div
+                    className="mt-1 text-[11px] leading-relaxed"
+                    style={{ color: "rgba(138,144,178,0.7)" }}
+                  >
+                    Comma-separated areas (at least one).
+                  </div>
+                  <input
+                    value={intentStackAreas}
+                    onChange={(e) => setIntentStackAreas(e.target.value)}
+                    placeholder="e.g. frontend, backend, infra"
+                    className="mt-3 w-full rounded-xl border bg-transparent px-3 py-2 text-sm outline-none placeholder:text-white/20 focus:ring-1 focus:ring-[rgba(138,92,255,0.4)] focus:border-[rgba(138,92,255,0.4)]"
+                    style={{
+                      borderColor: "rgba(255,255,255,0.10)",
+                      color: "rgba(230,233,242,0.95)",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-1 gap-4">
+                <div
+                  className="rounded-2xl border p-4"
+                  style={{
+                    borderColor: "rgba(255,255,255,0.08)",
+                    backgroundColor: "rgba(24, 24, 27, 0.25)",
+                  }}
+                >
+                  <div
+                    className="text-xs font-semibold"
+                    style={{ color: "rgba(230,233,242,0.95)" }}
+                  >
+                    Intent Text
+                  </div>
+                  <div
+                    className="mt-1 text-[11px] leading-relaxed"
+                    style={{ color: "rgba(138,144,178,0.7)" }}
+                  >
+                    Describe projects you want to work on (minimum 10 characters).
+                  </div>
+                  <textarea
+                    value={intentText}
+                    onChange={(e) => setIntentText(e.target.value)}
+                    placeholder="I want to contribute to developer tooling, performance, and TypeScript-heavy repositories."
+                    className="mt-3 min-h-[110px] w-full resize-y rounded-xl border bg-transparent p-3 text-sm outline-none placeholder:text-white/20 focus:ring-1 focus:ring-[rgba(138,92,255,0.4)] focus:border-[rgba(138,92,255,0.4)]"
+                    style={{
+                      borderColor: "rgba(255,255,255,0.10)",
+                      color: "rgba(230,233,242,0.95)",
+                    }}
+                  />
+                </div>
+                <div
+                  className="rounded-2xl border p-4"
+                  style={{
+                    borderColor: "rgba(255,255,255,0.08)",
+                    backgroundColor: "rgba(24, 24, 27, 0.25)",
+                  }}
+                >
+                  <div
+                    className="text-xs font-semibold"
+                    style={{ color: "rgba(230,233,242,0.95)" }}
+                  >
+                    Experience Level (optional)
+                  </div>
+                  <input
+                    value={intentExperience}
+                    onChange={(e) => setIntentExperience(e.target.value)}
+                    placeholder="junior / mid / senior"
+                    className="mt-3 w-full rounded-xl border bg-transparent px-3 py-2 text-sm outline-none placeholder:text-white/20 focus:ring-1 focus:ring-[rgba(138,92,255,0.4)] focus:border-[rgba(138,92,255,0.4)]"
+                    style={{
+                      borderColor: "rgba(255,255,255,0.10)",
+                      color: "rgba(230,233,242,0.95)",
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const languages = intentLanguages
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    const stackAreas = intentStackAreas
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    if (languages.length === 0 || stackAreas.length === 0 || intentText.trim().length < 10) {
+                      showToast("Please provide languages, stack areas, and at least 10 characters of intent text.", "error");
+                      return;
+                    }
+                    saveIntentMutation.mutate({
+                      languages,
+                      stack_areas: stackAreas,
+                      text: intentText.trim(),
+                      experience_level: intentExperience.trim() ? intentExperience.trim() : null,
+                    });
+                  }}
+                  disabled={saveIntentMutation.isPending}
+                  className="btn-press btn-glow rounded-xl px-4 py-2 text-sm font-medium disabled:opacity-50 transition-colors hover:bg-white/5"
+                  style={{
+                    backgroundColor: "rgba(99, 102, 241, 0.15)",
+                    border: "1px solid rgba(99, 102, 241, 0.35)",
+                  }}
+                >
+                  {saveIntentMutation.isPending ? "Saving..." : "Save intent"}
+                </button>
+              </div>
+            </Section>
           )}
 
           {/* Preferences tab */}
@@ -861,6 +1141,7 @@ function SourceCard(props: {
   onAction?: () => void;
   href?: string;
   note?: string;
+  disabled?: boolean;
 }) {
   const content = (
     <div
@@ -933,11 +1214,12 @@ function SourceCard(props: {
           <button
             type="button"
             onClick={props.onAction}
+            disabled={props.disabled}
             className="btn-press rounded-xl px-3 py-1.5 text-xs font-medium transition-colors hover:bg-white/5"
             style={{
               backgroundColor: "rgba(99, 102, 241, 0.15)",
               border: "1px solid rgba(99, 102, 241, 0.35)",
-              color: "rgba(255,255,255,0.9)",
+              color: props.disabled ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.9)",
             }}
           >
             {props.actionLabel}

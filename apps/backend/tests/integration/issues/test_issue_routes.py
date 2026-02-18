@@ -46,16 +46,34 @@ def authenticated_client(client, mock_user, mock_session):
     app.dependency_overrides.clear()
 
 
-class TestAuthRequired:
-    """Verifies authentication middleware is applied to issue routes."""
+class TestPublicAccess:
+    """Verifies issue routes are accessible without authentication."""
 
-    @pytest.mark.parametrize("method,path", [
-        ("get", "/issues/I_123"),
-        ("get", "/issues/I_123/similar"),
-    ])
-    def test_returns_401_without_auth(self, client, method, path):
-        response = getattr(client, method)(path)
-        assert response.status_code == 401
+    def test_issue_detail_accessible_without_auth(self, client):
+        issue = IssueDetail(
+            node_id="I_public",
+            title="Public issue",
+            body="Body",
+            labels=["bug"],
+            q_score=0.8,
+            repo_name="org/repo",
+            repo_url="https://github.com/org/repo",
+            github_url="https://github.com/org/repo/issues/1",
+            primary_language="Python",
+            github_created_at=datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC),
+            state="open",
+        )
+
+        with patch("gim_backend.api.routes.issues.get_issue_by_node_id", new_callable=AsyncMock) as mock_get:
+            mock_get.return_value = issue
+            response = client.get("/issues/I_public")
+            assert response.status_code == 200
+
+    def test_similar_accessible_without_auth(self, client):
+        with patch("gim_backend.api.routes.issues.get_similar_issues", new_callable=AsyncMock) as mock_similar:
+            mock_similar.return_value = []
+            response = client.get("/issues/I_public/similar")
+            assert response.status_code == 200
 
 
 class TestGetIssueDetail:

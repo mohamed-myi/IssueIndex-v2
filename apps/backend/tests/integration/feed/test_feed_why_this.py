@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -7,6 +8,8 @@ from fastapi.testclient import TestClient
 from gim_backend.main import app
 from gim_backend.middleware.auth import require_auth
 from gim_backend.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
+from gim_backend.services.feed_service import FeedItem, FeedPage
+from gim_backend.services.why_this_service import WhyThisItem
 
 
 @pytest.fixture(autouse=True)
@@ -34,11 +37,6 @@ def authenticated_client(client):
     yield client
     app.dependency_overrides.clear()
 
-
-from gim_backend.services.feed_service import FeedPage, FeedItem
-from gim_backend.services.why_this_service import WhyThisItem
-from datetime import datetime, timezone
-
 def _create_mock_feed(is_personalized: bool) -> FeedPage:
     item = FeedItem(
         node_id="issue_1",
@@ -49,7 +47,7 @@ def _create_mock_feed(is_personalized: bool) -> FeedPage:
         repo_name="r",
         primary_language="Python",
         repo_topics=[],
-        github_created_at=datetime.now(timezone.utc),
+        github_created_at=datetime.now(UTC),
         similarity_score=0.9 if is_personalized else None,
         why_this=[WhyThisItem(entity="Python", score=3.0)] if is_personalized else None,
         freshness=None,
@@ -79,5 +77,4 @@ def test_feed_includes_why_this_only_when_personalized(authenticated_client):
     assert resp2.status_code == 200
     payload2 = resp2.json()
     assert payload2["results"][0].get("why_this") is None
-
 

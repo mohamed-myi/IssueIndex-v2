@@ -10,6 +10,8 @@ from gim_backend.core.errors import BookmarkAlreadyExistsError
 from gim_backend.services.bookmark_service import (
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
+    BookmarkSchema,
+    NoteSchema,
     create_bookmark,
     create_note,
     delete_bookmark,
@@ -21,8 +23,6 @@ from gim_backend.services.bookmark_service import (
     list_notes,
     update_bookmark,
     update_note,
-    BookmarkSchema,
-    NoteSchema,
 )
 
 
@@ -282,11 +282,11 @@ class TestUpdateBookmark:
         # 1. select to find ORM object
         # 2. commit/refresh
         # 3. get_bookmark (which does select with join)
-        
+
         # 1. Find ORM object
         find_result = MagicMock()
         find_result.first.return_value = sample_bookmark
-        
+
         # 3. get_bookmark call
         get_result = MagicMock()
         get_result.first.return_value = (sample_bookmark, 1)

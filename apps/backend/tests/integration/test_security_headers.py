@@ -16,7 +16,7 @@ class TestSecurityHeaders:
     def test_health_endpoint_has_security_headers(self, client):
         """Health endpoint should include all security headers."""
         response = client.get("/health")
-        
+
         assert response.headers.get("X-Content-Type-Options") == "nosniff"
         assert response.headers.get("X-Frame-Options") == "DENY"
         assert response.headers.get("X-XSS-Protection") == "1; mode=block"
@@ -25,7 +25,7 @@ class TestSecurityHeaders:
     def test_404_endpoint_has_security_headers(self, client):
         """Even error responses should have security headers."""
         response = client.get("/nonexistent-endpoint")
-        
+
         assert response.status_code == 404
         assert response.headers.get("X-Content-Type-Options") == "nosniff"
         assert response.headers.get("X-Frame-Options") == "DENY"
@@ -33,7 +33,7 @@ class TestSecurityHeaders:
     def test_protected_endpoint_has_security_headers(self, client):
         """Authenticated endpoints should have security headers."""
         response = client.get("/profile")
-        
+
         # Will be 401 without auth, but should still have headers
         assert response.status_code == 401
         assert response.headers.get("X-Content-Type-Options") == "nosniff"
@@ -49,7 +49,7 @@ class TestCORSConfiguration:
             "/health",
             headers={"Origin": "http://localhost:3000"}
         )
-        
+
         # Verify CORS middleware is active by checking credentials header
         assert response.headers.get("access-control-allow-credentials") == "true"
 
@@ -59,7 +59,7 @@ class TestCORSConfiguration:
             "/health",
             headers={"Origin": "https://malicious-site.com"}
         )
-        
+
         # Should NOT include the malicious origin in CORS header
         cors_origin = response.headers.get("access-control-allow-origin", "")
         assert "malicious-site.com" not in cors_origin

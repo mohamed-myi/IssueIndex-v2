@@ -23,6 +23,7 @@ class TrendingItemOutput(BaseModel):
     node_id: str
     title: str
     body_preview: str
+    github_url: str | None
     labels: list[str]
     q_score: float
     repo_name: str
@@ -89,6 +90,7 @@ async def get_trending_route(
                 node_id=item.node_id,
                 title=item.title,
                 body_preview=item.body_preview,
+                github_url=getattr(item, "github_url", None),
                 labels=item.labels,
                 q_score=item.q_score,
                 repo_name=item.repo_name,

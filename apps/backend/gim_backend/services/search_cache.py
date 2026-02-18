@@ -33,6 +33,7 @@ def _serialize_response(response: SearchResponse) -> str:
                 "node_id": r.node_id,
                 "title": r.title,
                 "body_preview": r.body_preview,
+                "github_url": r.github_url,
                 "labels": r.labels,
                 "q_score": r.q_score,
                 "repo_name": r.repo_name,
@@ -66,6 +67,7 @@ def _deserialize_response(data: str) -> SearchResponse:
             title=r["title"],
             # Handle both old (body_text) and new (body_preview) field names for cache backward compat
             body_preview=r.get("body_preview") or r.get("body_text", ""),
+            github_url=r.get("github_url"),
             labels=r["labels"],
             q_score=r["q_score"],
             repo_name=r["repo_name"],
@@ -240,4 +242,3 @@ __all__ = [
     "_serialize_response",
     "_deserialize_response",
 ]
-

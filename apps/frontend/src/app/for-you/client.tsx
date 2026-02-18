@@ -1,7 +1,7 @@
 "use client";
 
 import type { Route } from "next";
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -10,7 +10,15 @@ import { IssueListItem, type IssueListItemModel } from "@/components/issues/Issu
 import { IssueDetailPanel, type IssueDetailModel } from "@/components/issues/IssueDetailPanel";
 import { ProfileCTA } from "@/components/issues/ProfileCTA";
 import { getApiErrorMessage } from "@/lib/api/client";
-import { useSearch, useFeed, useBookmarkCheck, useCreateBookmark, useDeleteBookmark } from "@/lib/api/hooks";
+import {
+  useSearch,
+  useFeed,
+  useBookmarkCheck,
+  useCreateBookmark,
+  useDeleteBookmark,
+  useLogRecommendationEvents,
+  useLogSearchInteraction,
+} from "@/lib/api/hooks";
 import { useAuthGuard } from "@/lib/hooks/use-auth-guard";
 import { useInfiniteScroll } from "@/lib/hooks/use-infinite-scroll";
 
@@ -44,16 +52,81 @@ export default function ForYouClient() {
   });
 
   const feedQuery = useFeed(20, filters);
+  const logRecommendationEvents = useLogRecommendationEvents();
+  const logSearchInteraction = useLogSearchInteraction();
+  const loggedRecommendationBatchIds = useRef<Set<string>>(new Set());
 
   const activeQuery = q.trim().length > 0 ? searchQuery : feedQuery;
 
+  const searchContextByNodeId = useMemo(() => {
+    const map = new Map<string, { searchId: string; position: number }>();
+    if (q.trim().length === 0) return map;
+    const pages = searchQuery.data?.pages ?? [];
+    for (const page of pages) {
+      for (const [idx, result] of page.results.entries()) {
+        map.set(result.node_id, {
+          searchId: page.search_id,
+          position: (page.page - 1) * page.page_size + idx + 1,
+        });
+      }
+    }
+    return map;
+  }, [q, searchQuery.data]);
+
+  const recommendationContextByNodeId = useMemo(() => {
+    const map = new Map<string, { recommendationBatchId: string; position: number }>();
+    const pages = feedQuery.data?.pages ?? [];
+    for (const page of pages) {
+      if (!page.recommendation_batch_id) continue;
+      for (const [idx, result] of page.results.entries()) {
+        map.set(result.node_id, {
+          recommendationBatchId: page.recommendation_batch_id,
+          position: idx + 1,
+        });
+      }
+    }
+    return map;
+  }, [feedQuery.data]);
+
+  useEffect(() => {
+    if (q.trim().length > 0) return;
+
+    const pages = feedQuery.data?.pages ?? [];
+    for (const page of pages) {
+      const batchId = page.recommendation_batch_id;
+      if (!batchId || loggedRecommendationBatchIds.current.has(batchId)) {
+        continue;
+      }
+
+      const events = page.results.map((result, idx) => ({
+        event_id: crypto.randomUUID(),
+        event_type: "impression" as const,
+        issue_node_id: result.node_id,
+        position: idx + 1,
+        surface: "for-you",
+      }));
+      if (events.length === 0) continue;
+
+      loggedRecommendationBatchIds.current.add(batchId);
+      logRecommendationEvents.mutate(
+        {
+          recommendation_batch_id: batchId,
+          events,
+        },
+        {
+          onError: () => {
+            loggedRecommendationBatchIds.current.delete(batchId);
+          },
+        },
+      );
+    }
+  }, [q, feedQuery.data, logRecommendationEvents]);
+
   const items = useMemo(() => {
-    const pages = activeQuery.data?.pages ?? [];
-    const allResults = pages.flatMap((page) => page.results);
-    
-    return allResults.map<IssueListItemModel>((r) => {
-      const issueNumber = r.node_id.match(/\d+$/)?.[0];
-      return {
+    if (q.trim().length > 0) {
+      const searchPages = searchQuery.data?.pages ?? [];
+      const allResults = searchPages.flatMap((page) => page.results);
+      return allResults.map<IssueListItemModel>((r) => ({
         nodeId: r.node_id,
         title: r.title,
         repoName: r.repo_name,
@@ -62,11 +135,26 @@ export default function ForYouClient() {
         qScore: r.q_score,
         createdAt: r.github_created_at,
         bodyPreview: r.body_preview,
-        whyThis: r.why_this ?? null,
-        githubUrl: issueNumber ? `https://github.com/${r.repo_name}/issues/${issueNumber}` : null,
-      };
-    });
-  }, [activeQuery.data]);
+        whyThis: null,
+        githubUrl: r.github_url ?? null,
+      }));
+    }
+
+    const feedPages = feedQuery.data?.pages ?? [];
+    const allResults = feedPages.flatMap((page) => page.results);
+    return allResults.map<IssueListItemModel>((r) => ({
+      nodeId: r.node_id,
+      title: r.title,
+      repoName: r.repo_name,
+      primaryLanguage: r.primary_language,
+      labels: r.labels,
+      qScore: r.q_score,
+      createdAt: r.github_created_at,
+      bodyPreview: r.body_preview,
+      whyThis: r.why_this ?? null,
+      githubUrl: r.github_url ?? null,
+    }));
+  }, [q, searchQuery.data, feedQuery.data]);
 
   // Bookmark handling
   const issueNodeIds = useMemo(() => items.map((i) => i.nodeId), [items]);
@@ -87,7 +175,7 @@ export default function ForYouClient() {
       } else {
         createBookmark.mutate({
           issue_node_id: issue.nodeId,
-          github_url: `https://github.com/${issue.repoName}`,
+          github_url: issue.githubUrl ?? `https://github.com/${issue.repoName}`,
           title_snapshot: issue.title,
           body_snapshot: issue.bodyPreview ?? "",
         });
@@ -109,6 +197,7 @@ export default function ForYouClient() {
       labels: found.labels,
       qScore: found.qScore,
       bodyPreview: found.bodyPreview,
+      githubUrl: found.githubUrl ?? undefined,
     } as IssueDetailModel;
   }, [selectedIssueId, items]);
 
@@ -178,7 +267,36 @@ export default function ForYouClient() {
                 {items.map((issue) => (
                   <div
                     key={issue.nodeId}
-                    onClick={() => setSelectedIssueId(issue.nodeId)}
+                    onClick={() => {
+                      setSelectedIssueId(issue.nodeId);
+                      if (q.trim().length > 0) {
+                        const searchCtx = searchContextByNodeId.get(issue.nodeId);
+                        if (searchCtx) {
+                          logSearchInteraction.mutate({
+                            search_id: searchCtx.searchId,
+                            selected_node_id: issue.nodeId,
+                            position: searchCtx.position,
+                          });
+                        }
+                        return;
+                      }
+
+                      const recommendationCtx = recommendationContextByNodeId.get(issue.nodeId);
+                      if (!recommendationCtx) return;
+
+                      logRecommendationEvents.mutate({
+                        recommendation_batch_id: recommendationCtx.recommendationBatchId,
+                        events: [
+                          {
+                            event_id: crypto.randomUUID(),
+                            event_type: "click",
+                            issue_node_id: issue.nodeId,
+                            position: recommendationCtx.position,
+                            surface: "for-you",
+                          },
+                        ],
+                      });
+                    }}
                     className="btn-press cursor-pointer transition-colors hover:bg-white/[0.02]"
                     style={{
                       backgroundColor:

@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 
-export function useInfiniteScroll(opts: {
+export function useInfiniteScroll({
+  hasNextPage,
+  isFetchingNextPage,
+  fetchNextPage,
+}: {
   hasNextPage: boolean | undefined;
   isFetchingNextPage: boolean;
   fetchNextPage: () => void;
@@ -13,8 +17,8 @@ export function useInfiniteScroll(opts: {
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && opts.hasNextPage && !opts.isFetchingNextPage) {
-          opts.fetchNextPage();
+        if (entry.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          fetchNextPage();
         }
       },
       { rootMargin: "200px" }
@@ -22,7 +26,7 @@ export function useInfiniteScroll(opts: {
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, [opts.hasNextPage, opts.isFetchingNextPage, opts.fetchNextPage]);
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return sentinelRef;
 }

@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from gim_backend.api.dependencies import get_db
-from gim_backend.middleware.auth import require_auth
 from gim_backend.services.issue_service import (
     DEFAULT_SIMILAR_LIMIT,
     MAX_SIMILAR_LIMIT,
@@ -29,7 +28,6 @@ class SimilarIssuesResponse(BaseModel):
 @router.get("/{node_id}", response_model=IssueDetail)
 async def get_issue_detail(
     node_id: str,
-    auth: Annotated[tuple, Depends(require_auth)],
     db: AsyncSession = Depends(get_db),
 ) -> IssueDetail:
     """
@@ -48,7 +46,6 @@ async def get_issue_detail(
 @router.get("/{node_id}/similar", response_model=SimilarIssuesResponse)
 async def get_similar_issues_endpoint(
     node_id: str,
-    auth: Annotated[tuple, Depends(require_auth)],
     db: AsyncSession = Depends(get_db),
     limit: Annotated[int, Query(ge=1, le=MAX_SIMILAR_LIMIT)] = DEFAULT_SIMILAR_LIMIT,
 ) -> SimilarIssuesResponse:

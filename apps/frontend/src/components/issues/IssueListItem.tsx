@@ -146,7 +146,10 @@ export function IssueListItem({ issue, href, isSaved, onToggleSaved }: IssueList
             type="button"
             className={cn("btn-press rounded-xl p-2 transition-colors hover:bg-white/5", onToggleSaved ? "" : "opacity-50")}
             title={isSaved ? "Unsave" : "Save"}
-            onClick={onToggleSaved}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSaved?.();
+            }}
             disabled={!onToggleSaved}
           >
             <Bookmark
@@ -162,6 +165,7 @@ export function IssueListItem({ issue, href, isSaved, onToggleSaved }: IssueList
               rel="noreferrer"
               className="btn-press rounded-xl p-2 transition-colors hover:bg-white/5"
               title="View on GitHub"
+              onClick={(e) => e.stopPropagation()}
             >
               <ExternalLink className="h-4 w-4" style={{ color: "rgba(255, 255, 255, 0.5)" }} />
             </a>
@@ -170,6 +174,7 @@ export function IssueListItem({ issue, href, isSaved, onToggleSaved }: IssueList
               href={href}
               className="btn-press rounded-xl p-2 transition-colors hover:bg-white/5"
               title="Open details"
+              onClick={(e) => e.stopPropagation()}
             >
               <ExternalLink className="h-4 w-4" style={{ color: "rgba(255, 255, 255, 0.5)" }} />
             </Link>
@@ -179,4 +184,3 @@ export function IssueListItem({ issue, href, isSaved, onToggleSaved }: IssueList
     </div>
   );
 }
-

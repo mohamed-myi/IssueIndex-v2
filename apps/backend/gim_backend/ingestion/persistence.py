@@ -172,7 +172,8 @@ class StreamingPersistence:
             values_list.append(
                 f"(:node_id_{i}, :repo_id_{i}, :has_code_{i}, :has_template_headers_{i}, "
                 f":tech_stack_weight_{i}, :q_score_{i}, :survival_score_{i}, :title_{i}, "
-                f":body_text_{i}, :labels_{i}, CAST(:embedding_{i} AS vector), :content_hash_{i}, "
+                f":body_text_{i}, :issue_number_{i}, :github_url_{i}, :labels_{i}, "
+                f"CAST(:embedding_{i} AS vector), :content_hash_{i}, "
                 f":github_created_at_{i}, :state_{i})"
             )
 
@@ -185,6 +186,8 @@ class StreamingPersistence:
             params[f"survival_score_{i}"] = survival
             params[f"title_{i}"] = issue.title
             params[f"body_text_{i}"] = issue.body_text
+            params[f"issue_number_{i}"] = issue.issue_number
+            params[f"github_url_{i}"] = issue.github_url
             params[f"labels_{i}"] = issue.labels
             params[f"embedding_{i}"] = str(item.embedding)
             params[f"content_hash_{i}"] = content_hash
@@ -196,7 +199,8 @@ class StreamingPersistence:
         query = text(f"""
             INSERT INTO ingestion.issue
                 (node_id, repo_id, has_code, has_template_headers, tech_stack_weight,
-                 q_score, survival_score, title, body_text, labels, embedding, content_hash,
+                 q_score, survival_score, title, body_text, issue_number, github_url,
+                 labels, embedding, content_hash,
                  github_created_at, state)
             VALUES {values_sql}
             ON CONFLICT (node_id) DO UPDATE SET
@@ -208,6 +212,8 @@ class StreamingPersistence:
                 survival_score = EXCLUDED.survival_score,
                 title = EXCLUDED.title,
                 body_text = EXCLUDED.body_text,
+                issue_number = EXCLUDED.issue_number,
+                github_url = EXCLUDED.github_url,
                 labels = EXCLUDED.labels,
                 embedding = EXCLUDED.embedding,
                 content_hash = EXCLUDED.content_hash,
@@ -219,4 +225,3 @@ class StreamingPersistence:
         await self._session.commit()
 
         logger.debug(f"Upserted batch of {len(batch)} issues")
-

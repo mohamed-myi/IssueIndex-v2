@@ -25,7 +25,12 @@ export default function DocsPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <TopNav activeTab={null} sidebarOpen={false} onToggleSidebar={() => { }} />
+      <TopNav
+        activeTab={null}
+        sidebarOpen={false}
+        onToggleSidebar={() => {}}
+        showSidebarToggle={false}
+      />
 
       {/* Main layout */}
       <main className="pt-[var(--topnav-height)]">

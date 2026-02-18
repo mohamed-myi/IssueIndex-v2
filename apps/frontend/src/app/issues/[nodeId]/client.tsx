@@ -26,7 +26,7 @@ export default function IssueDetailPage() {
   const meQuery = useMe();
   const issueQuery = useIssue(nodeId);
   const similarQuery = useSimilarIssues(nodeId, 5);
-  const bookmarkCheckQuery = useBookmarkCheck([nodeId]);
+  const bookmarkCheckQuery = useBookmarkCheck(meQuery.data ? [nodeId] : []);
   const createBookmark = useCreateBookmark();
 
   const isSaved = useMemo(

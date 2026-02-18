@@ -70,6 +70,7 @@ export const handlers = [
       node_id: issue.node_id,
       title: issue.title,
       body_preview: issue.body_preview,
+      github_url: issue.github_url,
       labels: issue.labels,
       q_score: issue.q_score,
       repo_name: issue.repo_name,
@@ -114,6 +115,7 @@ export const handlers = [
       node_id: issue.node_id,
       title: issue.title,
       body_preview: issue.body_preview,
+      github_url: issue.github_url,
       labels: issue.labels,
       q_score: issue.q_score,
       repo_name: issue.repo_name,
@@ -162,6 +164,14 @@ export const handlers = [
       page_size: pageSize,
       has_more: end < results.length,
     });
+  }),
+
+  http.post(`${BASE_URL}/search/interact`, () => {
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.post(`${BASE_URL}/recommendations/events`, () => {
+    return new HttpResponse(null, { status: 204 });
   }),
 
   // Issues
@@ -301,6 +311,43 @@ export const handlers = [
       ...getOnboardingStatus(),
       step,
       payload: {},
+    });
+  }),
+
+  http.post(`${BASE_URL}/profile/resume`, () => {
+    return HttpResponse.json(
+      { job_id: `resume_job_${Date.now()}`, status: "processing", message: "Resume processing started." },
+      { status: 202 },
+    );
+  }),
+
+  http.get(`${BASE_URL}/profile/resume`, () => {
+    return HttpResponse.json({
+      status: "ready",
+      skills: ["TypeScript", "React", "Python"],
+      job_titles: ["Software Engineer"],
+      vector_status: "ready",
+      uploaded_at: new Date().toISOString(),
+    });
+  }),
+
+  http.post(`${BASE_URL}/profile/github`, () => {
+    return HttpResponse.json(
+      { job_id: `github_job_${Date.now()}`, status: "processing", message: "GitHub sync started." },
+      { status: 202 },
+    );
+  }),
+
+  http.get(`${BASE_URL}/profile/github`, () => {
+    return HttpResponse.json({
+      status: "ready",
+      username: mockUser.github_username ?? "mock-user",
+      starred_count: 42,
+      contributed_repos: 12,
+      languages: ["TypeScript", "Python"],
+      topics: ["web", "api"],
+      vector_status: "ready",
+      fetched_at: new Date().toISOString(),
     });
   }),
 

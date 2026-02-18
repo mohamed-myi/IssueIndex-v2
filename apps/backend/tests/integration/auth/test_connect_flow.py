@@ -193,7 +193,7 @@ class TestConnectCallbackSuccessFlow:
         """Verify successful callback redirects to profile onboarding."""
         token = "validstate123456789012345678901234"
         state = f"connect:{token}"
-        
+
         client.cookies.set(STATE_COOKIE_NAME, token)
 
         response = client.get(
@@ -211,7 +211,7 @@ class TestConnectCallbackSuccessFlow:
         """Verify token is stored in linked_accounts."""
         token = "validstate123456789012345678901234"
         state = f"connect:{token}"
-        
+
         client.cookies.set(STATE_COOKIE_NAME, token)
 
         client.get(
@@ -231,7 +231,7 @@ class TestConnectCallbackSuccessFlow:
         """State cookie must be cleared to prevent replay attacks."""
         token = "validstate123456789012345678901234"
         state = f"connect:{token}"
-        
+
         client.cookies.set(STATE_COOKIE_NAME, token)
 
         response = client.get(
