@@ -253,6 +253,22 @@ class TestStage2StateEnforcement:
         src = inspect.getsource(search_service._execute_stage2)
         assert "i.state = 'open'" in src
 
+    def test_stage2_probes_schema_for_github_url(self):
+        import inspect
+
+        from gim_backend.services import search_service
+
+        src = inspect.getsource(search_service._execute_stage2)
+        assert "_issue_has_github_url_column" in src
+
+    def test_stage2_has_legacy_schema_fallback_for_github_url(self):
+        import inspect
+
+        from gim_backend.services import search_service
+
+        src = inspect.getsource(search_service._execute_stage2)
+        assert "NULL::text AS github_url" in src
+
     def test_sql_uses_full_outer_join(self):
         """Vector and BM25 results should be combined with FULL OUTER JOIN."""
         filters = SearchFilters()

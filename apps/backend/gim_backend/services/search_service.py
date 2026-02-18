@@ -302,12 +302,15 @@ async def _execute_stage2(
     if not page_ids:
         return []
 
-    sql = """
+    has_github_url = await _issue_has_github_url_column(db)
+    github_url_select = "i.github_url AS github_url" if has_github_url else "NULL::text AS github_url"
+
+    sql = f"""
     SELECT
         i.node_id,
         i.title,
         i.body_text,
-        i.github_url,
+        {github_url_select},
         i.labels,
         i.q_score,
         i.github_created_at,
@@ -338,6 +341,28 @@ async def _execute_stage2(
         ))
 
     return results
+
+
+async def _issue_has_github_url_column(db: AsyncSession) -> bool:
+    """
+    Backward-compatible schema probe for environments that haven't run the
+    github_url migration yet.
+    """
+    result = await db.exec(
+        text(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'ingestion'
+                  AND table_name = 'issue'
+                  AND column_name = 'github_url'
+            ) AS has_column
+            """
+        )
+    )
+    row = result.one()
+    return bool(row[0])
 
 
 def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
