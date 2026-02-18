@@ -37,12 +37,12 @@ class TestLoggingSetup:
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("CLOUD_RUN_EXECUTION", None)
             
-            with patch("logging_config.uuid.uuid4") as mock_uuid:
+            with patch("gim_workers.logging_config.uuid.uuid4") as mock_uuid:
                 mock_uuid.return_value = MagicMock(
                     __str__=lambda self: "12345678-1234-1234-1234-123456789abc"
                 )
                 
-                from logging_config import setup_logging
+                from gim_workers.logging_config import setup_logging
                 job_id = setup_logging()
                 
                 # Should be first 8 chars of UUID when CLOUD_RUN_EXECUTION not set
@@ -51,7 +51,7 @@ class TestLoggingSetup:
     def test_uses_cloud_run_execution_if_available(self):
         """Should use CLOUD_RUN_EXECUTION env var when available"""
         with patch.dict(os.environ, {"CLOUD_RUN_EXECUTION": "cloud-run-job-123"}, clear=False):
-            from logging_config import setup_logging
+            from gim_workers.logging_config import setup_logging
             job_id = setup_logging()
             
             assert job_id == "cloud-run-job-123"
@@ -61,7 +61,7 @@ class TestJsonFormatter:
     def test_formatter_includes_job_id(self):
         """JsonFormatter should include job_id in output"""
         import logging
-        from logging_config import JsonFormatter
+        from gim_workers.logging_config import JsonFormatter
         
         formatter = JsonFormatter(job_id="test-123")
         
@@ -83,7 +83,7 @@ class TestJsonFormatter:
         """JsonFormatter should output valid JSON"""
         import json
         import logging
-        from logging_config import JsonFormatter
+        from gim_workers.logging_config import JsonFormatter
         
         formatter = JsonFormatter(job_id="test-456")
         

@@ -5,6 +5,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+pytest.skip(
+    "Legacy scout->Pub/Sub pipeline tests are obsolete; collector now stages issues directly.",
+    allow_module_level=True,
+)
+
 
 class TestRunScoutJob:
     """Tests for run_scout_job function"""

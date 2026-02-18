@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+pytest.importorskip("jobs.gatherer_worker", reason="Legacy gatherer worker module removed; collector job superseded it")
+
 from jobs.gatherer_worker import (
     GathererWorker,
     GracefulShutdown,
