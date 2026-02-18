@@ -55,6 +55,8 @@ class Issue(SQLModel, table=True):
     # Content
     title: str
     body_text: str
+    issue_number: Optional[int] = Field(default=None, index=True)
+    github_url: Optional[str] = Field(default=None)
     labels: List[str] = Field(default_factory=list, sa_column=Column(ARRAY(sa.String)))
 
     # 256-dim Nomic embeddings: cast to halfvec at DB level for 10GB optimization

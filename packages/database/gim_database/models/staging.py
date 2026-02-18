@@ -38,6 +38,8 @@ class PendingIssue(SQLModel, table=True):
     
     title: str
     body_text: str
+    issue_number: int | None = Field(default=None, index=True)
+    github_url: str | None = Field(default=None)
     labels: List[str] = Field(default_factory=list, sa_column=Column(ARRAY(sa.String)))
     github_created_at: datetime = Field(
         sa_column=sa.Column(sa.DateTime(timezone=True), nullable=False)
