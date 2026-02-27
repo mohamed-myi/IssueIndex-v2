@@ -1,12 +1,5 @@
-"""
-Auth Middleware Tests - Risk-Based Session Validation
 
-This module tests the core authentication and session management logic:
-- Session validation with risk assessment
-- Cookie synchronization for rolling window sessions
-- Fingerprint requirement for login flows
-"""
-import os
+
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -16,23 +9,20 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 
 @pytest.fixture(autouse=True)
-def mock_settings():
-    """Mock environment variables for all tests."""
-    with patch.dict(os.environ, {
-        "FINGERPRINT_SECRET": "test-fingerprint-secret-key-for-testing",
-        "JWT_SECRET_KEY": "test-jwt-secret-key",
-        "SESSION_REMEMBER_ME_DAYS": "7",
-        "SESSION_DEFAULT_HOURS": "24",
-    }):
-        from gim_backend.core.config import get_settings
-        get_settings.cache_clear()
+def mock_settings(settings_env_override):
+    with settings_env_override(
+        {
+            "FINGERPRINT_SECRET": "test-fingerprint-secret-key-for-testing",
+            "JWT_SECRET_KEY": "test-jwt-secret-key",
+            "SESSION_REMEMBER_ME_DAYS": "7",
+            "SESSION_DEFAULT_HOURS": "24",
+        },
+    ):
         yield
-        get_settings.cache_clear()
 
 
 @pytest.fixture
 def mock_request():
-    """Creates a mock FastAPI Request."""
     request = MagicMock()
     request.headers = {}
     request.cookies = {}
@@ -44,8 +34,8 @@ def mock_request():
 
 @pytest.fixture
 def valid_ctx():
-    """Creates a valid RequestContext with fingerprint and metadata."""
     from gim_backend.middleware.context import RequestContext
+
     return RequestContext(
         fingerprint_raw="test-fingerprint",
         fingerprint_hash="a" * 64,
@@ -59,11 +49,8 @@ def valid_ctx():
     )
 
 
-
-
 @pytest.fixture
 def mock_db():
-    """Creates a mock AsyncSession."""
     db = MagicMock(spec=AsyncSession)
     db.get = AsyncMock()
     db.commit = AsyncMock()
@@ -72,7 +59,6 @@ def mock_db():
 
 @pytest.fixture
 def mock_session():
-    """Creates a mock session with soft binding metadata."""
     session = MagicMock()
     session.id = uuid4()
     session.user_id = uuid4()
@@ -86,19 +72,16 @@ def mock_session():
 
 
 class TestFingerprintGating:
-    """
-    Tests for require_fingerprint dependency.
 
-    Security: Enforces JavaScript requirement to prevent headless/bot attacks.
-    """
-
-    @pytest.mark.parametrize("fingerprint_hash,expected_status", [
-        (None, 400),
-        ("", 400),
-        ("a" * 64, "PASS"),
-    ])
+    @pytest.mark.parametrize(
+        "fingerprint_hash,expected_status",
+        [
+            (None, 400),
+            ("", 400),
+            ("a" * 64, "PASS"),
+        ],
+    )
     def test_fingerprint_requirements(self, fingerprint_hash, expected_status):
-        """Validates fingerprint gating with various inputs."""
         from fastapi import HTTPException
 
         from gim_backend.middleware.auth import require_fingerprint
@@ -126,10 +109,8 @@ class TestFingerprintGating:
 
 
 class TestSessionValidation:
-    """Core session validation tests."""
 
     async def test_returns_401_if_cookie_missing(self, mock_request, valid_ctx, mock_db):
-        """No session cookie = not authenticated."""
         from fastapi import HTTPException
 
         from gim_backend.middleware.auth import get_current_session
@@ -142,7 +123,6 @@ class TestSessionValidation:
         assert exc.value.status_code == 401
 
     async def test_returns_401_if_session_not_found(self, mock_request, valid_ctx, mock_db):
-        """Session ID not in database = invalid session."""
         from fastapi import HTTPException
 
         from gim_backend.core.cookies import SESSION_COOKIE_NAME
@@ -159,15 +139,45 @@ class TestSessionValidation:
             assert exc.value.status_code == 401
 
 
-class TestRiskBasedValidation:
-    """
-    Risk-based session validation tests.
+class TestRequireAuthenticatedUserSession:
+    async def test_returns_user_and_session(self, mock_request, valid_ctx, mock_db, mock_session):
+        from gim_backend.middleware.auth import require_authenticated_user_session
 
-    Replaces hard fingerprint blocking with soft metadata binding.
-    """
+        mock_user = MagicMock()
+
+        with (
+            patch("gim_backend.middleware.auth.get_current_session", new_callable=AsyncMock) as mock_get_session,
+            patch("gim_backend.middleware.auth.get_current_user", new_callable=AsyncMock) as mock_get_user,
+        ):
+            mock_get_session.return_value = mock_session
+            mock_get_user.return_value = mock_user
+
+            user, session = await require_authenticated_user_session(mock_request, mock_db, valid_ctx)
+
+        assert user == mock_user
+        assert session == mock_session
+
+    async def test_normalizes_auth_failure_message(self, mock_request, valid_ctx, mock_db):
+        from fastapi import HTTPException
+
+        from gim_backend.middleware.auth import require_authenticated_user_session
+
+        with patch("gim_backend.middleware.auth.get_current_session", new_callable=AsyncMock) as mock_get_session:
+            mock_get_session.side_effect = HTTPException(
+                status_code=401,
+                detail="Session expired or invalid",
+            )
+
+            with pytest.raises(HTTPException) as exc:
+                await require_authenticated_user_session(mock_request, mock_db, valid_ctx)
+
+        assert exc.value.status_code == 401
+        assert exc.value.detail == "Not authenticated"
+
+
+class TestRiskBasedValidation:
 
     async def test_low_risk_allows_request(self, mock_request, valid_ctx, mock_db, mock_session):
-        """Matching metadata = low risk score; request allowed."""
         from gim_backend.core.cookies import SESSION_COOKIE_NAME
         from gim_backend.middleware.auth import get_current_session
 
@@ -180,7 +190,6 @@ class TestRiskBasedValidation:
             assert result == mock_session
 
     async def test_country_change_kills_session(self, mock_request, mock_db, mock_session):
-        """Country mismatch = 0.8 risk score = session killed."""
         from fastapi import HTTPException
 
         from gim_backend.core.cookies import SESSION_COOKIE_NAME
@@ -196,14 +205,16 @@ class TestRiskBasedValidation:
             os_family="Mac OS X",
             ua_family="Chrome",
             asn="AS15169",
-            country_code="RU",  # Different country
+            country_code="RU",
         )
 
         mock_request.cookies = {SESSION_COOKIE_NAME: str(mock_session.id)}
 
-        with patch("gim_backend.middleware.auth.get_session_by_id", new_callable=AsyncMock) as mock_get, \
-             patch("gim_backend.middleware.auth.invalidate_session", new_callable=AsyncMock) as mock_invalidate, \
-             patch("gim_backend.middleware.auth.log_audit_event"):
+        with (
+            patch("gim_backend.middleware.auth.get_session_by_id", new_callable=AsyncMock) as mock_get,
+            patch("gim_backend.middleware.auth.invalidate_session", new_callable=AsyncMock) as mock_invalidate,
+            patch("gim_backend.middleware.auth.log_audit_event"),
+        ):
             mock_get.return_value = mock_session
 
             with pytest.raises(HTTPException) as exc:
@@ -214,7 +225,6 @@ class TestRiskBasedValidation:
             mock_invalidate.assert_called_once()
 
     async def test_medium_risk_logs_deviation(self, mock_request, mock_db, mock_session):
-        """OS mismatch + UA mismatch = 0.5 risk; allows but logs."""
         from gim_backend.core.cookies import SESSION_COOKIE_NAME
         from gim_backend.middleware.auth import get_current_session
         from gim_backend.middleware.context import RequestContext
@@ -225,16 +235,18 @@ class TestRiskBasedValidation:
             ip_address="127.0.0.1",
             user_agent="Test",
             login_flow_id=None,
-            os_family="Windows",  # Different OS (+0.3)
-            ua_family="Firefox",  # Different UA (+0.2)
+            os_family="Windows",
+            ua_family="Firefox",
             asn="AS15169",
             country_code="US",
         )
 
         mock_request.cookies = {SESSION_COOKIE_NAME: str(mock_session.id)}
 
-        with patch("gim_backend.middleware.auth.get_session_by_id", new_callable=AsyncMock) as mock_get, \
-             patch("gim_backend.middleware.auth._log_and_update_deviation", new_callable=AsyncMock) as mock_log:
+        with (
+            patch("gim_backend.middleware.auth.get_session_by_id", new_callable=AsyncMock) as mock_get,
+            patch("gim_backend.middleware.auth._log_and_update_deviation", new_callable=AsyncMock) as mock_log,
+        ):
             mock_get.return_value = mock_session
 
             result = await get_current_session(mock_request, ctx, mock_db)
@@ -244,19 +256,20 @@ class TestRiskBasedValidation:
 
 
 class TestMaliciousInput:
-    """Malformed/malicious cookie input handling."""
 
-    @pytest.mark.parametrize("malicious_cookie", [
-        "not-a-uuid",
-        "../../etc/passwd",
-        "' OR '1'='1",
-        "a" * 10000,
-        "\x00\x00\x00\x00",
-        "<script>alert(1)</script>",
-        "12345678-1234-1234-1234-1234567890ab; DROP TABLE sessions;--",
-    ])
+    @pytest.mark.parametrize(
+        "malicious_cookie",
+        [
+            "not-a-uuid",
+            "../../etc/passwd",
+            "' OR '1'='1",
+            "a" * 10000,
+            "\x00\x00\x00\x00",
+            "<script>alert(1)</script>",
+            "12345678-1234-1234-1234-1234567890ab; DROP TABLE sessions;--",
+        ],
+    )
     async def test_malformed_input_returns_401(self, mock_request, valid_ctx, mock_db, malicious_cookie):
-        """All malicious cookie values should safely return 401 before DB query."""
         from fastapi import HTTPException
 
         from gim_backend.core.cookies import SESSION_COOKIE_NAME
@@ -271,10 +284,8 @@ class TestMaliciousInput:
 
 
 class TestCookieSyncMiddleware:
-    """Cookie synchronization middleware tests."""
 
     async def test_injects_cookie_on_success_response(self):
-        """Cookie injected when session refreshed and response is success."""
         from gim_backend.middleware.auth import session_cookie_sync_middleware
 
         mock_request = MagicMock()
@@ -293,7 +304,6 @@ class TestCookieSyncMiddleware:
 
     @pytest.mark.parametrize("status_code", [302, 307])
     async def test_injects_cookie_on_redirect_responses(self, status_code):
-        """Cookie must be injected on redirect responses for OAuth flow."""
         from gim_backend.middleware.auth import session_cookie_sync_middleware
 
         mock_request = MagicMock()
@@ -311,7 +321,6 @@ class TestCookieSyncMiddleware:
             mock_cookie.assert_called_once()
 
     async def test_does_not_inject_cookie_on_error_response(self):
-        """No cookie injection on error (prevents session fixation on failure)."""
         from gim_backend.middleware.auth import session_cookie_sync_middleware
 
         mock_request = MagicMock()
@@ -330,21 +339,16 @@ class TestCookieSyncMiddleware:
 
 
 class TestDependencyWiring:
-    """
-    Regression tests for FastAPI dependency injection wiring.
 
-    Validates that auth functions use Depends(get_db) rather than placeholder
-    lambdas. This class of bug is invisible to unit tests that call functions
-    directly and to integration tests that override require_auth entirely.
-    """
-
-    @pytest.mark.parametrize("func_name", [
-        "get_current_session",
-        "get_current_user",
-        "require_auth",
-    ])
+    @pytest.mark.parametrize(
+        "func_name",
+        [
+            "get_current_session",
+            "get_current_user",
+            "require_auth",
+        ],
+    )
     def test_db_parameter_uses_get_db(self, func_name):
-        """Each auth function must use Depends(get_db) for its db parameter."""
         import inspect
 
         from gim_backend.api.dependencies import get_db
@@ -357,10 +361,5 @@ class TestDependencyWiring:
         assert db_param is not None, f"{func_name} is missing a db parameter"
 
         depends_obj = db_param.default
-        assert hasattr(depends_obj, "dependency"), (
-            f"{func_name}.db default is not a Depends(); got {type(depends_obj)}"
-        )
-        assert depends_obj.dependency is get_db, (
-            f"{func_name}.db must use Depends(get_db), not a placeholder lambda"
-        )
-
+        assert hasattr(depends_obj, "dependency"), f"{func_name}.db default is not a Depends(); got {type(depends_obj)}"
+        assert depends_obj.dependency is get_db, f"{func_name}.db must use Depends(get_db), not a placeholder lambda"

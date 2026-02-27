@@ -13,7 +13,7 @@ class RequestContext:
     ip_address: str
     user_agent: str | None
     login_flow_id: str | None
-    # Soft binding metadata
+
     os_family: str | None
     ua_family: str | None
     asn: str | None
@@ -21,10 +21,6 @@ class RequestContext:
 
 
 def _extract_client_ip(request: Request) -> str:
-    """
-    Extracts the real client IP from request headers;
-    Cloud Run appends the real client IP as the RIGHTMOST value in X-Forwarded-For
-    """
     forwarded_for = request.headers.get("X-Forwarded-For", "")
 
     if forwarded_for:
@@ -39,7 +35,6 @@ def _extract_client_ip(request: Request) -> str:
 
 
 def _parse_user_agent(ua_string: str | None) -> tuple[str | None, str | None]:
-    """Returns (os_family, ua_family) from User-Agent string"""
     if not ua_string:
         return None, None
 
@@ -53,18 +48,14 @@ def _parse_user_agent(ua_string: str | None) -> tuple[str | None, str | None]:
 
 
 def _extract_gcp_metadata(request: Request) -> tuple[str | None, str | None]:
-    """
-    Returns (asn, country_code) from GCP-injected headers;
-    supports Cloud Armor and App Engine header formats
-    """
     country = (
-        request.headers.get("X-AppEngine-Country") or
-        request.headers.get("X-GCP-Country") or
-        request.headers.get("CF-IPCountry")
+        request.headers.get("X-AppEngine-Country")
+        or request.headers.get("X-GCP-Country")
+        or request.headers.get("CF-IPCountry")
     )
     asn = request.headers.get("X-GCP-ASN")
 
-    # Normalize country code to uppercase 2-letter
+
     if country:
         country = country.upper()[:2]
 
@@ -72,7 +63,6 @@ def _extract_gcp_metadata(request: Request) -> tuple[str | None, str | None]:
 
 
 async def get_request_context(request: Request) -> RequestContext:
-    """Extracts and validates request context for auth flows"""
     fingerprint_raw = request.headers.get("X-Device-Fingerprint")
     fingerprint_hash = None
     if fingerprint_raw:
@@ -96,4 +86,3 @@ async def get_request_context(request: Request) -> RequestContext:
         asn=asn,
         country_code=country_code,
     )
-

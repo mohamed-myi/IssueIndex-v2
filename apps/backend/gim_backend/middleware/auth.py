@@ -20,7 +20,6 @@ async def _log_and_update_deviation(
     risk: RiskResult,
     ctx: RequestContext,
 ) -> None:
-    """Logs deviation to audit trail and updates throttle timestamp"""
     log_audit_event(
         AuditEvent.SESSION_DEVIATION,
         user_id=session.user_id,
@@ -42,7 +41,6 @@ async def get_current_session(
     ctx: RequestContext = Depends(get_request_context),
     db: AsyncSession = Depends(get_db),
 ) -> Session:
-    """Validates session and performs risk assessment; rejects high-risk requests"""
     session_id_str = request.cookies.get(SESSION_COOKIE_NAME)
     if not session_id_str:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -57,7 +55,7 @@ async def get_current_session(
     if session is None:
         raise HTTPException(status_code=401, detail="Session expired or invalid")
 
-    # Risk-based session validation (replaces hard fingerprint blocking)
+
     risk = assess_session_risk(session, ctx)
 
     if risk.should_reauthenticate:
@@ -91,6 +89,24 @@ async def get_current_user(
     return user
 
 
+async def require_authenticated_user_session(
+    request: Request,
+    db: AsyncSession,
+    ctx: RequestContext | None = None,
+) -> tuple[User, Session]:
+    resolved_ctx = ctx or await get_request_context(request)
+
+    try:
+        session = await get_current_session(request, resolved_ctx, db)
+        user = await get_current_user(session, db)
+    except HTTPException:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    return user, session
+
+
 async def require_auth(
     request: Request,
     session: Session = Depends(get_current_session),
@@ -98,8 +114,7 @@ async def require_auth(
     db: AsyncSession = Depends(get_db),
     ctx: RequestContext = Depends(get_request_context),
 ) -> tuple[User, Session]:
-    """Stores new expires_at in request state for response middleware"""
-    # Bind fingerprint if session was created without one (OAuth flow)
+
     if session.fingerprint is None and ctx.fingerprint_hash:
         session.fingerprint = ctx.fingerprint_hash
         await db.commit()
@@ -121,33 +136,22 @@ async def require_auth(
 def require_fingerprint(
     ctx: RequestContext = Depends(get_request_context),
 ) -> str:
-    """Returns 400 if X_Device_Fingerprint header missing"""
     if not ctx.fingerprint_hash:
-        raise HTTPException(
-            status_code=400,
-            detail="Please enable JavaScript to sign in."
-        )
+        raise HTTPException(status_code=400, detail="Please enable JavaScript to sign in.")
     return ctx.fingerprint_hash
 
 
 def optional_fingerprint(
     ctx: RequestContext = Depends(get_request_context),
 ) -> str | None:
-    """Returns fingerprint if present, None otherwise. Used for OAuth callbacks."""
     return ctx.fingerprint_hash
 
 
 async def session_cookie_sync_middleware(request: Request, call_next) -> Response:
-    """Injects updated session cookie if refresh_session updated expires_at"""
     response = await call_next(request)
 
     if response.status_code < 400:
         if hasattr(request.state, "session_expires_at") and hasattr(request.state, "session_id"):
-            create_session_cookie(
-                response,
-                request.state.session_id,
-                request.state.session_expires_at
-            )
+            create_session_cookie(response, request.state.session_id, request.state.session_expires_at)
 
     return response
-

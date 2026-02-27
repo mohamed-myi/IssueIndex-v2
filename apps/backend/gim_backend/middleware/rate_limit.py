@@ -1,7 +1,5 @@
-"""
-Sliding window rate limiter; uses Redis in production;
-falls back to in memory storage when Redis unavailable
-"""
+
+
 import logging
 import time
 from abc import ABC, abstractmethod
@@ -24,7 +22,6 @@ class RateLimiterBackend(ABC):
         max_requests: int,
         window_seconds: int,
     ) -> tuple[bool, int | None]:
-        """Returns tuple of is_limited and retry_after_seconds"""
         pass
 
     @abstractmethod
@@ -33,7 +30,6 @@ class RateLimiterBackend(ABC):
 
 
 class RedisRateLimiter(RateLimiterBackend):
-    """Uses INCR + EXPIRE pattern; atomic operations prevent race conditions"""
 
     def __init__(self, redis_client):
         self._redis = redis_client
@@ -68,7 +64,7 @@ class RedisRateLimiter(RateLimiterBackend):
 
 @dataclass
 class InMemoryRateLimiter(RateLimiterBackend):
-    """Development only; state lost on restart and not shared across instances"""
+
     storage: dict[str, list[float]] = field(default_factory=dict)
 
     def _prune_expired(self, timestamps: list[float], now: float, window: int) -> list[float]:
@@ -86,9 +82,7 @@ class InMemoryRateLimiter(RateLimiterBackend):
         if key not in self.storage:
             self.storage[key] = []
 
-        self.storage[key] = self._prune_expired(
-            self.storage[key], now, window_seconds
-        )
+        self.storage[key] = self._prune_expired(self.storage[key], now, window_seconds)
 
         if len(self.storage[key]) >= max_requests:
             oldest = min(self.storage[key])
@@ -105,13 +99,12 @@ class InMemoryRateLimiter(RateLimiterBackend):
             self.storage.clear()
 
 
-# Global rate limiter instance
+
 _rate_limiter: RateLimiterBackend | None = None
 _limiter_initialized: bool = False
 
 
 async def get_rate_limiter() -> RateLimiterBackend:
-    """Tries Redis first; falls back to in memory if unavailable"""
     global _rate_limiter, _limiter_initialized
 
     if _rate_limiter is not None:
@@ -124,6 +117,7 @@ async def get_rate_limiter() -> RateLimiterBackend:
     _limiter_initialized = True
 
     from gim_backend.core.redis import get_redis
+
     redis_client = await get_redis()
 
     if redis_client:
@@ -131,23 +125,18 @@ async def get_rate_limiter() -> RateLimiterBackend:
         logger.info("Rate limiter using Redis backend")
     else:
         _rate_limiter = InMemoryRateLimiter()
-        logger.warning(
-            "SECURITY: Rate limiter using in-memory backend - "
-            "limits not shared across instances"
-        )
+        logger.warning("SECURITY: Rate limiter using in-memory backend - limits not shared across instances")
 
     return _rate_limiter
 
 
 def reset_rate_limiter() -> None:
-    """For testing only"""
     global _rate_limiter, _limiter_initialized
     if _rate_limiter and isinstance(_rate_limiter, InMemoryRateLimiter):
         _rate_limiter.storage.clear()
 
 
 def reset_rate_limiter_instance() -> None:
-    """For testing only"""
     global _rate_limiter, _limiter_initialized
     _rate_limiter = None
     _limiter_initialized = False
@@ -163,7 +152,6 @@ async def check_auth_rate_limit(
     request: Request,
     ctx: RequestContext = Depends(get_request_context),
 ) -> None:
-    """Raises 429 if rate limit exceeded; uses compound key of IP + login_flow_id for NAT differentiation"""
     settings = get_settings()
     limiter = await get_rate_limiter()
 
