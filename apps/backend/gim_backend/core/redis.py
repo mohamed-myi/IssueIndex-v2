@@ -1,4 +1,5 @@
 """Async Redis client; falls back to in memory storage if Redis not configured"""
+
 import logging
 
 from gim_backend.core.config import get_settings
@@ -10,7 +11,6 @@ _redis_available: bool | None = None
 
 
 async def get_redis():
-    """Lazy initialization with connection pooling; returns None if unavailable"""
     global _redis_client, _redis_available
 
     if _redis_available is False:
@@ -22,9 +22,7 @@ async def get_redis():
     settings = get_settings()
 
     if not settings.redis_url:
-        logger.warning(
-            "REDIS_URL not configured; rate limiting will use in memory storage"
-        )
+        logger.warning("REDIS_URL not configured; rate limiting will use in memory storage")
         _redis_available = False
         return None
 
@@ -45,9 +43,7 @@ async def get_redis():
         return _redis_client
 
     except ImportError:
-        logger.warning(
-            "redis package not installed; rate limiting will use in memory storage"
-        )
+        logger.warning("redis package not installed; rate limiting will use in memory storage")
         _redis_available = False
         return None
 
@@ -58,7 +54,6 @@ async def get_redis():
 
 
 async def close_redis() -> None:
-    """Called on app shutdown"""
     global _redis_client, _redis_available
 
     if _redis_client is not None:
@@ -69,7 +64,6 @@ async def close_redis() -> None:
 
 
 def reset_redis_for_testing() -> None:
-    """For testing only"""
     global _redis_client, _redis_available
     _redis_client = None
     _redis_available = None

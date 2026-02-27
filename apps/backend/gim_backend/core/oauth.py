@@ -23,7 +23,7 @@ class UserProfile:
 
 @dataclass
 class OAuthToken:
-    """Includes optional refresh_token for background workers"""
+
     access_token: str
     token_type: str
     scope: str | None = None
@@ -62,9 +62,9 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
 RETRYABLE_STATUS_CODES = {500, 502, 503, 504, 429}
 
-# OAuth scope constants (login vs profile connect)
+
 GITHUB_LOGIN_SCOPES = "read:user user:email"
-GITHUB_PROFILE_SCOPES = "read:user repo"  # for starred repos and contributions
+GITHUB_PROFILE_SCOPES = "read:user repo"
 GOOGLE_LOGIN_SCOPES = "openid email profile"
 
 
@@ -74,7 +74,7 @@ STATE_ALLOWED_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0
 
 
 def validate_state(state: str) -> None:
-    """Validates state parameter to prevent injection attacks"""
+
     if not state:
         raise OAuthStateError("State parameter is required")
 
@@ -89,7 +89,7 @@ def validate_state(state: str) -> None:
 
 
 def get_authorization_url(provider: OAuthProvider, redirect_uri: str, state: str) -> str:
-    """State is validated and should be stored server side for CSRF verification"""
+
     validate_state(state)
     settings = get_settings()
 
@@ -143,7 +143,7 @@ async def exchange_code_for_token(
     redirect_uri: str,
     client: httpx.AsyncClient,
 ) -> OAuthToken:
-    """Retries on 5xx or network failures; fails fast on 4xx"""
+
     settings = get_settings()
 
     if provider == OAuthProvider.GITHUB:
@@ -181,7 +181,8 @@ async def exchange_code_for_token(
                 last_error = OAuthError(f"Server error: {response.status_code}")
                 if attempt < max_retries - 1:
                     import asyncio
-                    await asyncio.sleep(2 ** attempt)
+
+                    await asyncio.sleep(2**attempt)
                     continue
                 raise last_error
 
@@ -190,7 +191,7 @@ async def exchange_code_for_token(
             except Exception:
                 raise OAuthError("Provider returned invalid JSON response")
 
-            # GitHub returns 200 OK with error in body - check for error key first
+
             error_code = token_data.get("error", "")
             if error_code:
                 error_msg = token_data.get("error_description", error_code)
@@ -216,7 +217,8 @@ async def exchange_code_for_token(
             last_error = e
             if attempt < max_retries - 1:
                 import asyncio
-                await asyncio.sleep(2 ** attempt)
+
+                await asyncio.sleep(2**attempt)
                 continue
             raise OAuthError(f"Request timed out after {max_retries} attempts")
 
@@ -224,7 +226,8 @@ async def exchange_code_for_token(
             last_error = e
             if attempt < max_retries - 1:
                 import asyncio
-                await asyncio.sleep(2 ** attempt)
+
+                await asyncio.sleep(2**attempt)
                 continue
             raise OAuthError(f"Network error after {max_retries} attempts: {e}")
 
@@ -236,7 +239,7 @@ async def fetch_user_profile(
     token: OAuthToken,
     client: httpx.AsyncClient,
 ) -> UserProfile:
-    """Uses node_id for GitHub to match GraphQL schema"""
+
     if provider == OAuthProvider.GITHUB:
         return await _fetch_github_profile(token.access_token, client)
     elif provider == OAuthProvider.GOOGLE:

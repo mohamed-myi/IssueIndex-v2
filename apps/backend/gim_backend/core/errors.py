@@ -1,7 +1,5 @@
-"""
-Centralized error definitions and user-friendly message mapping.
-All profile-related errors should be caught and converted to appropriate HTTP responses.
-"""
+
+
 import logging
 
 from fastapi import HTTPException, Request
@@ -12,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 class ProfileError(Exception):
     """Base class for profile-related errors with user message and status code."""
+
     status_code: int = 500
     user_message: str = "Something went wrong. Please try again."
     log_message: str | None = None
@@ -149,9 +148,7 @@ def handle_profile_error(exc: Exception) -> HTTPException:
     error_name = type(exc).__name__
 
     if isinstance(exc, ProfileError):
-        logger.warning(
-            f"Profile error: {error_name}, detail={exc.detail}, user_message={exc.user_message}"
-        )
+        logger.warning(f"Profile error: {error_name}, detail={exc.detail}, user_message={exc.user_message}")
         return HTTPException(
             status_code=exc.status_code,
             detail=exc.user_message,
@@ -173,8 +170,7 @@ def handle_profile_error(exc: Exception) -> HTTPException:
 async def profile_exception_handler(request: Request, exc: ProfileError) -> JSONResponse:
     """FastAPI exception handler for ProfileError subclasses."""
     logger.warning(
-        f"Profile error handler: {type(exc).__name__}, "
-        f"path={request.url.path}, user_message={exc.user_message}"
+        f"Profile error handler: {type(exc).__name__}, path={request.url.path}, user_message={exc.user_message}"
     )
     return JSONResponse(
         status_code=exc.status_code,
@@ -205,4 +201,3 @@ __all__ = [
     "profile_exception_handler",
     "ERROR_MAP",
 ]
-

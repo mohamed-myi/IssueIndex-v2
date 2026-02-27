@@ -1,4 +1,5 @@
 """Security events logged as JSON to stdout for GCP Cloud Logging ingestion"""
+
 import json
 import logging
 from datetime import UTC, datetime

@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     direct_database_url: str = ""
 
     fingerprint_secret: str = ""
-    fernet_key: str = ""  # Token encryption key for linked_accounts
+    fernet_key: str = ""
 
     github_client_id: str = ""
     github_client_secret: str = ""
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     redis_url: str = ""
 
-    embedding_mode: str = "nomic"  # "nomic" or "vertex"
+    embedding_mode: str = "nomic"
 
     reco_flush_secret: str = ""
     reco_events_flush_batch_size: int = 1000
@@ -49,28 +49,25 @@ class Settings(BaseSettings):
 
     git_token: str = ""
 
-    # Cloud Tasks config
+
     gcp_project: str = ""
     gcp_region: str = "us-central1"
     cloud_tasks_queue: str = "profile-jobs"
     embed_worker_url: str = ""
     resume_worker_url: str = ""
+    cloud_tasks_service_account_email: str = ""
 
-    # Performance optimizations
-    gatherer_concurrency: int = 10  # Max concurrent repo fetches
-    max_issues_per_repo: int = 100  # Cap issues per repository (reduced for rate limits)
+    gatherer_concurrency: int = 10
+    max_issues_per_repo: int = 100
 
-    # Embedder job config (two-phase pipeline)
-    embedder_batch_size: int = 250  # Issues per embedder batch
+    embedder_batch_size: int = 250
 
-    # Janitor config
-    janitor_min_issues: int = 10000  # Only prune if table exceeds this count
+    janitor_min_issues: int = 10000
 
-    # Embedding config for local Nomic MoE model
     embedding_model: str = "nomic-embed-text-v2-moe"
-    embedding_dim: int = 256  # Matryoshka truncation from 768 to 256
+    embedding_dim: int = 256
     embedding_batch_size: int = 25
-    max_concurrent_embeddings: int = 4  # Prevent OOM on constrained instances
+    max_concurrent_embeddings: int = 4
 
     model_config = SettingsConfigDict(
         env_file=".env.local",
@@ -82,4 +79,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

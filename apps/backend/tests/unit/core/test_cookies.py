@@ -1,16 +1,5 @@
-"""
-Cookie Security Tests - Attribute Policing
 
-Tests use real FastAPI Response objects and inspect actual header values.
-No mocking of the cookie-setting logic - we verify the actual output.
 
-Focus areas:
-- HttpOnly, Secure, SameSite enforcement (exact matches)
-- Production vs Development flag switching
-- Domain attribute for shared subdomain cookies
-- Max-Age / Expires consistency
-- Login flow cookie TTL
-"""
 import os
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
@@ -27,14 +16,7 @@ from gim_backend.core.cookies import (
 
 
 def parse_set_cookie(response: Response, cookie_name: str) -> dict:
-    """
-    Parse Set-Cookie header into attributes dict.
-    Returns exact attribute values for policing.
 
-    Manual parsing because SimpleCookie doesn't handle boolean flags well.
-    Note: FastAPI puts each cookie in a separate header, not comma-separated.
-    """
-    # FastAPI Response stores raw_headers as list of tuples
     raw = ""
     for key, value in response.raw_headers:
         if key.decode().lower() == "set-cookie" and value.decode().startswith(f"{cookie_name}="):
@@ -79,16 +61,11 @@ def parse_set_cookie(response: Response, cookie_name: str) -> dict:
 
 
 class TestSessionCookieSecurityAttributes:
-    """
-    SECURITY: Verify exact cookie attributes.
-    HttpOnly and SameSite=Lax are REQUIRED in all environments.
-    Secure is REQUIRED in production.
-    """
 
     def test_httponly_always_set(self):
-        """HttpOnly prevents XSS cookie theft - must ALWAYS be True."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -96,14 +73,14 @@ class TestSessionCookieSecurityAttributes:
 
             attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
 
-            # EXACT MATCH - not contains, not truthy
+
             assert attrs["httponly"] is True, "HttpOnly MUST be True to prevent XSS"
             get_settings.cache_clear()
 
     def test_samesite_lax_in_development(self):
-        """SameSite=Lax prevents CSRF - must be exactly 'lax' or 'Lax'."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -111,14 +88,13 @@ class TestSessionCookieSecurityAttributes:
 
             attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
 
-            assert attrs["samesite"].lower() == "lax", \
-                f"SameSite must be 'lax', got '{attrs['samesite']}'"
+            assert attrs["samesite"].lower() == "lax", f"SameSite must be 'lax', got '{attrs['samesite']}'"
             get_settings.cache_clear()
 
     def test_samesite_lax_in_production(self):
-        """SameSite=Lax in production (same-site subdomain sharing, not cross-origin)."""
         with patch.dict(os.environ, {"ENVIRONMENT": "production", "COOKIE_DOMAIN": ".issueindex.dev"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -126,14 +102,15 @@ class TestSessionCookieSecurityAttributes:
 
             attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
 
-            assert attrs["samesite"].lower() == "lax", \
+            assert attrs["samesite"].lower() == "lax", (
                 f"SameSite must be 'lax' in production, got '{attrs['samesite']}'"
+            )
             get_settings.cache_clear()
 
     def test_secure_true_in_production(self):
-        """Secure=True in production prevents cookie over HTTP."""
         with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -141,14 +118,13 @@ class TestSessionCookieSecurityAttributes:
 
             attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
 
-            assert attrs["secure"] is True, \
-                "Secure MUST be True in production to prevent HTTP leakage"
+            assert attrs["secure"] is True, "Secure MUST be True in production to prevent HTTP leakage"
             get_settings.cache_clear()
 
     def test_secure_false_in_development(self):
-        """Secure=False in development allows localhost testing."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -156,15 +132,14 @@ class TestSessionCookieSecurityAttributes:
 
             attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
 
-            # In dev, Secure should be False or empty string
-            assert attrs["secure"] in (False, ""), \
-                "Secure should be False in development for localhost testing"
+
+            assert attrs["secure"] in (False, ""), "Secure should be False in development for localhost testing"
             get_settings.cache_clear()
 
     def test_path_is_root(self):
-        """Path=/ ensures cookie sent on all routes."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -177,14 +152,11 @@ class TestSessionCookieSecurityAttributes:
 
 
 class TestSessionCookieDomain:
-    """
-    Domain attribute tests for shared subdomain cookie architecture.
-    """
 
     def test_domain_set_when_configured(self):
-        """Cookie domain must be set to shared parent domain in production."""
         with patch.dict(os.environ, {"ENVIRONMENT": "production", "COOKIE_DOMAIN": ".issueindex.dev"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -192,14 +164,13 @@ class TestSessionCookieDomain:
 
             attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
 
-            assert attrs["domain"] == ".issueindex.dev", \
-                f"Domain must be '.issueindex.dev', got '{attrs['domain']}'"
+            assert attrs["domain"] == ".issueindex.dev", f"Domain must be '.issueindex.dev', got '{attrs['domain']}'"
             get_settings.cache_clear()
 
     def test_no_domain_when_empty(self):
-        """No domain attribute when COOKIE_DOMAIN is empty (dev mode = host-only cookie)."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development", "COOKIE_DOMAIN": ""}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -207,14 +178,13 @@ class TestSessionCookieDomain:
 
             attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
 
-            assert attrs["domain"] == "", \
-                f"Domain should be empty for dev, got '{attrs['domain']}'"
+            assert attrs["domain"] == "", f"Domain should be empty for dev, got '{attrs['domain']}'"
             get_settings.cache_clear()
 
     def test_clear_cookie_includes_domain(self):
-        """Clearing a cookie must include the same domain or the browser won't delete it."""
         with patch.dict(os.environ, {"ENVIRONMENT": "production", "COOKIE_DOMAIN": ".issueindex.dev"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -222,20 +192,18 @@ class TestSessionCookieDomain:
 
             attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
 
-            assert attrs["domain"] == ".issueindex.dev", \
+            assert attrs["domain"] == ".issueindex.dev", (
                 "clear_session_cookie must include domain to match creation attributes"
+            )
             get_settings.cache_clear()
 
 
 class TestSessionCookieExpiration:
-    """
-    Expiration handling - Max-Age vs Expires consistency.
-    """
 
     def test_expires_set_when_provided(self):
-        """When expires_at is provided, cookie expires at that timestamp."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -244,14 +212,14 @@ class TestSessionCookieExpiration:
 
             attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
 
-            # Should have expires set (format varies by browser)
+
             assert attrs["expires"], "expires should be set when expires_at provided"
             get_settings.cache_clear()
 
     def test_session_cookie_when_no_expires(self):
-        """No expires_at = session cookie (dies when browser closes)."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -259,19 +227,18 @@ class TestSessionCookieExpiration:
 
             attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
 
-            # Neither max-age nor expires should be set
+
             assert not attrs["expires"], "Session cookie should not have expires"
             assert not attrs["max-age"], "Session cookie should not have max-age"
             get_settings.cache_clear()
 
 
 class TestClearSessionCookie:
-    """Verify cookie deletion uses same security attributes."""
 
     def test_clear_uses_same_security_attributes(self):
-        """Deletion must use matching attributes or cookie won't be cleared."""
         with patch.dict(os.environ, {"ENVIRONMENT": "production"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -279,7 +246,7 @@ class TestClearSessionCookie:
 
             attrs = parse_set_cookie(response, SESSION_COOKIE_NAME)
 
-            # Must match creation attributes
+
             assert attrs["httponly"] is True
             assert attrs["samesite"].lower() == "lax"
             assert attrs["secure"] is True
@@ -288,12 +255,11 @@ class TestClearSessionCookie:
 
 
 class TestLoginFlowCookie:
-    """Rate limiting flow ID cookie tests."""
 
     def test_max_age_is_300_seconds(self):
-        """Login flow cookie expires in 5 minutes - prevents stale flows."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -301,15 +267,14 @@ class TestLoginFlowCookie:
 
             attrs = parse_set_cookie(response, LOGIN_FLOW_COOKIE_NAME)
 
-            # Exact match for max-age
-            assert attrs["max-age"] == "300", \
-                f"max-age must be exactly 300, got {attrs['max-age']}"
+
+            assert attrs["max-age"] == "300", f"max-age must be exactly 300, got {attrs['max-age']}"
             get_settings.cache_clear()
 
     def test_httponly_protects_flow_id(self):
-        """Flow ID is security-sensitive - must be HttpOnly."""
         with patch.dict(os.environ, {"ENVIRONMENT": "development"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -321,9 +286,9 @@ class TestLoginFlowCookie:
             get_settings.cache_clear()
 
     def test_login_flow_cookie_includes_domain(self):
-        """Login flow cookie must include domain when configured."""
         with patch.dict(os.environ, {"ENVIRONMENT": "production", "COOKIE_DOMAIN": ".issueindex.dev"}):
             from gim_backend.core.config import get_settings
+
             get_settings.cache_clear()
 
             response = Response()
@@ -335,4 +300,3 @@ class TestLoginFlowCookie:
             get_settings.cache_clear()
 
 
-    # NOTE: Constant value is self-documenting in code

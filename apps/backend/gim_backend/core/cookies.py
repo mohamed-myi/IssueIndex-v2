@@ -8,9 +8,6 @@ SESSION_COOKIE_NAME = "session_id"
 
 
 def _cookie_domain_or_none() -> str | None:
-    """Returns the cookie domain if configured, None otherwise.
-    Empty string in config means host-only cookie (local dev).
-    """
     domain = get_settings().cookie_domain
     return domain if domain else None
 
@@ -20,12 +17,11 @@ def create_session_cookie(
     session_id: str,
     expires_at: datetime | None = None,
 ) -> None:
-    """Creates session cookie. If expires_at is None, expires on browser close."""
+
     settings = get_settings()
     is_production = settings.environment == "production"
 
-    # SameSite=Lax is sufficient for same-site subdomain cookie sharing
-    # Local dev also uses Lax (localhost).
+
     cookie_params: dict = {
         "key": SESSION_COOKIE_NAME,
         "value": session_id,
@@ -46,7 +42,7 @@ def create_session_cookie(
 
 
 def clear_session_cookie(response: Response) -> None:
-    """Clears session cookie. Must use identical attributes or browser won't delete it."""
+
     settings = get_settings()
     is_production = settings.environment == "production"
 
@@ -88,22 +84,3 @@ def create_login_flow_cookie(response, flow_id: str) -> None:
         kwargs["domain"] = domain
 
     response.set_cookie(**kwargs)
-
-
-def clear_login_flow_cookie(response) -> None:
-    settings = get_settings()
-    is_production = settings.environment == "production"
-
-    kwargs: dict = {
-        "key": LOGIN_FLOW_COOKIE_NAME,
-        "httponly": True,
-        "samesite": "lax",
-        "secure": is_production,
-        "path": "/",
-    }
-
-    domain = _cookie_domain_or_none()
-    if domain:
-        kwargs["domain"] = domain
-
-    response.delete_cookie(**kwargs)
