@@ -3,6 +3,7 @@ Search Cache Unit Tests
 
 Tests cache serialization, deserialization, and key generation.
 """
+
 import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
@@ -15,8 +16,10 @@ from gim_backend.services.search_cache import (
     CACHE_TTL_SECONDS,
     CONTEXT_PREFIX,
     _deserialize_response,
+    _normalize_cached_response_payload,
     _serialize_response,
     cache_search_context,
+    get_cached_search,
     get_cached_search_context,
 )
 from gim_backend.services.search_service import (
@@ -31,11 +34,9 @@ class TestCacheConstants:
     """Tests for cache configuration constants."""
 
     def test_cache_ttl_is_five_minutes(self):
-        """Cache TTL should be 300 seconds (5 minutes)."""
         assert CACHE_TTL_SECONDS == 300
 
     def test_cache_prefix_is_search(self):
-        """Cache key prefix should be 'search:'."""
         assert CACHE_PREFIX == "search:"
 
 
@@ -44,7 +45,6 @@ class TestCacheSerialization:
 
     @pytest.fixture
     def sample_response(self):
-        """Create a sample SearchResponse for testing."""
         item = SearchResultItem(
             node_id="MDU6SXNzdWUx",
             title="Test Issue Title",
@@ -61,6 +61,7 @@ class TestCacheSerialization:
             search_id=uuid4(),
             results=[item],
             total=1,
+            total_is_capped=False,
             page=1,
             page_size=20,
             has_more=False,
@@ -73,15 +74,22 @@ class TestCacheSerialization:
         )
 
     def test_serialize_produces_valid_json(self, sample_response):
-        """Serialization should produce valid JSON."""
         serialized = _serialize_response(sample_response)
 
         # Should be valid JSON
         parsed = json.loads(serialized)
         assert isinstance(parsed, dict)
 
+    def test_serialize_uses_model_dump_json_shape(self, sample_response):
+        serialized = _serialize_response(sample_response)
+        parsed = json.loads(serialized)
+
+        expected = sample_response.model_dump(mode="json")
+        parsed.pop("_cache_schema_version", None)
+
+        assert parsed == expected
+
     def test_serialize_includes_all_fields(self, sample_response):
-        """Serialization should include all response fields."""
         serialized = _serialize_response(sample_response)
         parsed = json.loads(serialized)
 
@@ -168,12 +176,22 @@ class TestCacheSerialization:
 
         assert restored_dt == original_dt
 
+    def test_deserialize_supports_legacy_body_text_field(self, sample_response):
+        payload = sample_response.model_dump(mode="json")
+        payload["results"][0].pop("body_preview")
+        payload["results"][0]["body_text"] = "Legacy cached body"
+
+        restored = _deserialize_response(json.dumps(payload))
+
+        assert restored.results[0].body_preview == "Legacy cached body"
+
     def test_empty_results_serialization(self):
         """Serialization should handle empty results."""
         response = SearchResponse(
             search_id=uuid4(),
             results=[],
             total=0,
+            total_is_capped=False,
             page=1,
             page_size=20,
             has_more=False,
@@ -186,6 +204,15 @@ class TestCacheSerialization:
 
         assert len(restored.results) == 0
         assert restored.total == 0
+
+    def test_roundtrip_preserves_total_is_capped(self, sample_response):
+        """Serialization should preserve capped-total semantics."""
+        sample_response.total_is_capped = True
+
+        serialized = _serialize_response(sample_response)
+        restored = _deserialize_response(serialized)
+
+        assert restored.total_is_capped is True
 
     def test_multiple_results_serialization(self):
         """Serialization should handle multiple results."""
@@ -208,6 +235,7 @@ class TestCacheSerialization:
             search_id=uuid4(),
             results=items,
             total=3,
+            total_is_capped=False,
             page=1,
             page_size=20,
             has_more=False,
@@ -278,6 +306,7 @@ class TestSearchContextCaching:
                 result_count=123,
                 page=2,
                 page_size=20,
+                page_node_ids=["n1", "n2"],
             )
 
         key = f"{CONTEXT_PREFIX}{search_id}"
@@ -292,19 +321,26 @@ class TestSearchContextCaching:
         assert parsed["result_count"] == 123
         assert parsed["page"] == 2
         assert parsed["page_size"] == 20
+        assert parsed["page_node_ids"] == ["n1", "n2"]
 
     @pytest.mark.asyncio
     async def test_get_cached_search_context_returns_parsed_dict(self):
         fake_redis = _FakeRedis()
         search_id = uuid4()
         key = f"{CONTEXT_PREFIX}{search_id}"
-        fake_redis._kv[key] = (CACHE_TTL_SECONDS, json.dumps({
-            "query_text": "q",
-            "filters_json": {"languages": [], "labels": [], "repos": []},
-            "result_count": 5,
-            "page": 1,
-            "page_size": 20,
-        }))
+        fake_redis._kv[key] = (
+            CACHE_TTL_SECONDS,
+            json.dumps(
+                {
+                    "query_text": "q",
+                    "filters_json": {"languages": [], "labels": [], "repos": []},
+                    "result_count": 5,
+                    "page": 1,
+                    "page_size": 20,
+                    "page_node_ids": ["issue_1", "issue_2"],
+                }
+            ),
+        )
 
         with patch("gim_backend.services.search_cache.get_redis", new=AsyncMock(return_value=fake_redis)):
             ctx = await get_cached_search_context(search_id)
@@ -366,3 +402,19 @@ class TestSearchContextCaching:
 
         assert request1.cache_key() == request2.cache_key()
 
+
+class TestCachedSearchReadBehavior:
+    @pytest.mark.asyncio
+    async def test_get_cached_search_returns_none_for_malformed_cached_payload(self):
+        fake_redis = _FakeRedis()
+        request = SearchRequest(query="test")
+        fake_redis._kv[f"{CACHE_PREFIX}{request.cache_key()}"] = (CACHE_TTL_SECONDS, '{"results": "bad"}')
+
+        with patch("gim_backend.services.search_cache.get_redis", new=AsyncMock(return_value=fake_redis)):
+            result = await get_cached_search(request)
+
+        assert result is None
+
+    def test_normalize_cached_response_payload_rejects_non_object(self):
+        with pytest.raises(ValueError):
+            _normalize_cached_response_payload(["not", "an", "object"])

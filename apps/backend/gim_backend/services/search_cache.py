@@ -5,16 +5,13 @@ Time to Live: 5 min
 
 import json
 import logging
-from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 from gim_backend.core.redis import get_redis
 from gim_backend.services.search_service import (
-    SearchFilters,
     SearchRequest,
     SearchResponse,
-    SearchResultItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -22,78 +19,44 @@ logger = logging.getLogger(__name__)
 CACHE_TTL_SECONDS = 300
 CACHE_PREFIX = "search:"
 CONTEXT_PREFIX = "searchctx:"
+SEARCH_CACHE_SCHEMA_VERSION = 2
 
 
 def _serialize_response(response: SearchResponse) -> str:
-    """Serialize SearchResponse to JSON string."""
-    data = {
-        "search_id": str(response.search_id),
-        "results": [
-            {
-                "node_id": r.node_id,
-                "title": r.title,
-                "body_preview": r.body_preview,
-                "github_url": r.github_url,
-                "labels": r.labels,
-                "q_score": r.q_score,
-                "repo_name": r.repo_name,
-                "primary_language": r.primary_language,
-                "github_created_at": r.github_created_at.isoformat(),
-                "rrf_score": r.rrf_score,
-            }
-            for r in response.results
-        ],
-        "total": response.total,
-        "page": response.page,
-        "page_size": response.page_size,
-        "has_more": response.has_more,
-        "query": response.query,
-        "filters": {
-            "languages": response.filters.languages,
-            "labels": response.filters.labels,
-            "repos": response.filters.repos,
-        },
-    }
+    data = response.model_dump(mode="json")
+    data["_cache_schema_version"] = SEARCH_CACHE_SCHEMA_VERSION
     return json.dumps(data)
 
 
+def _normalize_cached_response_payload(parsed: Any) -> dict[str, Any]:
+    """Compatibility adapter for older cached payload shapes."""
+    if not isinstance(parsed, dict):
+        raise ValueError("Cached search payload must be a JSON object")
+
+    normalized = dict(parsed)
+    normalized.setdefault("total_is_capped", False)
+
+    raw_results = normalized.get("results")
+    if isinstance(raw_results, list):
+        normalized_results: list[Any] = []
+        for item in raw_results:
+            if isinstance(item, dict):
+                normalized_item = dict(item)
+                # Legacy cache entries stored `body_text`; current model expects `body_preview`.
+                if "body_preview" not in normalized_item and "body_text" in normalized_item:
+                    normalized_item["body_preview"] = normalized_item["body_text"]
+                normalized_results.append(normalized_item)
+                continue
+            normalized_results.append(item)
+        normalized["results"] = normalized_results
+
+    return normalized
+
+
 def _deserialize_response(data: str) -> SearchResponse:
-    """Deserialize JSON string to SearchResponse."""
     parsed = json.loads(data)
-
-    results = [
-        SearchResultItem(
-            node_id=r["node_id"],
-            title=r["title"],
-            # Handle both old (body_text) and new (body_preview) field names for cache backward compat
-            body_preview=r.get("body_preview") or r.get("body_text", ""),
-            github_url=r.get("github_url"),
-            labels=r["labels"],
-            q_score=r["q_score"],
-            repo_name=r["repo_name"],
-            primary_language=r["primary_language"],
-            github_created_at=datetime.fromisoformat(r["github_created_at"]),
-            rrf_score=r["rrf_score"],
-        )
-        for r in parsed["results"]
-    ]
-
-    filters = SearchFilters(
-        languages=parsed["filters"]["languages"],
-        labels=parsed["filters"]["labels"],
-        repos=parsed["filters"]["repos"],
-    )
-
-    return SearchResponse(
-        search_id=UUID(parsed["search_id"]),
-        results=results,
-        total=parsed["total"],
-        page=parsed["page"],
-        page_size=parsed["page_size"],
-        has_more=parsed["has_more"],
-        query=parsed["query"],
-        filters=filters,
-    )
+    normalized = _normalize_cached_response_payload(parsed)
+    return SearchResponse.model_validate(normalized)
 
 
 def _context_key(search_id: UUID) -> str:
@@ -108,6 +71,7 @@ async def cache_search_context(
     result_count: int,
     page: int,
     page_size: int,
+    page_node_ids: list[str],
 ) -> None:
     """
     Store validated search context for later interaction logging.
@@ -123,6 +87,7 @@ async def cache_search_context(
         "result_count": int(result_count),
         "page": int(page),
         "page_size": int(page_size),
+        "page_node_ids": page_node_ids,
     }
 
     try:
@@ -211,13 +176,13 @@ async def invalidate_search_cache(pattern: str = "*") -> int:
     try:
         full_pattern = f"{CACHE_PREFIX}{pattern}"
 
-        # Collect all matching keys first
+        # Collect all matching keys
         keys = [key async for key in redis.scan_iter(full_pattern)]
 
         if not keys:
             return 0
 
-        # Use pipeline to delete all keys in one network round trip
+        # Use pipeline to delete all keys
         async with redis.pipeline(transaction=True) as pipe:
             for key in keys:
                 pipe.delete(key)
@@ -241,4 +206,5 @@ __all__ = [
     "invalidate_search_cache",
     "_serialize_response",
     "_deserialize_response",
+    "_normalize_cached_response_payload",
 ]

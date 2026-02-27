@@ -4,8 +4,12 @@ Search Service Unit Tests
 Tests RRF logic, filter handling, cache key generation, two-stage SQL building,
 and edge case handling.
 """
+
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
+
+import pytest
 
 from gim_backend.services.search_service import (
     CANDIDATE_LIMIT,
@@ -18,6 +22,7 @@ from gim_backend.services.search_service import (
     SearchResultItem,
     Stage1Result,
     _build_stage1_sql,
+    hybrid_search,
 )
 
 
@@ -25,22 +30,18 @@ class TestSearchFilters:
     """Tests for SearchFilters dataclass."""
 
     def test_empty_filters_is_empty(self):
-        """Empty filters should report is_empty as True."""
         filters = SearchFilters()
         assert filters.is_empty() is True
 
     def test_filters_with_languages_not_empty(self):
-        """Filters with languages should not be empty."""
         filters = SearchFilters(languages=["Python"])
         assert filters.is_empty() is False
 
     def test_filters_with_labels_not_empty(self):
-        """Filters with labels should not be empty."""
         filters = SearchFilters(labels=["bug"])
         assert filters.is_empty() is False
 
     def test_filters_with_repos_not_empty(self):
-        """Filters with repos should not be empty."""
         filters = SearchFilters(repos=["facebook/react"])
         assert filters.is_empty() is False
 
@@ -165,6 +166,16 @@ class TestRRFLogic:
 class TestStage1SQLBuilder:
     """Tests for _build_stage1_sql function (two-stage retrieval)."""
 
+    def test_extracted_sql_builder_matches_facade_export(self):
+        from gim_backend.services.search_sql import _build_stage1_sql as extracted_build_stage1_sql
+
+        filters = SearchFilters(languages=["Python"], labels=["bug"], repos=["org/repo"])
+
+        assert extracted_build_stage1_sql(filters, use_vector_path=True) == _build_stage1_sql(
+            filters,
+            use_vector_path=True,
+        )
+
     def test_sql_with_vector_path_enabled(self):
         """SQL should include both vector and BM25 CTEs when vector path enabled."""
         filters = SearchFilters()
@@ -205,7 +216,7 @@ class TestStage1SQLBuilder:
         sql = _build_stage1_sql(filters, use_vector_path=True)
 
         # Filters should appear in the filtered CTE (after fused)
-        filtered_section = sql[sql.find("filtered AS"):]
+        filtered_section = sql[sql.find("filtered AS") :]
         assert "primary_language = ANY(:langs)" in filtered_section
         assert "fused.labels && :labels" in filtered_section
 
@@ -243,31 +254,69 @@ class TestStage1SQLBuilder:
         assert "GREATEST(fused.ingested_at, fused.github_created_at)" in sql
         assert "POWER(" in sql
 
+    def test_vector_and_bm25_only_modes_share_score_formula_fragment(self):
+        from gim_backend.services.search_sql import _build_stage1_score_columns_sql
+
+        filters = SearchFilters()
+        vector_sql = _build_stage1_sql(filters, use_vector_path=True)
+        bm25_only_sql = _build_stage1_sql(filters, use_vector_path=False)
+        score_fragment = _build_stage1_score_columns_sql("fused")
+
+        def normalize(sql: str) -> str:
+            return " ".join(sql.split())
+
+        assert normalize(score_fragment) in normalize(vector_sql)
+        assert normalize(score_fragment) in normalize(bm25_only_sql)
+
 
 class TestStage2StateEnforcement:
     def test_stage2_filters_open_issues(self):
         import inspect
 
-        from gim_backend.services import search_service
+        from gim_backend.services import search_execution
 
-        src = inspect.getsource(search_service._execute_stage2)
+        src = inspect.getsource(search_execution._execute_stage2)
         assert "i.state = 'open'" in src
 
     def test_stage2_probes_schema_for_github_url(self):
         import inspect
 
-        from gim_backend.services import search_service
+        from gim_backend.services import search_execution
 
-        src = inspect.getsource(search_service._execute_stage2)
+        src = inspect.getsource(search_execution._execute_stage2)
         assert "_issue_has_github_url_column" in src
 
     def test_stage2_has_legacy_schema_fallback_for_github_url(self):
         import inspect
 
-        from gim_backend.services import search_service
+        from gim_backend.services import search_execution
 
-        src = inspect.getsource(search_service._execute_stage2)
+        src = inspect.getsource(search_execution._execute_stage2)
         assert "NULL::text AS github_url" in src
+
+
+class TestSchemaProbe:
+    @pytest.mark.asyncio
+    async def test_issue_has_github_url_column_true(self):
+        from gim_backend.services.search_schema_probe import _issue_has_github_url_column
+
+        mock_db = MagicMock()
+        mock_result = MagicMock()
+        mock_result.one.return_value = (True,)
+        mock_db.exec = AsyncMock(return_value=mock_result)
+
+        assert await _issue_has_github_url_column(mock_db) is True
+
+    @pytest.mark.asyncio
+    async def test_issue_has_github_url_column_false(self):
+        from gim_backend.services.search_schema_probe import _issue_has_github_url_column
+
+        mock_db = MagicMock()
+        mock_result = MagicMock()
+        mock_result.one.return_value = (False,)
+        mock_db.exec = AsyncMock(return_value=mock_result)
+
+        assert await _issue_has_github_url_column(mock_db) is False
 
     def test_sql_uses_full_outer_join(self):
         """Vector and BM25 results should be combined with FULL OUTER JOIN."""
@@ -444,3 +493,62 @@ class TestSearchResponse:
 
         assert response.has_more is True
         assert response.total > response.page_size
+
+    def test_total_is_capped_field_can_be_true(self):
+        """SearchResponse should preserve explicit capped-total semantics."""
+        response = SearchResponse(
+            search_id=uuid4(),
+            results=[],
+            total=500,
+            total_is_capped=True,
+            page=1,
+            page_size=20,
+            has_more=True,
+            query="test",
+            filters=SearchFilters(),
+        )
+
+        assert response.total_is_capped is True
+
+
+class TestHybridSearchCappedTotals:
+    @pytest.mark.asyncio
+    async def test_hybrid_search_propagates_stage1_capped_total_flag(self):
+        request = SearchRequest(query="test query", page=1, page_size=20)
+        stage1_result = Stage1Result(
+            node_ids=["node_1"],
+            rrf_scores={"node_1": 0.123},
+            total=500,
+            is_capped=True,
+        )
+        stage2_results = [
+            SearchResultItem(
+                node_id="node_1",
+                title="Issue 1",
+                body_preview="Body",
+                labels=["bug"],
+                q_score=0.8,
+                repo_name="repo/name",
+                primary_language="Python",
+                github_created_at=datetime.now(UTC),
+                rrf_score=0.123,
+            )
+        ]
+
+        with (
+            patch("gim_backend.services.search_service.embed_query", new=AsyncMock(return_value=None)),
+            patch(
+                "gim_backend.services.search_service._execute_stage1",
+                new=AsyncMock(return_value=stage1_result),
+            ) as mock_stage1,
+            patch(
+                "gim_backend.services.search_service._execute_stage2",
+                new=AsyncMock(return_value=stage2_results),
+            ) as mock_stage2,
+        ):
+            response = await hybrid_search(MagicMock(), request)
+
+        mock_stage1.assert_awaited_once()
+        mock_stage2.assert_awaited_once()
+        assert response.total == 500
+        assert response.total_is_capped is True
