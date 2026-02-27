@@ -1,4 +1,4 @@
-"""Repository discovery for the ingestion pipeline"""
+
 
 from __future__ import annotations
 
@@ -17,8 +17,16 @@ logger = logging.getLogger(__name__)
 SCOUT_QUERY_PATH = Path(__file__).parent / "queries" / "scout.graphql"
 
 SCOUT_LANGUAGES: list[str] = [
-    "TypeScript", "Python", "Java", "JavaScript", "C++",
-    "C#", "Go", "Rust", "Kotlin", "SQL",
+    "TypeScript",
+    "Python",
+    "Java",
+    "JavaScript",
+    "C++",
+    "C#",
+    "Go",
+    "Rust",
+    "Kotlin",
+    "SQL",
 ]
 
 
@@ -33,11 +41,6 @@ class RepositoryData:
 
 
 class Scout:
-    """
-    Discovers top repositories per language meeting velocity criteria.
-    Returns list of RepositoryData; approximately 200 repos total.
-    Reduced from 50 to 20 per language to fit within GitHub rate limits.
-    """
 
     REPOS_PER_LANGUAGE: int = 20
     MIN_STARS: int = 1000
@@ -77,18 +80,10 @@ class Scout:
         """
 
     async def discover_repositories(self) -> list[RepositoryData]:
-        """Fetches top repos for all 10 languages concurrently; estimated cost 20 to 40 points.
-
-        Uses asyncio.gather to fetch all languages in parallel for ~10x speedup.
-        Deduplicates by node_id in case a repo appears in multiple language results.
-        """
-        # Create coroutines for each language to fetch concurrently
         coros = [self._discover_for_language(lang) for lang in SCOUT_LANGUAGES]
-
-        # Fetch all languages concurrently, capturing exceptions to isolate failures
         results = await asyncio.gather(*coros, return_exceptions=True)
 
-        # Flatten results, filter exceptions, deduplicate by node_id
+
         seen_ids: set[str] = set()
         repositories: list[RepositoryData] = []
 
@@ -148,7 +143,6 @@ class Scout:
         return f"language:{language} stars:>{self.MIN_STARS} pushed:>{cutoff} sort:stars-desc"
 
     def _parse_repository(self, node: dict, fallback_language: str) -> RepositoryData | None:
-        """Returns None if fails velocity filter or missing required fields"""
         if not node:
             return None
 
@@ -159,10 +153,7 @@ class Scout:
             return None
 
         primary_language_data = node.get("primaryLanguage")
-        primary_language = (
-            primary_language_data.get("name")
-            if primary_language_data else fallback_language
-        )
+        primary_language = primary_language_data.get("name") if primary_language_data else fallback_language
 
         issues_data = node.get("issues", {})
         issue_count = issues_data.get("totalCount", 0)
@@ -188,4 +179,3 @@ class Scout:
             issue_count_open=issue_count,
             topics=topics,
         )
-

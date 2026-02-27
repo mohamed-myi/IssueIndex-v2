@@ -1,4 +1,4 @@
-"""Unit tests for Janitor set-based pruning"""
+
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -7,7 +7,6 @@ import pytest
 
 @pytest.fixture
 def mock_text():
-    """Mock for sqlalchemy.text"""
     return MagicMock()
 
 
@@ -21,8 +20,7 @@ def mock_session():
 
 @pytest.fixture
 def janitor(mock_session, monkeypatch):
-    """Create Janitor with mocked dependencies."""
-    # Mock sqlalchemy and sqlmodel before importing
+
     mock_sqlalchemy = MagicMock()
     mock_sqlalchemy.text = MagicMock()
     mock_sqlmodel = MagicMock()
@@ -30,21 +28,22 @@ def janitor(mock_session, monkeypatch):
     mock_sqlmodel_ext_asyncio = MagicMock()
     mock_sqlmodel_ext_asyncio_session = MagicMock()
 
-    monkeypatch.setitem(__import__('sys').modules, "sqlalchemy", mock_sqlalchemy)
-    monkeypatch.setitem(__import__('sys').modules, "sqlmodel", mock_sqlmodel)
-    monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext", mock_sqlmodel_ext)
-    monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio", mock_sqlmodel_ext_asyncio)
-    monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio.session", mock_sqlmodel_ext_asyncio_session)
+    monkeypatch.setitem(__import__("sys").modules, "sqlalchemy", mock_sqlalchemy)
+    monkeypatch.setitem(__import__("sys").modules, "sqlmodel", mock_sqlmodel)
+    monkeypatch.setitem(__import__("sys").modules, "sqlmodel.ext", mock_sqlmodel_ext)
+    monkeypatch.setitem(__import__("sys").modules, "sqlmodel.ext.asyncio", mock_sqlmodel_ext_asyncio)
+    monkeypatch.setitem(__import__("sys").modules, "sqlmodel.ext.asyncio.session", mock_sqlmodel_ext_asyncio_session)
 
-    # Mock settings
+
     mock_settings = MagicMock()
     mock_settings.janitor_min_issues = 0
 
     mock_get_settings = MagicMock(return_value=mock_settings)
     monkeypatch.setattr("gim_backend.ingestion.janitor.get_settings", mock_get_settings)
 
-    # Now import Janitor
+
     from gim_backend.ingestion.janitor import Janitor
+
     return Janitor(session=mock_session)
 
 
@@ -128,7 +127,7 @@ class TestExecutePruning:
         after_stats_result.fetchone.return_value = MagicMock(cnt=80)
 
         mock_session.execute.side_effect = [
-            stats_result,   # _get_table_stats before
+            stats_result,  # _get_table_stats before
             delete_result,  # _delete_bottom_percentile
             after_stats_result,  # _get_table_stats after
         ]
@@ -147,7 +146,7 @@ class TestExecutePruning:
 
         assert result["deleted_count"] == 0
         assert result["remaining_count"] == 0
-        # Should only call stats once, not attempt delete
+
         assert mock_session.execute.call_count == 1
 
     async def test_calls_methods_in_order(self, janitor, mock_session):
@@ -158,34 +157,33 @@ class TestExecutePruning:
         delete_result.rowcount = 10
 
         mock_session.execute.side_effect = [
-            stats_result,   # before
+            stats_result,  # before
             delete_result,  # delete
-            stats_result,   # after (reuse same mock)
+            stats_result,  # after (reuse same mock)
         ]
 
         await janitor.execute_pruning()
 
-        # Should be called 3 times: stats, delete, stats
+
         assert mock_session.execute.call_count == 3
 
     async def test_respects_min_issues_threshold(self, janitor, mock_session):
         janitor._min_count = 1000
 
         stats_result = MagicMock()
-        stats_result.fetchone.return_value = MagicMock(cnt=500) # Below threshold
+        stats_result.fetchone.return_value = MagicMock(cnt=500)  # Below threshold
         mock_session.execute.return_value = stats_result
 
         result = await janitor.execute_pruning()
 
         assert result["deleted_count"] == 0
         assert result["remaining_count"] == 500
-        # Should check stats but not call delete
+
         assert mock_session.execute.call_count == 1
 
 
 class TestEdgeCases:
     async def test_single_row_table(self, janitor, mock_session):
-        """Single row table: percentile calculation should still work"""
         stats_result = MagicMock()
         stats_result.fetchone.return_value = MagicMock(cnt=1)
 
@@ -233,18 +231,18 @@ class TestEdgeCases:
         assert result["remaining_count"] == 100
 
     async def test_custom_percentile(self, mock_session, monkeypatch):
-        """Verify percentile can be customized via class attribute"""
-        # Mock sqlalchemy and sqlmodel before importing
+
         mock_sqlalchemy = MagicMock()
         mock_sqlalchemy.text = MagicMock()
 
-        monkeypatch.setitem(__import__('sys').modules, "sqlalchemy", mock_sqlalchemy)
-        monkeypatch.setitem(__import__('sys').modules, "sqlmodel", MagicMock())
-        monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext", MagicMock())
-        monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio", MagicMock())
-        monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio.session", MagicMock())
+        monkeypatch.setitem(__import__("sys").modules, "sqlalchemy", mock_sqlalchemy)
+        monkeypatch.setitem(__import__("sys").modules, "sqlmodel", MagicMock())
+        monkeypatch.setitem(__import__("sys").modules, "sqlmodel.ext", MagicMock())
+        monkeypatch.setitem(__import__("sys").modules, "sqlmodel.ext.asyncio", MagicMock())
+        monkeypatch.setitem(__import__("sys").modules, "sqlmodel.ext.asyncio.session", MagicMock())
 
         from gim_backend.ingestion.janitor import Janitor
+
         janitor = Janitor(session=mock_session)
         janitor.PRUNE_PERCENTILE = 0.3  # Custom 30%
 

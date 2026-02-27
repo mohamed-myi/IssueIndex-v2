@@ -1,4 +1,4 @@
-"""Unit tests for Gatherer streaming issue harvester"""
+
 
 import asyncio
 from datetime import UTC, datetime
@@ -57,14 +57,11 @@ def make_issue_node(
         "bodyText": body,
         "createdAt": created_at,
         "state": state,
-        "labels": {
-            "nodes": [{"name": lbl} for lbl in (labels or [])]
-        },
+        "labels": {"nodes": [{"name": lbl} for lbl in (labels or [])]},
     }
 
 
 class TestParseIssue:
-
     def test_parses_complete_node(self, gatherer, sample_repo):
         node = make_issue_node(
             node_id="I_123",
@@ -236,10 +233,7 @@ class TestFetchRepoIssues:
             "repository": {
                 "issues": {
                     "pageInfo": {"hasNextPage": False, "endCursor": None},
-                    "nodes": [
-                        make_issue_node(f"I_{i}", body="## Description\n```code\n```")
-                        for i in range(5)
-                    ],
+                    "nodes": [make_issue_node(f"I_{i}", body="## Description\n```code\n```") for i in range(5)],
                 }
             }
         }
@@ -254,10 +248,7 @@ class TestFetchRepoIssues:
             "repository": {
                 "issues": {
                     "pageInfo": {"hasNextPage": True, "endCursor": "cursor_1"},
-                    "nodes": [
-                        make_issue_node(f"I_{i}", body="## Description\n```code\n```")
-                        for i in range(3)
-                    ],
+                    "nodes": [make_issue_node(f"I_{i}", body="## Description\n```code\n```") for i in range(3)],
                 }
             }
         }
@@ -265,10 +256,7 @@ class TestFetchRepoIssues:
             "repository": {
                 "issues": {
                     "pageInfo": {"hasNextPage": False, "endCursor": None},
-                    "nodes": [
-                        make_issue_node(f"I_{i+10}", body="## Description\n```code\n```")
-                        for i in range(2)
-                    ],
+                    "nodes": [make_issue_node(f"I_{i + 10}", body="## Description\n```code\n```") for i in range(2)],
                 }
             }
         }
@@ -309,7 +297,6 @@ class TestFetchRepoIssues:
 
 
 class TestRetryLogic:
-
     async def test_retries_on_failure(self, mock_client, gatherer, sample_repo):
         call_count = [0]
 
@@ -358,7 +345,6 @@ class TestRetryLogic:
 
 
 class TestHarvestIssues:
-
     async def test_harvests_from_multiple_repos(self, mock_client, gatherer):
         repos = [
             RepositoryData(
@@ -422,7 +408,6 @@ class TestHarvestIssues:
 
 
 class TestIssueData:
-
     def test_dataclass_fields(self):
         components = QScoreComponents(
             has_code=True,
@@ -456,21 +441,16 @@ class TestBodyTruncation:
 
 
 class TestIssueCapping:
-    """Tests for PERF-002: max_issues_per_repo capping functionality"""
 
     async def test_stops_pagination_at_cap(self, mock_client, sample_repo):
-        # Arrange - create gatherer with cap of 3 issues
         gatherer = Gatherer(client=mock_client, max_issues_per_repo=3)
 
-        # Two pages of high quality issues that would all pass Q-Score
+
         page1 = {
             "repository": {
                 "issues": {
                     "pageInfo": {"hasNextPage": True, "endCursor": "cursor_1"},
-                    "nodes": [
-                        make_issue_node(f"I_{i}", body="## Description\n```code\n```")
-                        for i in range(2)
-                    ],
+                    "nodes": [make_issue_node(f"I_{i}", body="## Description\n```code\n```") for i in range(2)],
                 }
             }
         }
@@ -478,10 +458,7 @@ class TestIssueCapping:
             "repository": {
                 "issues": {
                     "pageInfo": {"hasNextPage": True, "endCursor": "cursor_2"},
-                    "nodes": [
-                        make_issue_node(f"I_{i+10}", body="## Description\n```code\n```")
-                        for i in range(2)
-                    ],
+                    "nodes": [make_issue_node(f"I_{i + 10}", body="## Description\n```code\n```") for i in range(2)],
                 }
             }
         }
@@ -489,73 +466,61 @@ class TestIssueCapping:
             "repository": {
                 "issues": {
                     "pageInfo": {"hasNextPage": False, "endCursor": None},
-                    "nodes": [
-                        make_issue_node(f"I_{i+20}", body="## Description\n```code\n```")
-                        for i in range(2)
-                    ],
+                    "nodes": [make_issue_node(f"I_{i + 20}", body="## Description\n```code\n```") for i in range(2)],
                 }
             }
         }
 
         mock_client.execute_query.side_effect = [page1, page2, page3]
 
-        # Act
+
         issues = [i async for i in gatherer._fetch_repo_issues(sample_repo)]
 
-        # Assert - should stop after cap of 3, not fetch all 6
+
         assert len(issues) == 3
-        # Should have stopped after 2 pages since cap reached during page 2
+
         assert mock_client.execute_query.call_count == 2
 
     async def test_cap_counts_only_yielded_issues(self, mock_client, sample_repo):
-        # Arrange - cap of 2, but include low Q-Score issues that wont count
         gatherer = Gatherer(client=mock_client, max_issues_per_repo=2)
 
-        # High quality body with code blocks and headers passes Q-Score threshold of 0.6
+
         high_quality_body = "## Description\n```typescript\nthrow new TypeError()\n```"
-        # Low quality body without code or headers fails Q-Score threshold
+
         low_quality_body = "this is broken please fix"
 
-        # Mix of high and low quality issues
+
         mock_client.execute_query.return_value = {
             "repository": {
                 "issues": {
                     "pageInfo": {"hasNextPage": False, "endCursor": None},
                     "nodes": [
-                        # High quality - will pass Q-Score and count toward cap
                         make_issue_node("I_high_1", body=high_quality_body),
-                        # Low quality - will NOT pass Q-Score threshold
                         make_issue_node("I_low_1", title="bug", body=low_quality_body),
                         make_issue_node("I_low_2", title="help", body=low_quality_body),
-                        # High quality - will pass and count toward cap
                         make_issue_node("I_high_2", body=high_quality_body),
-                        # This would pass but cap should already be reached
                         make_issue_node("I_high_3", body=high_quality_body),
                     ],
                 }
             }
         }
 
-        # Act
+
         issues = [i async for i in gatherer._fetch_repo_issues(sample_repo)]
 
-        # Assert - should only get 2 high quality issues due to cap
+
         assert len(issues) == 2
         assert all(i.node_id.startswith("I_high") for i in issues)
 
     async def test_zero_cap_disables_capping(self, mock_client, sample_repo):
-        # Arrange - cap of 0 means no limit
         gatherer = Gatherer(client=mock_client, max_issues_per_repo=0)
 
-        # Multiple pages of issues
+
         page1 = {
             "repository": {
                 "issues": {
                     "pageInfo": {"hasNextPage": True, "endCursor": "cursor_1"},
-                    "nodes": [
-                        make_issue_node(f"I_{i}", body="## Description\n```code\n```")
-                        for i in range(3)
-                    ],
+                    "nodes": [make_issue_node(f"I_{i}", body="## Description\n```code\n```") for i in range(3)],
                 }
             }
         }
@@ -563,73 +528,62 @@ class TestIssueCapping:
             "repository": {
                 "issues": {
                     "pageInfo": {"hasNextPage": False, "endCursor": None},
-                    "nodes": [
-                        make_issue_node(f"I_{i+10}", body="## Description\n```code\n```")
-                        for i in range(3)
-                    ],
+                    "nodes": [make_issue_node(f"I_{i + 10}", body="## Description\n```code\n```") for i in range(3)],
                 }
             }
         }
 
         mock_client.execute_query.side_effect = [page1, page2]
 
-        # Act
+
         issues = [i async for i in gatherer._fetch_repo_issues(sample_repo)]
 
-        # Assert - should fetch all issues from both pages
+
         assert len(issues) == 6
         assert mock_client.execute_query.call_count == 2
 
     async def test_repos_with_fewer_issues_fully_processed(self, mock_client, sample_repo):
-        # Arrange - cap of 100, but repo only has 5 issues
         gatherer = Gatherer(client=mock_client, max_issues_per_repo=100)
 
         mock_client.execute_query.return_value = {
             "repository": {
                 "issues": {
                     "pageInfo": {"hasNextPage": False, "endCursor": None},
-                    "nodes": [
-                        make_issue_node(f"I_{i}", body="## Description\n```code\n```")
-                        for i in range(5)
-                    ],
+                    "nodes": [make_issue_node(f"I_{i}", body="## Description\n```code\n```") for i in range(5)],
                 }
             }
         }
 
-        # Act
+
         issues = [i async for i in gatherer._fetch_repo_issues(sample_repo)]
 
-        # Assert - all 5 issues should be returned since under cap
+
         assert len(issues) == 5
 
     async def test_logs_when_cap_reached(self, mock_client, sample_repo, caplog):
-        # Arrange
         gatherer = Gatherer(client=mock_client, max_issues_per_repo=2)
 
         mock_client.execute_query.return_value = {
             "repository": {
                 "issues": {
                     "pageInfo": {"hasNextPage": True, "endCursor": "cursor_1"},
-                    "nodes": [
-                        make_issue_node(f"I_{i}", body="## Description\n```code\n```")
-                        for i in range(5)
-                    ],
+                    "nodes": [make_issue_node(f"I_{i}", body="## Description\n```code\n```") for i in range(5)],
                 }
             }
         }
 
-        # Act
+
         import logging
+
         with caplog.at_level(logging.INFO):
             _ = [i async for i in gatherer._fetch_repo_issues(sample_repo)]
 
-        # Assert - should log info message about reaching cap
+
         assert any("Reached cap of 2 issues" in record.message for record in caplog.records)
         assert any("facebook/react" in record.message for record in caplog.records)
 
 
 class TestConcurrentHarvesting:
-    """Tests for PERF-001: concurrent repository processing with bounded concurrency"""
 
     async def test_processes_repos_concurrently(self, mock_client):
         # Arrange - 5 repos with concurrency=3, each API call has 50ms delay
@@ -651,6 +605,7 @@ class TestConcurrentHarvesting:
 
         async def mock_execute_with_delay(*args, **kwargs):
             import time
+
             start = time.monotonic()
             await asyncio.sleep(0.05)  # 50ms delay per API call
             call_times.append(time.monotonic() - start)
@@ -668,6 +623,7 @@ class TestConcurrentHarvesting:
 
         # Act
         import time
+
         start_time = time.monotonic()
         issues = [i async for i in gatherer.harvest_issues(repos)]
         elapsed = time.monotonic() - start_time
@@ -793,8 +749,6 @@ class TestConcurrentHarvesting:
                     }
                 }
             }
-
-
 
         async def mock_execute_multi_issues(*args, **kwargs):
             variables = kwargs.get("variables", args[1] if len(args) > 1 else {})

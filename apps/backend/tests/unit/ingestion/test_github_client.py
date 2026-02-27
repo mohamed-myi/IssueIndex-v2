@@ -1,4 +1,4 @@
-"""Unit tests for GitHub GraphQL client"""
+
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -25,7 +25,6 @@ def mock_httpx_client():
 
 
 class TestGitHubExceptions:
-
     def test_api_error_preserves_status_code(self):
         error = GitHubAPIError("Server error", status_code=500)
         assert error.status_code == 500
@@ -44,7 +43,6 @@ class TestGitHubExceptions:
 
 
 class TestGitHubClientInit:
-
     def test_empty_token_raises_value_error(self):
         with pytest.raises(ValueError, match="required"):
             GitHubGraphQLClient(token="")
@@ -56,7 +54,6 @@ class TestGitHubClientInit:
 
 
 class TestEnsureRateLimitFragment:
-
     @pytest.fixture
     def client(self):
         return GitHubGraphQLClient(token="test_token")
@@ -81,7 +78,6 @@ class TestEnsureRateLimitFragment:
 
 
 class TestParseResetAt:
-
     @pytest.fixture
     def client(self):
         return GitHubGraphQLClient(token="test_token")
@@ -103,7 +99,6 @@ class TestParseResetAt:
 
 
 class TestUpdateHeaderRateLimit:
-
     @pytest.fixture
     def client(self):
         return GitHubGraphQLClient(token="test_token")
@@ -146,7 +141,6 @@ class TestUpdateHeaderRateLimit:
 
 
 class TestUpdateQueryCost:
-
     @pytest.fixture
     def client(self):
         return GitHubGraphQLClient(token="test_token")
@@ -214,7 +208,6 @@ class TestUpdateQueryCost:
 
 
 class TestExecuteQuery:
-
     @pytest.fixture
     def mock_response(self):
         response = MagicMock()
@@ -262,9 +255,7 @@ class TestExecuteQuery:
         with patch("httpx.AsyncClient", return_value=mock_httpx_client):
             async with client:
                 # Pre-set query cost with zero remaining
-                client._query_cost = QueryCostInfo(
-                    cost=1, remaining=0, limit=5000, reset_at=1704067200, node_count=1
-                )
+                client._query_cost = QueryCostInfo(cost=1, remaining=0, limit=5000, reset_at=1704067200, node_count=1)
 
                 with pytest.raises(GitHubRateLimitError) as exc:
                     await client.execute_query("query { viewer { login } }")
@@ -280,9 +271,7 @@ class TestExecuteQuery:
         with patch("httpx.AsyncClient", return_value=mock_httpx_client):
             async with client:
                 # Pre-set header rate limit with zero remaining
-                client._header_rate_limit = RateLimitInfo(
-                    remaining=0, limit=5000, reset_at=1704067200, used=5000
-                )
+                client._header_rate_limit = RateLimitInfo(remaining=0, limit=5000, reset_at=1704067200, used=5000)
 
                 with pytest.raises(GitHubRateLimitError) as exc:
                     await client.execute_query("query { viewer { login } }")
@@ -397,9 +386,7 @@ class TestExecuteQuery:
 
         with patch("httpx.AsyncClient", return_value=mock_httpx_client):
             async with client:
-                await client.execute_query(
-                    "query { viewer { login } }", estimated_cost=5
-                )
+                await client.execute_query("query { viewer { login } }", estimated_cost=5)
 
                 mock_limiter.wait_until_affordable.assert_called_once_with(5)
 
@@ -421,7 +408,6 @@ class TestExecuteQuery:
 
 
 class TestExecuteQueryWithCost:
-
     async def test_returns_data_and_cost_tuple(self, mock_httpx_client):
         client = GitHubGraphQLClient(token="test_token")
         mock_response = MagicMock()
@@ -444,9 +430,7 @@ class TestExecuteQueryWithCost:
 
         with patch("httpx.AsyncClient", return_value=mock_httpx_client):
             async with client:
-                data, cost_info = await client.execute_query_with_cost(
-                    "query { viewer { login } }"
-                )
+                data, cost_info = await client.execute_query_with_cost("query { viewer { login } }")
 
                 assert data["viewer"]["login"] == "testuser"
                 assert cost_info is not None
@@ -463,32 +447,23 @@ class TestExecuteQueryWithCost:
 
         with patch("httpx.AsyncClient", return_value=mock_httpx_client):
             async with client:
-                data, cost_info = await client.execute_query_with_cost(
-                    "query { viewer { login } }"
-                )
+                data, cost_info = await client.execute_query_with_cost("query { viewer { login } }")
 
                 assert data["viewer"]["login"] == "testuser"
                 assert cost_info is None
 
 
 class TestRateLimitGetters:
-
     def test_get_remaining_prefers_query_cost_over_headers(self):
         client = GitHubGraphQLClient(token="test_token")
-        client._query_cost = QueryCostInfo(
-            cost=1, remaining=4000, limit=5000, reset_at=0, node_count=1
-        )
-        client._header_rate_limit = RateLimitInfo(
-            remaining=4500, limit=5000, reset_at=0, used=500
-        )
+        client._query_cost = QueryCostInfo(cost=1, remaining=4000, limit=5000, reset_at=0, node_count=1)
+        client._header_rate_limit = RateLimitInfo(remaining=4500, limit=5000, reset_at=0, used=500)
 
         assert client.get_rate_limit_remaining() == 4000
 
     def test_get_remaining_falls_back_to_headers(self):
         client = GitHubGraphQLClient(token="test_token")
-        client._header_rate_limit = RateLimitInfo(
-            remaining=4500, limit=5000, reset_at=0, used=500
-        )
+        client._header_rate_limit = RateLimitInfo(remaining=4500, limit=5000, reset_at=0, used=500)
 
         assert client.get_rate_limit_remaining() == 4500
 
@@ -498,9 +473,7 @@ class TestRateLimitGetters:
 
     def test_get_last_query_cost_returns_cost(self):
         client = GitHubGraphQLClient(token="test_token")
-        client._query_cost = QueryCostInfo(
-            cost=5, remaining=4995, limit=5000, reset_at=0, node_count=10
-        )
+        client._query_cost = QueryCostInfo(cost=5, remaining=4995, limit=5000, reset_at=0, node_count=10)
 
         assert client.get_last_query_cost() == 5
 
@@ -510,9 +483,7 @@ class TestRateLimitGetters:
 
     def test_get_query_cost_info_returns_full_info(self):
         client = GitHubGraphQLClient(token="test_token")
-        cost_info = QueryCostInfo(
-            cost=5, remaining=4995, limit=5000, reset_at=1704067200, node_count=10
-        )
+        cost_info = QueryCostInfo(cost=5, remaining=4995, limit=5000, reset_at=1704067200, node_count=10)
         client._query_cost = cost_info
 
         assert client.get_query_cost_info() == cost_info
@@ -526,7 +497,6 @@ class TestRateLimitGetters:
 
 
 class TestContextManager:
-
     async def test_aenter_creates_httpx_client(self, mock_httpx_client):
         client = GitHubGraphQLClient(token="test_token")
         assert client._client is None
@@ -553,4 +523,3 @@ class TestContextManager:
                 client._client = None
 
         assert client._client is None
-

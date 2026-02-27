@@ -1,4 +1,4 @@
-"""Unit tests for streaming persistence layer"""
+
 
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
@@ -7,7 +7,6 @@ import pytest
 
 from gim_backend.ingestion.embeddings import EmbeddedIssue
 from gim_backend.ingestion.gatherer import IssueData
-from gim_backend.ingestion.quality_gate import QScoreComponents
 from gim_backend.ingestion.scout import RepositoryData
 
 
@@ -22,31 +21,21 @@ def mock_session():
 
 @pytest.fixture
 def persistence(mock_session, monkeypatch):
-    """Create StreamingPersistence with mocked dependencies."""
-    # Mock sqlalchemy and sqlmodel before importing
+
     mock_sqlalchemy = MagicMock()
     mock_sqlalchemy.text = MagicMock()
 
-    monkeypatch.setitem(__import__('sys').modules, "sqlalchemy", mock_sqlalchemy)
-    monkeypatch.setitem(__import__('sys').modules, "sqlalchemy.text", MagicMock())
-    monkeypatch.setitem(__import__('sys').modules, "sqlmodel", MagicMock())
-    monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext", MagicMock())
-    monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio", MagicMock())
-    monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio.session", MagicMock())
+    monkeypatch.setitem(__import__("sys").modules, "sqlalchemy", mock_sqlalchemy)
+    monkeypatch.setitem(__import__("sys").modules, "sqlalchemy.text", MagicMock())
+    monkeypatch.setitem(__import__("sys").modules, "sqlmodel", MagicMock())
+    monkeypatch.setitem(__import__("sys").modules, "sqlmodel.ext", MagicMock())
+    monkeypatch.setitem(__import__("sys").modules, "sqlmodel.ext.asyncio", MagicMock())
+    monkeypatch.setitem(__import__("sys").modules, "sqlmodel.ext.asyncio.session", MagicMock())
 
-    # Import here after mocks are set up
+
     from gim_backend.ingestion.persistence import StreamingPersistence
+
     return StreamingPersistence(session=mock_session)
-
-
-@pytest.fixture
-def sample_q_components():
-    return QScoreComponents(
-        has_code=True,
-        has_headers=True,
-        tech_weight=0.5,
-        is_junk=False,
-    )
 
 
 @pytest.fixture
@@ -67,6 +56,7 @@ def make_embedded_issue(sample_q_components):
             issue=issue,
             embedding=[0.1] * 256,  # 256-dim for Matryoshka truncation
         )
+
     return _make
 
 
@@ -81,6 +71,7 @@ def make_repository():
             issue_count_open=50,
             topics=["python", "api"],
         )
+
     return _make
 
 
@@ -168,9 +159,55 @@ class TestPersistStream:
         mock_session.exec.assert_not_called()
 
 
+class TestUpsertStagedIssue:
+    async def test_uses_worker_upsert_params_and_does_not_commit(self, persistence, mock_session):
+        issue = {
+            "node_id": "I_stage_1",
+            "repo_id": "R_123",
+            "title": "Staged issue",
+            "body_text": "Body",
+            "labels": ["bug"],
+            "github_created_at": "2026-02-25T12:00:00Z",
+            "has_code": True,
+            "has_template_headers": False,
+            "tech_stack_weight": 0.25,
+            "q_score": 0.8,
+            "state": "open",
+            "content_hash": "hash-1",
+        }
+        embedding = [0.1] * 256
+
+        await persistence.upsert_staged_issue(issue, embedding)
+
+        call_args = mock_session.exec.call_args
+        params = call_args.kwargs["params"]
+        assert params["node_id"] == "I_stage_1"
+        assert params["repo_id"] == "R_123"
+        assert params["q_score"] == 0.8
+        assert params["content_hash"] == "hash-1"
+        assert "survival_score" in params
+        assert isinstance(params["embedding"], str)
+        assert params["github_created_at"].tzinfo is None
+        mock_session.commit.assert_not_called()
+
+    async def test_raises_for_invalid_embedding_dimension(self, persistence):
+        issue = {
+            "node_id": "I_bad_dim",
+            "repo_id": "R_123",
+            "title": "Bad dim",
+            "body_text": "Body",
+            "labels": [],
+            "github_created_at": datetime.now(UTC),
+            "content_hash": "hash-2",
+        }
+
+        with pytest.raises(ValueError, match="dimension mismatch"):
+            await persistence.upsert_staged_issue(issue, [0.1] * 10)
+
+
 class TestSurvivalScoreInjection:
     async def test_survival_score_calculated(self, persistence, mock_session, make_embedded_issue):
-        """Verify survival_score parameter is passed to SQL"""
+
         async def single_issue():
             yield make_embedded_issue(q_score=0.8)
 
@@ -181,7 +218,6 @@ class TestSurvivalScoreInjection:
         assert call_args["survival_score_0"] > 0
 
     async def test_higher_q_score_means_higher_survival(self, persistence, mock_session, make_embedded_issue):
-        """Verify Q-score affects survival score"""
         survival_scores = []
 
         for q in [0.3, 0.9]:
@@ -200,7 +236,7 @@ class TestSurvivalScoreInjection:
 
 class TestQScoreComponents:
     async def test_passes_q_components_to_sql(self, persistence, mock_session, make_embedded_issue):
-        """Verify Q-score components are stored as separate columns"""
+
         async def single_issue():
             yield make_embedded_issue()
 
@@ -217,7 +253,7 @@ class TestQScoreComponents:
 
 class TestEmbeddingStorage:
     async def test_embedding_passed_as_string(self, persistence, mock_session, make_embedded_issue):
-        """Verify embedding is serialized for pgvector"""
+
         async def single_issue():
             yield make_embedded_issue()
 
@@ -225,14 +261,14 @@ class TestEmbeddingStorage:
 
         call_args = mock_session.exec.call_args[1]["params"]
         embedding_param = call_args["embedding_0"]
-        # Should be string representation of list for ::vector cast
+
         assert isinstance(embedding_param, str)
         assert embedding_param.startswith("[")
 
 
 class TestStateStorage:
     async def test_state_passed_to_sql(self, persistence, mock_session, make_embedded_issue):
-        """Verify state parameter is passed to SQL"""
+
         async def single_issue():
             yield make_embedded_issue(state="open")
 
@@ -243,7 +279,7 @@ class TestStateStorage:
         assert call_args["state_0"] == "open"
 
     async def test_closed_state_passed_to_sql(self, persistence, mock_session, make_embedded_issue):
-        """Verify closed state is correctly passed"""
+
         async def single_issue():
             yield make_embedded_issue(state="closed")
 

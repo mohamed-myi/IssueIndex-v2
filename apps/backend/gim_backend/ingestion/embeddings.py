@@ -1,4 +1,4 @@
-"""Streaming embedding generation for issue vectorization"""
+
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Changed from 768 to 256 for Matryoshka truncation with nomic-embed-text-v2-moe
 EMBEDDING_DIM: int = 256
 
 
@@ -26,35 +25,21 @@ class EmbeddedIssue:
 
 @runtime_checkable
 class EmbeddingProvider(Protocol):
-    """Protocol for embedding providers; enables mock injection in tests"""
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Backward-compatible batch embedding method"""
         ...
 
 
 class DocumentQueryEmbedder(Protocol):
-    """
-    Extended protocol for embedders that support document/query prefixing.
-
-    The Nomic MoE model requires different prefixes for documents and queries
-    to optimize retrieval performance.
-    """
 
     async def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Embed documents with search_document prefix for indexing"""
         ...
 
     async def embed_queries(self, texts: list[str]) -> list[list[float]]:
-        """Embed queries with search_query prefix for retrieval"""
         ...
 
 
 class NomicEmbedder:
-    """
-    Generates 768-dim embeddings using nomic-ai/nomic-embed-text-v1.5.
-    Model lazy loads on first embed call to avoid import-time overhead.
-    """
 
     MODEL_NAME: str = "nomic-ai/nomic-embed-text-v1.5"
     BATCH_SIZE: int = 25
@@ -76,7 +61,6 @@ class NomicEmbedder:
         return self._model
 
     def _encode_sync(self, texts: list[str]) -> list[list[float]]:
-        """Synchronous encoding runs in thread pool to avoid blocking"""
         model = self._load_model()
         embeddings = model.encode(
             texts,
@@ -86,7 +70,6 @@ class NomicEmbedder:
         return embeddings.tolist()
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Encodes texts in executor to keep event loop responsive"""
         if not texts:
             return []
 
@@ -99,7 +82,6 @@ class NomicEmbedder:
         return embeddings
 
     def close(self):
-        """Cleanup executor resources"""
         self._executor.shutdown(wait=False)
 
 
@@ -108,13 +90,6 @@ async def embed_issue_stream(
     provider: EmbeddingProvider,
     batch_size: int | None = None,
 ) -> AsyncIterator[EmbeddedIssue]:
-    """
-    Consumes issue stream, batches for embedding API, yields embedded issues.
-    Memory ceiling: holds at most batch_size issues + embeddings at once.
-
-    Uses provider.BATCH_SIZE if available, otherwise defaults to 25.
-    """
-    # Use provider-specific batch size to respect per-request limits.
     effective_batch_size = batch_size or getattr(provider, "BATCH_SIZE", 25)
     batch: list[IssueData] = []
     total_embedded = 0
@@ -139,7 +114,6 @@ async def embed_issue_stream(
                 yield EmbeddedIssue(issue=iss, embedding=emb)
 
             total_embedded += len(batch)
-            # Log progress every 10 batches (100 issues with batch_size=10) to avoid log spam
             if batch_number % 10 == 0:
                 logger.info(
                     f"Embedding progress: {total_embedded} issues embedded (batch {batch_number})",
@@ -147,7 +121,7 @@ async def embed_issue_stream(
                 )
             batch.clear()
 
-    # Flush remaining partial batch
+
     if batch:
         batch_number += 1
         texts = [f"{i.title}\n{i.body_text}" for i in batch]
@@ -168,4 +142,3 @@ async def embed_issue_stream(
         f"Embedding complete: {total_embedded} issues in {batch_number} batches",
         extra={"total_embedded": total_embedded, "total_batches": batch_number},
     )
-

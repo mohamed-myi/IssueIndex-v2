@@ -1,40 +1,37 @@
-"""Streaming persistence layer for ingested issues"""
+
 
 from __future__ import annotations
 
-import hashlib
 import logging
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel.ext.asyncio.session import AsyncSession
 
+from .content_hash import compute_content_hash
+from .embeddings import EMBEDDING_DIM
 from .survival_score import calculate_survival_score, days_since
 
 if TYPE_CHECKING:
     from .embeddings import EmbeddedIssue
-    from .gatherer import IssueData
     from .scout import RepositoryData
 
 logger = logging.getLogger(__name__)
 
 
-def compute_content_hash(issue: IssueData) -> str:
-    """
-    Compute SHA256 hash of issue content for idempotency.
-
-    Hash includes node_id, title, and body_text to detect content changes.
-    Same content produces same hash; updated content produces new hash.
-    """
-    content = f"{issue.node_id}:{issue.title}:{issue.body_text}"
-    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+def _assert_embedding_dim(embedding: list[float], expected_dim: int, *, issue_id: str | None = None) -> None:
+    if len(embedding) != expected_dim:
+        issue_part = f" for {issue_id}" if issue_id else ""
+        raise ValueError(
+            f"Issue embedding dimension mismatch{issue_part}: "
+            f"expected {expected_dim}, got {len(embedding)}"
+        )
 
 
 class StreamingPersistence:
-    """Consumes embedded issue stream and writes in batches via UPSERT"""
 
     BATCH_SIZE: int = 50
 
@@ -42,10 +39,6 @@ class StreamingPersistence:
         self._session = session
 
     async def upsert_repositories(self, repos: list[RepositoryData]) -> int:
-        """
-        Batch UPSERT repositories before issue ingestion.
-        Returns count of upserted rows.
-        """
         if not repos:
             return 0
 
@@ -77,8 +70,6 @@ class StreamingPersistence:
             WHERE full_name = :full_name
         """)
 
-        # Commit per repo so a single constraint violation does not leave the
-        # entire session transaction aborted.
         for repo in repos:
             params = {
                 "node_id": repo.node_id,
@@ -107,10 +98,6 @@ class StreamingPersistence:
         self,
         embedded_issues: AsyncIterator[EmbeddedIssue],
     ) -> int:
-        """
-        Consumes stream, calculates survival_score, UPSERTs in batches.
-        Returns total issues persisted.
-        """
         batch: list[EmbeddedIssue] = []
         total = 0
         batch_number = 0
@@ -123,7 +110,6 @@ class StreamingPersistence:
                 try:
                     await self._upsert_batch(batch)
                     total += len(batch)
-                    # Log progress every 5 batches (250 issues) to avoid log spam
                     if batch_number % 5 == 0:
                         logger.info(
                             f"Persistence progress: {total} issues persisted (batch {batch_number})",
@@ -155,8 +141,68 @@ class StreamingPersistence:
         )
         return total
 
+    async def upsert_staged_issue(self, issue: dict[str, Any], embedding: list[float]) -> None:
+        _assert_embedding_dim(embedding, EMBEDDING_DIM, issue_id=str(issue.get("node_id")))
+
+        github_created_at = issue.get("github_created_at")
+        if isinstance(github_created_at, str):
+            dt = datetime.fromisoformat(github_created_at.replace("Z", "+00:00"))
+            github_created_at = dt.astimezone(UTC).replace(tzinfo=None)
+        elif isinstance(github_created_at, datetime):
+            github_created_at = github_created_at.replace(tzinfo=None)
+
+        q_score = float(issue.get("q_score") or 0.0)
+        days_old = days_since(github_created_at)
+        survival = calculate_survival_score(q_score, days_old)
+
+        await self._session.exec(
+            text("""
+                INSERT INTO ingestion.issue (
+                    node_id, repo_id, has_code, has_template_headers,
+                    tech_stack_weight, q_score, survival_score, title,
+                    body_text, labels, embedding, content_hash, state,
+                    github_created_at
+                )
+                VALUES (
+                    :node_id, :repo_id, :has_code, :has_template_headers,
+                    :tech_stack_weight, :q_score, :survival_score, :title,
+                    :body_text, :labels, CAST(:embedding AS vector), :content_hash,
+                    :state, :github_created_at
+                )
+                ON CONFLICT (node_id) DO UPDATE SET
+                    repo_id = EXCLUDED.repo_id,
+                    has_code = EXCLUDED.has_code,
+                    has_template_headers = EXCLUDED.has_template_headers,
+                    tech_stack_weight = EXCLUDED.tech_stack_weight,
+                    q_score = EXCLUDED.q_score,
+                    survival_score = EXCLUDED.survival_score,
+                    title = EXCLUDED.title,
+                    body_text = EXCLUDED.body_text,
+                    labels = EXCLUDED.labels,
+                    embedding = EXCLUDED.embedding,
+                    content_hash = EXCLUDED.content_hash,
+                    state = EXCLUDED.state,
+                    github_created_at = EXCLUDED.github_created_at
+            """),
+            params={
+                "node_id": issue["node_id"],
+                "repo_id": issue["repo_id"],
+                "has_code": bool(issue.get("has_code", False)),
+                "has_template_headers": bool(issue.get("has_template_headers", False)),
+                "tech_stack_weight": float(issue.get("tech_stack_weight") or 0.0),
+                "q_score": q_score,
+                "survival_score": survival,
+                "title": issue["title"],
+                "body_text": issue["body_text"],
+                "labels": issue.get("labels") or [],
+                "embedding": str(embedding),
+                "content_hash": issue["content_hash"],
+                "state": issue.get("state") or "open",
+                "github_created_at": github_created_at,
+            },
+        )
+
     async def _upsert_batch(self, batch: list[EmbeddedIssue]) -> None:
-        """UPSERT batch with survival_score calculation and content_hash for idempotency"""
         if not batch:
             return
 
@@ -165,9 +211,10 @@ class StreamingPersistence:
 
         for i, item in enumerate(batch):
             issue = item.issue
+            _assert_embedding_dim(item.embedding, EMBEDDING_DIM, issue_id=issue.node_id)
             days_old = days_since(issue.github_created_at)
             survival = calculate_survival_score(issue.q_score, days_old)
-            content_hash = compute_content_hash(issue)
+            content_hash = compute_content_hash(issue.node_id, issue.title, issue.body_text)
 
             values_list.append(
                 f"(:node_id_{i}, :repo_id_{i}, :has_code_{i}, :has_template_headers_{i}, "

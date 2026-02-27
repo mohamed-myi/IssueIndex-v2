@@ -1,4 +1,4 @@
-"""Unit tests for Scout repository discovery"""
+
 
 import asyncio
 from datetime import UTC, datetime, timedelta
@@ -22,7 +22,6 @@ def scout(mock_client):
 
 
 class TestScoutLanguages:
-
     def test_scout_languages_list(self):
         assert len(SCOUT_LANGUAGES) == 10
         assert "TypeScript" in SCOUT_LANGUAGES
@@ -31,7 +30,6 @@ class TestScoutLanguages:
 
 
 class TestBuildSearchQuery:
-
     def test_includes_language_filter(self, scout):
         query = scout._build_search_query("Python")
         assert "language:Python" in query
@@ -58,7 +56,6 @@ class TestBuildSearchQuery:
 
 
 class TestParseRepository:
-
     def test_parses_complete_node(self, scout):
         node = {
             "id": "R_kgDOHDq123",
@@ -273,7 +270,6 @@ class TestDiscoverForLanguage:
 
 
 class TestDiscoverRepositories:
-
     async def test_discovers_across_all_languages(self, mock_client, scout):
         # Use call count to generate unique IDs per language call
         call_count = [0]
@@ -340,7 +336,6 @@ class TestDiscoverRepositories:
 
 
 class TestRepositoryData:
-
     def test_dataclass_fields(self):
         repo = RepositoryData(
             node_id="R_123",
@@ -360,7 +355,6 @@ class TestRepositoryData:
 
 
 class TestConcurrentDiscovery:
-    """Tests for PERF-003: concurrent language fetching in discover_repositories"""
 
     async def test_fetches_all_languages_concurrently(self, mock_client):
         # Arrange - 10 languages, each API call has 50ms delay
@@ -543,4 +537,3 @@ class TestConcurrentDiscovery:
         assert len(repos) == 10
         repo_ids = [r.node_id for r in repos]
         assert len(set(repo_ids)) == 10
-

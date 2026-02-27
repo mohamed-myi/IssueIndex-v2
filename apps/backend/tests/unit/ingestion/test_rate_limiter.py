@@ -1,4 +1,4 @@
-"""Unit tests for cost aware rate limiters"""
+
 
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,7 +13,6 @@ from gim_backend.ingestion.rate_limiter import (
 
 
 class TestInMemoryCostLimiterInit:
-
     def test_default_remaining_is_hourly_quota(self):
         limiter = InMemoryCostLimiter()
         assert limiter._remaining == 5000
@@ -24,7 +23,6 @@ class TestInMemoryCostLimiterInit:
 
 
 class TestInMemoryCostLimiterRecordCost:
-
     async def test_decrements_remaining(self):
         limiter = InMemoryCostLimiter(initial_remaining=100)
         await limiter.record_cost(10)
@@ -44,7 +42,6 @@ class TestInMemoryCostLimiterRecordCost:
 
 
 class TestInMemoryCostLimiterCanAfford:
-
     async def test_returns_true_when_sufficient(self):
         limiter = InMemoryCostLimiter(initial_remaining=100)
         assert await limiter.can_afford(50) is True
@@ -59,7 +56,6 @@ class TestInMemoryCostLimiterCanAfford:
 
 
 class TestInMemoryCostLimiterWaitUntilAffordable:
-
     async def test_returns_immediately_when_affordable(self):
         limiter = InMemoryCostLimiter(initial_remaining=100)
 
@@ -126,7 +122,6 @@ class TestInMemoryCostLimiterSetRemainingFromResponse:
 
 
 class TestInMemoryCostLimiterLazyReset:
-
     async def test_resets_quota_when_past_reset_time(self):
         limiter = InMemoryCostLimiter(initial_remaining=0)
         limiter._reset_at = time.time() - 1
@@ -150,7 +145,6 @@ class TestInMemoryCostLimiterLazyReset:
 
 
 class TestRedisCostLimiter:
-
     @pytest.fixture
     def mock_redis(self):
         redis = AsyncMock()
@@ -233,7 +227,6 @@ class TestRedisCostLimiter:
 
 
 class TestCreateCostLimiterFactory:
-
     def test_returns_redis_limiter_when_client_provided(self):
         mock_redis = MagicMock()
         limiter = create_cost_limiter(redis_client=mock_redis)
@@ -249,4 +242,3 @@ class TestCreateCostLimiterFactory:
         limiter = create_cost_limiter()
 
         assert isinstance(limiter, InMemoryCostLimiter)
-

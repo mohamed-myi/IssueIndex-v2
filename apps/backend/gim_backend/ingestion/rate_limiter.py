@@ -1,4 +1,4 @@
-"""Cost aware rate limiter for GitHub GraphQL API"""
+
 
 from __future__ import annotations
 
@@ -11,26 +11,19 @@ logger = logging.getLogger(__name__)
 
 
 class CostAwareLimiter(ABC):
-    """Async interface supports both in memory and Redis implementations"""
 
-    async def record_cost(self, cost: int) -> None:
-        ...
+    async def record_cost(self, cost: int) -> None: ...
 
-    async def can_afford(self, estimated_cost: int) -> bool:
-        ...
+    async def can_afford(self, estimated_cost: int) -> bool: ...
 
-    async def wait_until_affordable(self, estimated_cost: int) -> None:
-        ...
+    async def wait_until_affordable(self, estimated_cost: int) -> None: ...
 
-    async def get_remaining_points(self) -> int:
-        ...
+    async def get_remaining_points(self) -> int: ...
 
-    async def set_remaining_from_response(self, remaining: int, reset_at: int) -> None:
-        ...
+    async def set_remaining_from_response(self, remaining: int, reset_at: int) -> None: ...
 
 
 class InMemoryCostLimiter(CostAwareLimiter):
-    """Uses lazy reset logic to avoid background timers"""
 
     HOURLY_QUOTA: int = 5000
 
@@ -41,7 +34,6 @@ class InMemoryCostLimiter(CostAwareLimiter):
         self._total_cost_recorded: int = 0
 
     def _maybe_reset_quota(self) -> None:
-        """Must be called while holding _lock"""
         if self._reset_at > 0 and time.time() >= self._reset_at:
             self._remaining = self.HOURLY_QUOTA
             self._reset_at = 0.0
@@ -68,9 +60,7 @@ class InMemoryCostLimiter(CostAwareLimiter):
                 if self._reset_at > 0:
                     wait_seconds = max(0, self._reset_at - time.time())
                     if wait_seconds > 0:
-                        logger.info(
-                            f"Rate limit exhausted, waiting {wait_seconds:.0f}s until reset"
-                        )
+                        logger.info(f"Rate limit exhausted, waiting {wait_seconds:.0f}s until reset")
 
             await asyncio.sleep(min(wait_seconds + 1, 60) if self._reset_at > 0 else 1.0)
 
@@ -89,7 +79,6 @@ class InMemoryCostLimiter(CostAwareLimiter):
 
 
 class RedisCostLimiter(CostAwareLimiter):
-    """Uses Lua scripts for atomic operations in distributed execution"""
 
     HOURLY_QUOTA: int = 5000
     REMAINING_KEY = "ingestion:graphql:remaining"
@@ -148,7 +137,6 @@ class RedisCostLimiter(CostAwareLimiter):
 
 
 def create_cost_limiter(redis_client=None) -> CostAwareLimiter:
-    """Uses Redis if available; otherwise in memory"""
     if redis_client:
         logger.info("Using Redis-backed cost limiter")
         return RedisCostLimiter(redis_client)

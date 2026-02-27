@@ -1,4 +1,4 @@
-"""Q score quality gate; formula Q = 0.4C + 0.3H + 0.2E - 0.5P"""
+
 
 from __future__ import annotations
 
@@ -12,15 +12,12 @@ from gim_shared.constants import (
     TEMPLATE_HEADERS,
 )
 
-JUNK_REGEXES: list[re.Pattern[str]] = [
-    re.compile(re.escape(pattern), re.IGNORECASE)
-    for pattern in JUNK_PATTERNS
-]
+JUNK_REGEXES: list[re.Pattern[str]] = [re.compile(re.escape(pattern), re.IGNORECASE) for pattern in JUNK_PATTERNS]
 
 
 @dataclass
 class QScoreComponents:
-    """C = code blocks; H = template headers; E = tech keyword weight; P = junk spam"""
+
     has_code: bool
     has_headers: bool
     tech_weight: float
@@ -28,24 +25,19 @@ class QScoreComponents:
 
 
 def compute_q_score(components: QScoreComponents) -> float:
-    """Returns float in range negative 0.5 to 0.9"""
     return (
-        0.4 * float(components.has_code) +
-        0.3 * float(components.has_headers) +
-        0.2 * components.tech_weight -
-        0.5 * float(components.is_junk)
+        0.4 * float(components.has_code)
+        + 0.3 * float(components.has_headers)
+        + 0.2 * components.tech_weight
+        - 0.5 * float(components.is_junk)
     )
 
 
 def extract_components(title: str, body: str, language: str) -> QScoreComponents:
-    """Uses language specific keywords for tech weight; caps at 3 hits = 1.0"""
     has_code = "```" in body
 
     body_lower = body.lower()
-    has_headers = any(
-        header.lower() in body_lower
-        for header in TEMPLATE_HEADERS
-    )
+    has_headers = any(header.lower() in body_lower for header in TEMPLATE_HEADERS)
 
     keywords = TECH_KEYWORDS_BY_LANGUAGE.get(language, DEFAULT_TECH_KEYWORDS)
     combined_text = f"{title} {body}".lower()
@@ -67,8 +59,6 @@ def passes_quality_gate(score: float, threshold: float = 0.6) -> bool:
 
 
 def evaluate_issue(title: str, body: str, language: str, threshold: float = 0.6) -> tuple[float, bool]:
-    """Returns tuple of q_score and passes boolean"""
     components = extract_components(title, body, language)
     score = compute_q_score(components)
     return score, passes_quality_gate(score, threshold)
-

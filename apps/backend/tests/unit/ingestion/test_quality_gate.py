@@ -1,4 +1,3 @@
-"""Unit tests for Q score quality gate"""
 
 
 import pytest
@@ -95,7 +94,6 @@ class TestComputeQScore:
 
 
 class TestExtractComponents:
-
     def test_detects_code_block(self):
         body = "Here is the error:\n```python\nraise TypeError()\n```"
         components = extract_components("Bug", body, "Python")
@@ -174,7 +172,6 @@ class TestExtractComponents:
 
 
 class TestPassesQualityGate:
-
     def test_passes_at_threshold(self):
         assert passes_quality_gate(0.6, threshold=0.6) is True
 
@@ -196,7 +193,6 @@ class TestPassesQualityGate:
 
 
 class TestEvaluateIssue:
-
     def test_returns_score_and_passes_tuple(self):
         title = "TypeError in production"
         body = "```python\nraise TypeError()\n```\n## Description\nError"
@@ -233,7 +229,6 @@ async def main():
 
 
 class TestEdgeCases:
-
     def test_empty_body(self):
         components = extract_components("Title", "", "Python")
         assert components.has_code is False
@@ -260,4 +255,3 @@ class TestEdgeCases:
         body = "Here is code: ``` print('hello')"
         components = extract_components("Bug", body, "Python")
         assert components.has_code is True
-

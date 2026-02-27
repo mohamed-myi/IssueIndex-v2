@@ -1,4 +1,4 @@
-"""Streaming issue harvester; yields AsyncIterator for constant memory"""
+
 
 from __future__ import annotations
 
@@ -45,7 +45,6 @@ class IssueData:
 
 
 class Gatherer:
-    """Streams issues via AsyncIterator; filters by Q score >= 0,6"""
 
     PAGE_SIZE: int = 100
     MAX_RETRIES: int = 3
@@ -88,18 +87,11 @@ class Gatherer:
         self,
         repos: list[RepositoryData],
     ) -> AsyncIterator[IssueData]:
-        """Process repos concurrently with bounded concurrency, yield issues as they arrive.
-
-        Uses asyncio.Semaphore to limit concurrent API requests and asyncio.Queue
-        to stream issues back to the caller while workers process repos in parallel.
-        """
         if not repos:
             return
 
         total_repos = len(repos)
         semaphore = asyncio.Semaphore(self._concurrency)
-        # Bounded queue prevents unbounded memory growth if producer is slow
-        # (Couples fetch rate to publish rate via backpressure)
         issue_queue: asyncio.Queue[IssueData | None] = asyncio.Queue(maxsize=100)
         start_time = time.monotonic()
 
@@ -108,25 +100,20 @@ class Gatherer:
             extra={"total_repos": total_repos, "concurrency": self._concurrency},
         )
 
-        # Start all worker tasks
+
         tasks = [
-            asyncio.create_task(
-                self._repo_worker(repo, issue_queue, semaphore, idx, total_repos, start_time)
-            )
+            asyncio.create_task(self._repo_worker(repo, issue_queue, semaphore, idx, total_repos, start_time))
             for idx, repo in enumerate(repos)
         ]
 
-        # Track completed workers via sentinel None values
+
         completed_workers = 0
         total_issues = 0
 
-        # Yield issues from queue until all workers complete
         while completed_workers < total_repos:
             item = await issue_queue.get()
             if item is None:
-                # Sentinel indicates a worker finished
                 completed_workers += 1
-                # Log progress every 10 repos for better visibility
                 if completed_workers % 10 == 0 or completed_workers == total_repos:
                     elapsed = time.monotonic() - start_time
                     rate = completed_workers / elapsed if elapsed > 0 else 0
@@ -144,7 +131,7 @@ class Gatherer:
                 total_issues += 1
                 yield item
 
-        # Ensure all tasks are complete and collect any exceptions for logging
+
         await asyncio.gather(*tasks, return_exceptions=True)
 
         elapsed = time.monotonic() - start_time
@@ -166,18 +153,12 @@ class Gatherer:
         total_repos: int,
         job_start_time: float,
     ) -> int:
-        """Process a single repo under semaphore control, push issues to queue.
-
-        Returns the number of issues yielded from this repo.
-        Sends None sentinel to queue when complete regardless of success or failure.
-        """
         issue_count = 0
         acquire_start = time.monotonic()
 
         try:
             async with semaphore:
                 wait_time = time.monotonic() - acquire_start
-                # Log if worker waited more than 1 second for semaphore
                 if wait_time > 1.0:
                     logger.debug(
                         f"Gatherer: Worker {repo_idx} waited {wait_time:.1f}s for semaphore",
@@ -209,7 +190,6 @@ class Gatherer:
                 },
             )
         finally:
-            # Always send sentinel to signal this worker is done
             await issue_queue.put(None)
 
         return issue_count
@@ -230,8 +210,7 @@ class Gatherer:
                 if attempt < self.MAX_RETRIES - 1:
                     delay = self.RETRY_DELAY_SECONDS * (attempt + 1)
                     logger.debug(
-                        f"Gatherer: Retry {attempt + 1}/{self.MAX_RETRIES} "
-                        f"for {repo.full_name} after {delay}s"
+                        f"Gatherer: Retry {attempt + 1}/{self.MAX_RETRIES} for {repo.full_name} after {delay}s"
                     )
                     await asyncio.sleep(delay)
 
@@ -244,7 +223,7 @@ class Gatherer:
     ) -> AsyncIterator[IssueData]:
         owner, name = repo.full_name.split("/", 1)
         cursor: str | None = None
-        yielded_count = 0  # Track issues that pass Q-Score filter
+        yielded_count = 0
 
         while True:
             data = await self._client.execute_query(
@@ -273,7 +252,6 @@ class Gatherer:
                     yield issue
                     yielded_count += 1
 
-                    # Check cap after yield to limit large repos
                     if self._max_issues_per_repo > 0 and yielded_count >= self._max_issues_per_repo:
                         logger.info(
                             f"Gatherer: Reached cap of {self._max_issues_per_repo} issues for {repo.full_name}",
@@ -303,20 +281,14 @@ class Gatherer:
         github_url = github_url_raw.strip() if isinstance(github_url_raw, str) and github_url_raw.strip() else None
 
         labels_data = node.get("labels", {}).get("nodes", [])
-        labels = [
-            label.get("name")
-            for label in labels_data
-            if label and label.get("name")
-        ]
+        labels = [label.get("name") for label in labels_data if label and label.get("name")]
 
-        # GitHub returns state as OPEN or CLOSED; normalize to lowercase
+
         raw_state = node.get("state", "OPEN")
         state = raw_state.lower() if raw_state else "open"
 
         try:
-            github_created_at = datetime.fromisoformat(
-                created_at_str.replace("Z", "+00:00")
-            )
+            github_created_at = datetime.fromisoformat(created_at_str.replace("Z", "+00:00"))
         except (ValueError, AttributeError):
             logger.warning(f"Gatherer: Invalid createdAt for issue {node_id}")
             return None
