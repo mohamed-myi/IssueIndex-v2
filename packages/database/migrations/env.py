@@ -11,12 +11,11 @@ from dotenv import load_dotenv
 from alembic import context
 from pgvector.sqlalchemy import Vector
 
-# Import all models so SQLModel.metadata is populated for migrations
-from gim_database.models import identity, ingestion, persistence, profiles, staging, analytics  # noqa: F401
+import gim_database.models  # noqa: F401
 
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
-load_dotenv(os.path.join(project_root, '.env.local'))
-load_dotenv(os.path.join(project_root, '.env'))
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
+load_dotenv(os.path.join(project_root, ".env.local"))
+load_dotenv(os.path.join(project_root, ".env"))
 
 
 config = context.config
@@ -35,7 +34,9 @@ if config.config_file_name is not None:
 target_metadata = SQLModel.metadata
 
 
-def _compare_type(context, inspected_column, metadata_column, inspected_type, metadata_type):
+def _compare_type(
+    context, inspected_column, metadata_column, inspected_type, metadata_type
+):
     """Custom type comparator that ignores equivalent PostgreSQL types.
 
     SQLModel's AutoString and SQLAlchemy's Text/String both map to PostgreSQL TEXT

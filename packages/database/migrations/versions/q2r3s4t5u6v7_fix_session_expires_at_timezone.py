@@ -7,6 +7,7 @@ Create Date: 2026-02-07
 Alters session.expires_at from TIMESTAMP to TIMESTAMP WITH TIME ZONE
 to match the timezone-aware datetimes used in Python code.
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -21,25 +22,25 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Convert expires_at from TIMESTAMP to TIMESTAMP WITH TIME ZONE.
-    
+
     Existing values are interpreted as UTC and converted accordingly.
     """
-    with op.batch_alter_table('session', schema='public') as batch_op:
+    with op.batch_alter_table("session", schema="public") as batch_op:
         batch_op.alter_column(
-            'expires_at',
+            "expires_at",
             existing_type=sa.DateTime(),
             type_=sa.DateTime(timezone=True),
             existing_nullable=False,
-            postgresql_using="expires_at AT TIME ZONE 'UTC'"
+            postgresql_using="expires_at AT TIME ZONE 'UTC'",
         )
 
 
 def downgrade() -> None:
     """Revert expires_at back to TIMESTAMP without timezone."""
-    with op.batch_alter_table('session', schema='public') as batch_op:
+    with op.batch_alter_table("session", schema="public") as batch_op:
         batch_op.alter_column(
-            'expires_at',
+            "expires_at",
             existing_type=sa.DateTime(timezone=True),
             type_=sa.DateTime(),
-            existing_nullable=False
+            existing_nullable=False,
         )

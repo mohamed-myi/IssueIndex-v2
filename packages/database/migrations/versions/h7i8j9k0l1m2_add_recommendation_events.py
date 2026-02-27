@@ -33,7 +33,9 @@ def upgrade() -> None:
         ),
         sa.Column("event_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("recommendation_batch_id", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column(
+            "recommendation_batch_id", postgresql.UUID(as_uuid=True), nullable=False
+        ),
         sa.Column("event_type", sa.Text(), nullable=False),
         sa.Column("issue_node_id", sa.Text(), nullable=False),
         sa.Column("position", sa.Integer(), nullable=False),
@@ -103,4 +105,3 @@ def downgrade() -> None:
         schema="analytics",
     )
     op.drop_table("recommendation_events", schema="analytics")
-

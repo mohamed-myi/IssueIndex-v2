@@ -7,14 +7,15 @@ Create Date: 2026-01-27 21:40:00.000000
 Restores the search_vector generated column and index that were accidentally dropped
 during the n1_cloudsql_256_vectors migration.
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 
 
 # revision identifiers, used by Alembic.
-revision: str = '2e4e3778e030'
-down_revision: Union[str, Sequence[str], None] = '7420c2e6f0a9'
+revision: str = "2e4e3778e030"
+down_revision: Union[str, Sequence[str], None] = "7420c2e6f0a9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -31,7 +32,7 @@ def upgrade() -> None:
             to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(body_text, ''))
         ) STORED
     """)
-    
+
     # Add GIN index for full-text search
     op.execute("""
         CREATE INDEX ix_issue_search_vector 

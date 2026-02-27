@@ -9,6 +9,7 @@ NotNullViolationError because the column was created as NOT NULL without
 a server-side DEFAULT.  The SQLAlchemy model declares server_default=func.now()
 but the original migration omitted it.
 """
+
 from typing import Sequence, Union
 
 from alembic import op

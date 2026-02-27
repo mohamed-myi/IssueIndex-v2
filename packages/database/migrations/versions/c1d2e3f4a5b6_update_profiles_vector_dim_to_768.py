@@ -7,13 +7,14 @@ Create Date: 2026-01-03
 Alters userprofile vector columns from 256-dim to 768-dim
 to match nomic-embed-text-v1.5 embeddings.
 """
+
 from typing import Sequence, Union
 
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = 'c1d2e3f4a5b6'
-down_revision: Union[str, Sequence[str], None] = 'b4c5d6e7f8a9'
+revision: str = "c1d2e3f4a5b6"
+down_revision: Union[str, Sequence[str], None] = "b4c5d6e7f8a9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
