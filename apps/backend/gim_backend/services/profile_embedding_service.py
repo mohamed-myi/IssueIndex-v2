@@ -4,6 +4,8 @@ Profile embedding service for vector generation and combination.
 
 import logging
 import math
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from gim_backend.services.embedding_service import embed_query
 
@@ -123,9 +125,38 @@ async def calculate_combined_vector(
     return _l2_normalize(combined)
 
 
+def mark_profile_recalculation_started(profile: Any) -> None:
+    """Marks profile recalculation lifecycle as in progress."""
+    profile.is_calculating = True
+
+
+def reset_profile_recalculation(profile: Any) -> None:
+    """Clears recalculation state (used in finally/cleanup paths)."""
+    profile.is_calculating = False
+
+
+async def finalize_profile_recalculation(
+    profile: Any,
+    *,
+    calculate_combined_vector_fn: Callable[..., Awaitable[list[float] | None]] | None = None,
+) -> list[float] | None:
+    """Recomputes combined vector from current profile vectors and clears recalculation state."""
+    calculator = calculate_combined_vector_fn or calculate_combined_vector
+    combined = await calculator(
+        intent_vector=profile.intent_vector,
+        resume_vector=profile.resume_vector,
+        github_vector=profile.github_vector,
+    )
+    profile.combined_vector = combined
+    profile.is_calculating = False
+    return combined
+
+
 __all__ = [
     "format_intent_text",
     "generate_intent_vector",
     "calculate_combined_vector",
+    "mark_profile_recalculation_started",
+    "reset_profile_recalculation",
+    "finalize_profile_recalculation",
 ]
-

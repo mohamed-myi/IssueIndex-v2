@@ -1,13 +1,8 @@
-"""
-Profile service for CRUD operations on user profiles, intents, and preferences.
-"""
-import logging
+"""Compatibility facade for profile services split into focused modules."""
+
 from uuid import UUID
 
 from gim_database.models.profiles import UserProfile
-from gim_shared.constants import PROFILE_LANGUAGES, STACK_AREAS
-from pydantic import BaseModel
-from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from gim_backend.core.errors import (
@@ -15,227 +10,50 @@ from gim_backend.core.errors import (
     IntentNotFoundError,
     InvalidTaxonomyValueError,
 )
+from gim_backend.services import profile_core_service as _profile_core_service
+from gim_backend.services import profile_intent_service as _profile_intent_service
+from gim_backend.services import profile_preferences_service as _profile_preferences_service
 from gim_backend.services.cloud_tasks_service import cancel_user_tasks
 from gim_backend.services.onboarding_service import mark_onboarding_in_progress
 from gim_backend.services.profile_embedding_service import calculate_combined_vector
+from gim_backend.services.profile_models import (
+    FullProfile,
+    GitHubData,
+    GitHubSource,
+    IntentData,
+    IntentProfile,
+    IntentReembedInput,
+    IntentSource,
+    ProfilePreferences,
+    ProfileSources,
+    ResumeData,
+    ResumeSource,
+)
+from gim_backend.services.profile_validation import (
+    VALID_EXPERIENCE_LEVELS,
+    calculate_optimization_percent,
+    validate_experience_level,
+    validate_languages,
+    validate_stack_areas,
+)
 from gim_backend.services.vector_generation import generate_intent_vector_with_retry
-
-logger = logging.getLogger(__name__)
-
-VALID_EXPERIENCE_LEVELS = ["beginner", "intermediate", "advanced"]
-
-
-class IntentData(BaseModel):
-    languages: list[str]
-    stack_areas: list[str]
-    text: str
-    experience_level: str | None
-    updated_at: str | None
-
-
-class IntentSource(BaseModel):
-    populated: bool
-    vector_status: str | None
-    data: IntentData | None
-
-
-class ResumeData(BaseModel):
-    skills: list[str]
-    job_titles: list[str]
-    uploaded_at: str | None
-
-
-class ResumeSource(BaseModel):
-    populated: bool
-    vector_status: str | None
-    data: ResumeData | None
-
-
-class GitHubData(BaseModel):
-    username: str
-    languages: list[str]
-    topics: list[str]
-    fetched_at: str | None
-
-
-class GitHubSource(BaseModel):
-    populated: bool
-    vector_status: str | None
-    data: GitHubData | None
-
-
-class ProfileSources(BaseModel):
-    intent: IntentSource
-    resume: ResumeSource
-    github: GitHubSource
-
-
-class ProfilePreferences(BaseModel):
-    preferred_languages: list[str]
-    preferred_topics: list[str]
-    min_heat_threshold: float
-
-
-class FullProfile(BaseModel):
-    user_id: str
-    optimization_percent: int
-    combined_vector_status: str | None
-    is_calculating: bool
-    onboarding_status: str
-    updated_at: str | None
-    sources: ProfileSources
-    preferences: ProfilePreferences
-
-
-class IntentProfile(BaseModel):
-    languages: list[str]
-    stack_areas: list[str]
-    text: str
-    experience_level: str | None
-    vector_status: str | None
-    updated_at: str | None
-
-
-def validate_languages(languages: list[str]) -> None:
-    for lang in languages:
-        if lang not in PROFILE_LANGUAGES:
-            raise InvalidTaxonomyValueError(
-                field="language",
-                invalid_value=lang,
-                valid_options=PROFILE_LANGUAGES,
-            )
-
-
-def validate_stack_areas(areas: list[str]) -> None:
-    valid_areas = list(STACK_AREAS.keys())
-    for area in areas:
-        if area not in valid_areas:
-            raise InvalidTaxonomyValueError(
-                field="stack_area",
-                invalid_value=area,
-                valid_options=valid_areas,
-            )
-
-
-def validate_experience_level(level: str | None) -> None:
-    if level is not None and level not in VALID_EXPERIENCE_LEVELS:
-        raise InvalidTaxonomyValueError(
-            field="experience_level",
-            invalid_value=level,
-            valid_options=VALID_EXPERIENCE_LEVELS,
-        )
-
-
-def calculate_optimization_percent(profile: UserProfile) -> int:
-    """Weights: intent 50, resume 30, github 20."""
-    optimization = 0
-
-    if profile.intent_text:
-        optimization += 50
-
-    if profile.resume_skills:
-        optimization += 30
-
-    if profile.github_username:
-        optimization += 20
-
-    return optimization
 
 
 async def get_or_create_profile(
     db: AsyncSession,
     user_id: UUID,
 ) -> UserProfile:
-    statement = select(UserProfile).where(UserProfile.user_id == user_id)
-    result = await db.exec(statement)
-    profile = result.first()
-
-    if profile is not None:
-        return profile
-
-    profile = UserProfile(
-        user_id=user_id,
-        min_heat_threshold=0.6,
-        is_calculating=False,
-        onboarding_status="not_started",
-    )
-
-    db.add(profile)
-    await db.commit()
-    await db.refresh(profile)
-    return profile
+    return await _profile_core_service.get_or_create_profile(db, user_id)
 
 
 async def get_full_profile(
     db: AsyncSession,
     user_id: UUID,
 ) -> FullProfile:
-    profile = await get_or_create_profile(db, user_id)
-
-    intent_populated = profile.intent_text is not None
-    intent_data = None
-    if intent_populated:
-        intent_data = IntentData(
-            languages=profile.preferred_languages or [],
-            stack_areas=profile.intent_stack_areas or [],
-            text=profile.intent_text,
-            experience_level=profile.intent_experience,
-            updated_at=profile.updated_at.isoformat() if profile.updated_at else None,
-        )
-
-    resume_populated = profile.resume_skills is not None
-    resume_data = None
-    if resume_populated:
-        resume_data = ResumeData(
-            skills=profile.resume_skills or [],
-            job_titles=profile.resume_job_titles or [],
-            uploaded_at=profile.resume_uploaded_at.isoformat() if profile.resume_uploaded_at else None,
-        )
-
-    github_populated = profile.github_username is not None
-    github_data = None
-    if github_populated:
-        github_data = GitHubData(
-            username=profile.github_username,
-            languages=profile.github_languages or [],
-            topics=profile.github_topics or [],
-            fetched_at=profile.github_fetched_at.isoformat() if profile.github_fetched_at else None,
-        )
-
-    intent_vector_status = "ready" if profile.intent_vector else None
-    resume_vector_status = "ready" if profile.resume_vector else None
-    github_vector_status = "ready" if profile.github_vector else None
-    combined_vector_status = "ready" if profile.combined_vector else None
-
-    return FullProfile(
-        user_id=str(profile.user_id),
-        optimization_percent=calculate_optimization_percent(profile),
-        combined_vector_status=combined_vector_status,
-        is_calculating=profile.is_calculating,
-        onboarding_status=profile.onboarding_status,
-        updated_at=profile.updated_at.isoformat() if profile.updated_at else None,
-        sources=ProfileSources(
-            intent=IntentSource(
-                populated=intent_populated,
-                vector_status=intent_vector_status,
-                data=intent_data,
-            ),
-            resume=ResumeSource(
-                populated=resume_populated,
-                vector_status=resume_vector_status,
-                data=resume_data,
-            ),
-            github=GitHubSource(
-                populated=github_populated,
-                vector_status=github_vector_status,
-                data=github_data,
-            ),
-        ),
-        preferences=ProfilePreferences(
-            preferred_languages=profile.preferred_languages or [],
-            preferred_topics=profile.preferred_topics or [],
-            min_heat_threshold=profile.min_heat_threshold,
-        ),
+    return await _profile_core_service.get_full_profile(
+        db,
+        user_id,
+        get_or_create_profile_fn=get_or_create_profile,
     )
 
 
@@ -243,49 +61,11 @@ async def delete_profile(
     db: AsyncSession,
     user_id: UUID,
 ) -> bool:
-    """Resets all fields to defaults; does not delete the row. Cancels pending Cloud Tasks."""
-    statement = select(UserProfile).where(UserProfile.user_id == user_id)
-    result = await db.exec(statement)
-    profile = result.first()
-
-    if profile is None:
-        return False
-
-    cancelled_count = await cancel_user_tasks(user_id)
-    if cancelled_count > 0:
-        logger.info(f"Cancelled {cancelled_count} pending Cloud Tasks for user {user_id}")
-
-    profile.intent_vector = None
-    profile.resume_vector = None
-    profile.github_vector = None
-    profile.combined_vector = None
-
-    profile.intent_stack_areas = None
-    profile.intent_text = None
-    profile.intent_experience = None
-
-    profile.resume_skills = None
-    profile.resume_job_titles = None
-    profile.resume_raw_entities = None
-    profile.resume_uploaded_at = None
-
-    profile.github_username = None
-    profile.github_languages = None
-    profile.github_topics = None
-    profile.github_data = None
-    profile.github_fetched_at = None
-
-    profile.preferred_languages = None
-    profile.preferred_topics = None
-    profile.min_heat_threshold = 0.6
-
-    profile.is_calculating = False
-    profile.onboarding_status = "not_started"
-    profile.onboarding_completed_at = None
-
-    await db.commit()
-    await db.refresh(profile)
-    return True
+    return await _profile_core_service.delete_profile(
+        db,
+        user_id,
+        cancel_user_tasks_fn=cancel_user_tasks,
+    )
 
 
 async def create_intent(
@@ -296,49 +76,18 @@ async def create_intent(
     text: str,
     experience_level: str | None = None,
 ) -> UserProfile:
-    """Languages stored in preferred_languages for Stage 1 SQL filtering."""
-    validate_languages(languages)
-    validate_stack_areas(stack_areas)
-    validate_experience_level(experience_level)
-
-    profile = await get_or_create_profile(db, user_id)
-
-    if profile.intent_text is not None:
-        raise IntentAlreadyExistsError(
-            "Intent already exists. Use PATCH to update or DELETE first."
-        )
-
-    await mark_onboarding_in_progress(db, profile)
-
-    profile.preferred_languages = languages
-    profile.intent_stack_areas = stack_areas
-    profile.intent_text = text
-    profile.intent_experience = experience_level
-    profile.is_calculating = True
-    await db.commit()
-
-    try:
-        logger.info(f"Generating intent vector for user {user_id}")
-        intent_vector = await generate_intent_vector_with_retry(stack_areas, text)
-        profile.intent_vector = intent_vector
-
-        combined = await calculate_combined_vector(
-            intent_vector=intent_vector,
-            resume_vector=profile.resume_vector,
-            github_vector=profile.github_vector,
-        )
-        profile.combined_vector = combined
-
-        if intent_vector is not None:
-            logger.info(f"Intent vector generated for user {user_id}")
-        else:
-            logger.warning(f"Intent vector generation failed for user {user_id}; profile saved without vector")
-    finally:
-        profile.is_calculating = False
-
-    await db.commit()
-    await db.refresh(profile)
-    return profile
+    return await _profile_intent_service.create_intent(
+        db=db,
+        user_id=user_id,
+        languages=languages,
+        stack_areas=stack_areas,
+        text=text,
+        experience_level=experience_level,
+        get_or_create_profile_fn=get_or_create_profile,
+        mark_onboarding_in_progress_fn=mark_onboarding_in_progress,
+        generate_intent_vector_with_retry_fn=generate_intent_vector_with_retry,
+        calculate_combined_vector_fn=calculate_combined_vector,
+    )
 
 
 async def put_intent(
@@ -349,82 +98,28 @@ async def put_intent(
     text: str,
     experience_level: str | None = None,
 ) -> tuple[UserProfile, bool]:
-    validate_languages(languages)
-    validate_stack_areas(stack_areas)
-    validate_experience_level(experience_level)
-
-    profile = await get_or_create_profile(db, user_id)
-
-    created = profile.intent_text is None
-    if created:
-        created_profile = await create_intent(
-            db=db,
-            user_id=user_id,
-            languages=languages,
-            stack_areas=stack_areas,
-            text=text,
-            experience_level=experience_level,
-        )
-        return created_profile, True
-
-    await mark_onboarding_in_progress(db, profile)
-
-    current_stack_areas = profile.intent_stack_areas or []
-    current_text = profile.intent_text or ""
-
-    needs_reembed = current_stack_areas != stack_areas or current_text != text
-
-    profile.preferred_languages = languages
-    profile.intent_stack_areas = stack_areas
-    profile.intent_text = text
-    profile.intent_experience = experience_level
-
-    if needs_reembed:
-        profile.is_calculating = True
-        await db.commit()
-
-        try:
-            logger.info(f"Regenerating intent vector for user {user_id}")
-            intent_vector = await generate_intent_vector_with_retry(stack_areas, text)
-            profile.intent_vector = intent_vector
-
-            combined = await calculate_combined_vector(
-                intent_vector=intent_vector,
-                resume_vector=profile.resume_vector,
-                github_vector=profile.github_vector,
-            )
-            profile.combined_vector = combined
-
-            if intent_vector is not None:
-                logger.info(f"Intent vector regenerated for user {user_id}")
-            else:
-                logger.warning(f"Intent vector regeneration failed for user {user_id}")
-        finally:
-            profile.is_calculating = False
-
-    await db.commit()
-    await db.refresh(profile)
-    return profile, False
+    return await _profile_intent_service.put_intent(
+        db=db,
+        user_id=user_id,
+        languages=languages,
+        stack_areas=stack_areas,
+        text=text,
+        experience_level=experience_level,
+        get_or_create_profile_fn=get_or_create_profile,
+        mark_onboarding_in_progress_fn=mark_onboarding_in_progress,
+        generate_intent_vector_with_retry_fn=generate_intent_vector_with_retry,
+        calculate_combined_vector_fn=calculate_combined_vector,
+    )
 
 
 async def get_intent(
     db: AsyncSession,
     user_id: UUID,
 ) -> IntentProfile | None:
-    profile = await get_or_create_profile(db, user_id)
-
-    if profile.intent_text is None:
-        return None
-
-    vector_status = "ready" if profile.intent_vector else None
-
-    return IntentProfile(
-        languages=profile.preferred_languages or [],
-        stack_areas=profile.intent_stack_areas or [],
-        text=profile.intent_text,
-        experience_level=profile.intent_experience,
-        vector_status=vector_status,
-        updated_at=profile.updated_at.isoformat() if profile.updated_at else None,
+    return await _profile_intent_service.get_intent(
+        db,
+        user_id,
+        get_or_create_profile_fn=get_or_create_profile,
     )
 
 
@@ -437,110 +132,41 @@ async def update_intent(
     experience_level: str | None = None,
     _experience_level_provided: bool = False,
 ) -> UserProfile:
-    """
-    The _experience_level_provided flag distinguishes omitted from explicitly null.
-    Only text and stack_areas changes trigger re-embedding.
-    """
-    profile = await get_or_create_profile(db, user_id)
-
-    if profile.intent_text is None:
-        raise IntentNotFoundError("No intent exists. Use POST to create first.")
-
-    needs_reembed = False
-
-    if languages is not None:
-        validate_languages(languages)
-        profile.preferred_languages = languages
-
-    if stack_areas is not None:
-        validate_stack_areas(stack_areas)
-        profile.intent_stack_areas = stack_areas
-        needs_reembed = True
-
-    if text is not None:
-        profile.intent_text = text
-        needs_reembed = True
-
-    if _experience_level_provided:
-        validate_experience_level(experience_level)
-        profile.intent_experience = experience_level
-
-    if needs_reembed:
-        profile.is_calculating = True
-        await db.commit()
-
-        try:
-            logger.info(f"Regenerating intent vector for user {user_id}")
-            intent_vector = await generate_intent_vector_with_retry(
-                profile.intent_stack_areas or [],
-                profile.intent_text or "",
-            )
-            profile.intent_vector = intent_vector
-
-            combined = await calculate_combined_vector(
-                intent_vector=intent_vector,
-                resume_vector=profile.resume_vector,
-                github_vector=profile.github_vector,
-            )
-            profile.combined_vector = combined
-
-            if intent_vector is not None:
-                logger.info(f"Intent vector regenerated for user {user_id}")
-            else:
-                logger.warning(f"Intent vector regeneration failed for user {user_id}")
-        finally:
-            profile.is_calculating = False
-
-    await db.commit()
-    await db.refresh(profile)
-    return profile
+    return await _profile_intent_service.update_intent(
+        db=db,
+        user_id=user_id,
+        languages=languages,
+        stack_areas=stack_areas,
+        text=text,
+        experience_level=experience_level,
+        _experience_level_provided=_experience_level_provided,
+        get_or_create_profile_fn=get_or_create_profile,
+        generate_intent_vector_with_retry_fn=generate_intent_vector_with_retry,
+        calculate_combined_vector_fn=calculate_combined_vector,
+    )
 
 
 async def delete_intent(
     db: AsyncSession,
     user_id: UUID,
 ) -> bool:
-    """Also clears preferred_languages since they originate from intent."""
-    profile = await get_or_create_profile(db, user_id)
-
-    if profile.intent_text is None:
-        return False
-
-    profile.is_calculating = True
-    await db.commit()
-
-    try:
-        profile.preferred_languages = None
-        profile.intent_stack_areas = None
-        profile.intent_text = None
-        profile.intent_experience = None
-        profile.intent_vector = None
-
-        logger.info(f"Recalculating combined vector after intent deletion for user {user_id}")
-        combined = await calculate_combined_vector(
-            intent_vector=None,
-            resume_vector=profile.resume_vector,
-            github_vector=profile.github_vector,
-        )
-        profile.combined_vector = combined
-    finally:
-        profile.is_calculating = False
-
-    await db.commit()
-    await db.refresh(profile)
-    return True
+    return await _profile_intent_service.delete_intent(
+        db,
+        user_id,
+        get_or_create_profile_fn=get_or_create_profile,
+        generate_intent_vector_with_retry_fn=generate_intent_vector_with_retry,
+        calculate_combined_vector_fn=calculate_combined_vector,
+    )
 
 
 async def get_preferences(
     db: AsyncSession,
     user_id: UUID,
 ) -> ProfilePreferences:
-    profile = await get_or_create_profile(db, user_id)
-
-    return ProfilePreferences(
-        preferred_languages=profile.preferred_languages or [],
-        preferred_topics=profile.preferred_topics or [],
-        min_heat_threshold=profile.min_heat_threshold,
+    return await _profile_preferences_service.get_preferences(
+        db,
+        user_id,
+        get_or_create_profile_fn=get_or_create_profile,
     )
 
 
@@ -551,18 +177,48 @@ async def update_preferences(
     preferred_topics: list[str] | None = None,
     min_heat_threshold: float | None = None,
 ) -> UserProfile:
-    profile = await get_or_create_profile(db, user_id)
+    return await _profile_preferences_service.update_preferences(
+        db=db,
+        user_id=user_id,
+        preferred_languages=preferred_languages,
+        preferred_topics=preferred_topics,
+        min_heat_threshold=min_heat_threshold,
+        get_or_create_profile_fn=get_or_create_profile,
+    )
 
-    if preferred_languages is not None:
-        validate_languages(preferred_languages)
-        profile.preferred_languages = preferred_languages
 
-    if preferred_topics is not None:
-        profile.preferred_topics = preferred_topics
-
-    if min_heat_threshold is not None:
-        profile.min_heat_threshold = min_heat_threshold
-
-    await db.commit()
-    await db.refresh(profile)
-    return profile
+__all__ = [
+    "FullProfile",
+    "GitHubData",
+    "GitHubSource",
+    "IntentAlreadyExistsError",
+    "IntentData",
+    "IntentNotFoundError",
+    "IntentProfile",
+    "IntentReembedInput",
+    "IntentSource",
+    "InvalidTaxonomyValueError",
+    "ProfilePreferences",
+    "ProfileSources",
+    "ResumeData",
+    "ResumeSource",
+    "VALID_EXPERIENCE_LEVELS",
+    "calculate_combined_vector",
+    "calculate_optimization_percent",
+    "cancel_user_tasks",
+    "create_intent",
+    "delete_intent",
+    "delete_profile",
+    "generate_intent_vector_with_retry",
+    "get_full_profile",
+    "get_intent",
+    "get_or_create_profile",
+    "get_preferences",
+    "mark_onboarding_in_progress",
+    "put_intent",
+    "update_intent",
+    "update_preferences",
+    "validate_experience_level",
+    "validate_languages",
+    "validate_stack_areas",
+]

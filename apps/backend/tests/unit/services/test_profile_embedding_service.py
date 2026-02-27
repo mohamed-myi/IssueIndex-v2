@@ -1,18 +1,17 @@
-"""Unit tests for profile embedding service."""
+
 import math
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 
 class TestFormatIntentText:
-
     def test_formats_stack_areas_and_text(self):
         from gim_backend.services.profile_embedding_service import format_intent_text
 
         result = format_intent_text(
-            stack_areas=["backend", "data_engineering"],
-            text="I want to contribute to async Python libraries"
+            stack_areas=["backend", "data_engineering"], text="I want to contribute to async Python libraries"
         )
 
         assert result == "backend, data_engineering. I want to contribute to async Python libraries"
@@ -20,30 +19,21 @@ class TestFormatIntentText:
     def test_formats_single_stack_area(self):
         from gim_backend.services.profile_embedding_service import format_intent_text
 
-        result = format_intent_text(
-            stack_areas=["frontend"],
-            text="Looking for React component bugs"
-        )
+        result = format_intent_text(stack_areas=["frontend"], text="Looking for React component bugs")
 
         assert result == "frontend. Looking for React component bugs"
 
     def test_handles_empty_stack_areas(self):
         from gim_backend.services.profile_embedding_service import format_intent_text
 
-        result = format_intent_text(
-            stack_areas=[],
-            text="I want to work on open source"
-        )
+        result = format_intent_text(stack_areas=[], text="I want to work on open source")
 
         assert result == "I want to work on open source"
 
     def test_handles_only_stack_areas(self):
         from gim_backend.services.profile_embedding_service import format_intent_text
 
-        result = format_intent_text(
-            stack_areas=["backend", "devops"],
-            text=""
-        )
+        result = format_intent_text(stack_areas=["backend", "devops"], text="")
 
         assert result == "backend, devops"
 
@@ -56,7 +46,6 @@ class TestFormatIntentText:
 
 
 class TestL2Normalization:
-
     def test_normalizes_to_unit_vector(self):
         from gim_backend.services.profile_embedding_service import _l2_normalize
 
@@ -94,7 +83,6 @@ class TestL2Normalization:
 
 
 class TestGenerateIntentVector:
-
     @pytest.mark.asyncio
     async def test_generates_vector_from_stack_and_text(self):
         from gim_backend.services.profile_embedding_service import generate_intent_vector
@@ -105,8 +93,7 @@ class TestGenerateIntentVector:
             mock_embed.return_value = mock_vector
 
             result = await generate_intent_vector(
-                stack_areas=["backend", "data_engineering"],
-                text="I want to contribute to async Python libraries"
+                stack_areas=["backend", "data_engineering"], text="I want to contribute to async Python libraries"
             )
 
             mock_embed.assert_called_once_with(
@@ -121,10 +108,7 @@ class TestGenerateIntentVector:
         with patch("gim_backend.services.profile_embedding_service.embed_query", new_callable=AsyncMock) as mock_embed:
             mock_embed.return_value = None
 
-            result = await generate_intent_vector(
-                stack_areas=["backend"],
-                text="Some text"
-            )
+            result = await generate_intent_vector(stack_areas=["backend"], text="Some text")
 
             assert result is None
 
@@ -329,7 +313,6 @@ class TestCalculateCombinedVector:
 
 
 class TestWeightedSum:
-
     def test_computes_weighted_sum(self):
         from gim_backend.services.profile_embedding_service import _weighted_sum
 
@@ -348,3 +331,49 @@ class TestWeightedSum:
 
         assert result == []
 
+
+class TestProfileRecalculationLifecycleHelpers:
+    def test_marks_recalculation_started(self):
+        from gim_backend.services.profile_embedding_service import mark_profile_recalculation_started
+
+        profile = SimpleNamespace(is_calculating=False)
+
+        mark_profile_recalculation_started(profile)
+
+        assert profile.is_calculating is True
+
+    def test_resets_recalculation_flag(self):
+        from gim_backend.services.profile_embedding_service import reset_profile_recalculation
+
+        profile = SimpleNamespace(is_calculating=True)
+
+        reset_profile_recalculation(profile)
+
+        assert profile.is_calculating is False
+
+    @pytest.mark.asyncio
+    async def test_finalize_recalculates_combined_and_clears_flag(self):
+        from gim_backend.services.profile_embedding_service import finalize_profile_recalculation
+
+        profile = SimpleNamespace(
+            intent_vector=[0.1] * 3,
+            resume_vector=[0.2] * 3,
+            github_vector=[0.3] * 3,
+            combined_vector=None,
+            is_calculating=True,
+        )
+        mock_calc = AsyncMock(return_value=[0.9] * 3)
+
+        result = await finalize_profile_recalculation(
+            profile,
+            calculate_combined_vector_fn=mock_calc,
+        )
+
+        mock_calc.assert_awaited_once_with(
+            intent_vector=profile.intent_vector,
+            resume_vector=profile.resume_vector,
+            github_vector=profile.github_vector,
+        )
+        assert result == [0.9] * 3
+        assert profile.combined_vector == [0.9] * 3
+        assert profile.is_calculating is False

@@ -1,4 +1,4 @@
-"""Unit tests for profile service business logic."""
+
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -51,11 +51,34 @@ def mock_profile():
     return profile
 
 
+@pytest.fixture(autouse=True)
+def patch_profile_side_effects():
+    """Prevent slow embedding/retry work from leaking into CRUD unit tests."""
+    with (
+        patch(
+            "gim_backend.services.profile_service.mark_onboarding_in_progress",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "gim_backend.services.profile_service.generate_intent_vector_with_retry",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "gim_backend.services.profile_service.calculate_combined_vector",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
+        yield
+
+
 class TestValidation:
     """Taxonomy validation boundary tests."""
 
     def test_validate_languages_accepts_all_valid_options(self):
         from gim_backend.services.profile_service import validate_languages
+
         validate_languages(["Python", "TypeScript", "Go", "Rust", "Java"])
 
     def test_validate_languages_rejects_invalid_value(self):
@@ -81,6 +104,7 @@ class TestValidation:
 
     def test_validate_stack_areas_accepts_all_valid_options(self):
         from gim_backend.services.profile_service import validate_stack_areas
+
         validate_stack_areas(["backend", "frontend", "data_engineering", "machine_learning"])
 
     def test_validate_stack_areas_rejects_invalid_value(self):
@@ -94,6 +118,7 @@ class TestValidation:
 
     def test_validate_experience_level_accepts_all_valid_options(self):
         from gim_backend.services.profile_service import validate_experience_level
+
         validate_experience_level("beginner")
         validate_experience_level("intermediate")
         validate_experience_level("advanced")
@@ -109,47 +134,54 @@ class TestValidation:
 
 
 class TestCalculateOptimizationPercent:
-    """Optimization percentage calculation for all source combinations."""
 
     def test_no_sources_returns_zero(self, mock_profile):
         from gim_backend.services.profile_service import calculate_optimization_percent
+
         assert calculate_optimization_percent(mock_profile) == 0
 
     def test_intent_only_returns_50(self, mock_profile):
         from gim_backend.services.profile_service import calculate_optimization_percent
+
         mock_profile.intent_text = "I want to work on Python projects"
         assert calculate_optimization_percent(mock_profile) == 50
 
     def test_resume_only_returns_30(self, mock_profile):
         from gim_backend.services.profile_service import calculate_optimization_percent
+
         mock_profile.resume_skills = ["Python", "FastAPI"]
         assert calculate_optimization_percent(mock_profile) == 30
 
     def test_github_only_returns_20(self, mock_profile):
         from gim_backend.services.profile_service import calculate_optimization_percent
+
         mock_profile.github_username = "octocat"
         assert calculate_optimization_percent(mock_profile) == 20
 
     def test_intent_plus_resume_returns_80(self, mock_profile):
         from gim_backend.services.profile_service import calculate_optimization_percent
+
         mock_profile.intent_text = "I want to work on Python projects"
         mock_profile.resume_skills = ["Python", "FastAPI"]
         assert calculate_optimization_percent(mock_profile) == 80
 
     def test_intent_plus_github_returns_70(self, mock_profile):
         from gim_backend.services.profile_service import calculate_optimization_percent
+
         mock_profile.intent_text = "I want to work on Python projects"
         mock_profile.github_username = "octocat"
         assert calculate_optimization_percent(mock_profile) == 70
 
     def test_resume_plus_github_returns_50(self, mock_profile):
         from gim_backend.services.profile_service import calculate_optimization_percent
+
         mock_profile.resume_skills = ["Python"]
         mock_profile.github_username = "octocat"
         assert calculate_optimization_percent(mock_profile) == 50
 
     def test_all_sources_returns_100(self, mock_profile):
         from gim_backend.services.profile_service import calculate_optimization_percent
+
         mock_profile.intent_text = "I want to work on Python projects"
         mock_profile.resume_skills = ["Python", "FastAPI"]
         mock_profile.github_username = "octocat"
@@ -157,12 +189,12 @@ class TestCalculateOptimizationPercent:
 
     def test_empty_list_does_not_count_as_populated(self, mock_profile):
         from gim_backend.services.profile_service import calculate_optimization_percent
+
         mock_profile.resume_skills = []
         assert calculate_optimization_percent(mock_profile) == 0
 
 
 class TestGetOrCreateProfile:
-    """Profile upsert behavior."""
 
     async def test_returns_existing_profile(self, mock_db, mock_profile):
         from gim_backend.services.profile_service import get_or_create_profile
@@ -196,7 +228,6 @@ class TestGetOrCreateProfile:
 
 
 class TestIntentCrud:
-    """Intent CRUD business logic."""
 
     async def test_create_intent_stores_languages_in_preferred_languages(self, mock_db, mock_profile):
         from gim_backend.services.profile_service import create_intent
@@ -325,7 +356,6 @@ class TestIntentCrud:
 
 
 class TestPutIntent:
-    """PUT intent semantics and embedding trigger rules."""
 
     @pytest.mark.asyncio
     async def test_put_creates_when_missing(self, mock_db, mock_profile):
@@ -336,17 +366,21 @@ class TestPutIntent:
         mock_result.first.return_value = mock_profile
         mock_db.exec.return_value = mock_result
 
-        with patch(
-            "gim_backend.services.profile_service.mark_onboarding_in_progress",
-            new_callable=AsyncMock,
-        ), patch(
-            "gim_backend.services.profile_service.generate_intent_vector_with_retry",
-            new_callable=AsyncMock,
-            return_value=[0.1] * 768,
-        ), patch(
-            "gim_backend.services.profile_service.calculate_combined_vector",
-            new_callable=AsyncMock,
-            return_value=[0.2] * 768,
+        with (
+            patch(
+                "gim_backend.services.profile_service.mark_onboarding_in_progress",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "gim_backend.services.profile_service.generate_intent_vector_with_retry",
+                new_callable=AsyncMock,
+                return_value=[0.1] * 768,
+            ),
+            patch(
+                "gim_backend.services.profile_service.calculate_combined_vector",
+                new_callable=AsyncMock,
+                return_value=[0.2] * 768,
+            ),
         ):
             profile, created = await put_intent(
                 db=mock_db,
@@ -375,13 +409,16 @@ class TestPutIntent:
         mock_result.first.return_value = mock_profile
         mock_db.exec.return_value = mock_result
 
-        with patch(
-            "gim_backend.services.profile_service.generate_intent_vector_with_retry",
-            new_callable=AsyncMock,
-        ) as mock_embed, patch(
-            "gim_backend.services.profile_service.calculate_combined_vector",
-            new_callable=AsyncMock,
-        ) as mock_combined:
+        with (
+            patch(
+                "gim_backend.services.profile_service.generate_intent_vector_with_retry",
+                new_callable=AsyncMock,
+            ) as mock_embed,
+            patch(
+                "gim_backend.services.profile_service.calculate_combined_vector",
+                new_callable=AsyncMock,
+            ) as mock_combined,
+        ):
             profile, created = await put_intent(
                 db=mock_db,
                 user_id=mock_profile.user_id,
@@ -410,15 +447,18 @@ class TestPutIntent:
         mock_result.first.return_value = mock_profile
         mock_db.exec.return_value = mock_result
 
-        with patch(
-            "gim_backend.services.profile_service.generate_intent_vector_with_retry",
-            new_callable=AsyncMock,
-            return_value=[0.3] * 768,
-        ) as mock_embed, patch(
-            "gim_backend.services.profile_service.calculate_combined_vector",
-            new_callable=AsyncMock,
-            return_value=[0.4] * 768,
-        ) as mock_combined:
+        with (
+            patch(
+                "gim_backend.services.profile_service.generate_intent_vector_with_retry",
+                new_callable=AsyncMock,
+                return_value=[0.3] * 768,
+            ) as mock_embed,
+            patch(
+                "gim_backend.services.profile_service.calculate_combined_vector",
+                new_callable=AsyncMock,
+                return_value=[0.4] * 768,
+            ) as mock_combined,
+        ):
             profile, created = await put_intent(
                 db=mock_db,
                 user_id=mock_profile.user_id,
@@ -436,7 +476,6 @@ class TestPutIntent:
 
 
 class TestPreferences:
-    """Preferences CRUD business logic."""
 
     async def test_update_preferences_validates_languages(self, mock_db, mock_profile):
         from gim_backend.services.profile_service import InvalidTaxonomyValueError, update_preferences
@@ -470,7 +509,6 @@ class TestPreferences:
 
 
 class TestDeleteProfile:
-    """Profile reset behavior."""
 
     async def test_delete_profile_resets_to_defaults(self, mock_db, mock_profile):
         from unittest.mock import patch
@@ -528,7 +566,6 @@ class TestDeleteProfile:
 
 
 class TestGetFullProfile:
-    """Full profile response structure."""
 
     async def test_response_structure_matches_spec(self, mock_db, mock_profile):
         from gim_backend.services.profile_service import get_full_profile
