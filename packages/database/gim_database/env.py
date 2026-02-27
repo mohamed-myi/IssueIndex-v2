@@ -17,6 +17,7 @@ section["sqlalchemy.url"] = os.getenv("DIRECT_DATABASE_URL")
 fileConfig(config.config_file_name)
 target_metadata = SQLModel.metadata
 
+
 def run_migrations_online():
     # Use NullPool for migrations to prevent hanging connections
     connectable = engine_from_config(
@@ -27,10 +28,9 @@ def run_migrations_online():
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, 
+            connection=connection,
             target_metadata=target_metadata,
-            # Required for pgvector
-            render_as_batch=True 
+            render_as_batch=True,
         )
 
         with context.begin_transaction():
