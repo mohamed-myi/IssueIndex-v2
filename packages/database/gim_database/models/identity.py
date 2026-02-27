@@ -26,13 +26,13 @@ class User(SQLModel, table=True):
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
             nullable=False,
-        )
+        ),
     )
     created_via: str = Field(
         default="github",
-        sa_column=sa.Column(sa.String, server_default="github", nullable=False)
+        sa_column=sa.Column(sa.String, server_default="github", nullable=False),
     )
-    
+
     sessions: List["Session"] = Relationship(back_populates="user")
     profile: Optional["UserProfile"] = Relationship(back_populates="user")
     bookmarks: List["BookmarkedIssue"] = Relationship(back_populates="user")
@@ -41,7 +41,7 @@ class User(SQLModel, table=True):
 
 class Session(SQLModel, table=True):
     __table_args__ = {"schema": "public"}
-    
+
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="public.users.id")
     fingerprint: Optional[str] = Field(default=None)
@@ -59,7 +59,7 @@ class Session(SQLModel, table=True):
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
             nullable=False,
-        )
+        ),
     )
     last_active_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
@@ -67,11 +67,10 @@ class Session(SQLModel, table=True):
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
             nullable=False,
-        )
+        ),
     )
     ip_address: Optional[str] = Field(
-        default=None,
-        sa_column=sa.Column(INET, nullable=True)
+        default=None, sa_column=sa.Column(INET, nullable=True)
     )
     user_agent_string: Optional[str] = Field(default=None)
     # Metadata binding fields; populated at login, used for risk assessment
@@ -88,35 +87,38 @@ class LinkedAccount(SQLModel, table=True):
     """Stores OAuth tokens for services connected after initial login.
     Used for profile features that require API access (e.g., GitHub activity analysis).
     """
+
     __tablename__ = "linked_accounts"
     __table_args__ = (
-        sa.UniqueConstraint("user_id", "provider", name="uq_linked_accounts_user_provider"),
+        sa.UniqueConstraint(
+            "user_id", "provider", name="uq_linked_accounts_user_provider"
+        ),
         {"schema": "public"},
     )
-    
+
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="public.users.id", index=True)
     provider: str = Field(max_length=50, index=True)
     provider_user_id: str = Field(max_length=255)
-    
+
     # Token storage (encrypted at application level via Fernet)
     access_token: str
     refresh_token: Optional[str] = Field(default=None)
     scopes: List[str] = Field(
         default_factory=list,
-        sa_column=Column(ARRAY(sa.String), server_default="{}", nullable=False)
+        sa_column=Column(ARRAY(sa.String), server_default="{}", nullable=False),
     )
     expires_at: Optional[datetime] = Field(default=None)
-    
+
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
         sa_column=sa.Column(
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
             nullable=False,
-        )
+        ),
     )
     # Null if active; set when user revokes access
     revoked_at: Optional[datetime] = Field(default=None)
-    
+
     user: User = Relationship(back_populates="linked_accounts")

@@ -10,7 +10,7 @@ from gim_database.models.staging import PendingIssue
 __all__ = [
     # Identity
     "User",
-    "Session", 
+    "Session",
     "LinkedAccount",
     # Ingestion
     "Issue",
@@ -25,4 +25,3 @@ __all__ = [
     # Analytics
     "RecommendationEvent",
 ]
-

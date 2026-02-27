@@ -7,16 +7,17 @@ from sqlmodel import SQLModel, Field, Relationship
 if TYPE_CHECKING:
     from .identity import User
 
+
 class BookmarkedIssue(SQLModel, table=True):
     __table_args__ = {"schema": "public"}
-    
+
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="public.users.id")
     issue_node_id: str
     github_url: str
     title_snapshot: str
     body_snapshot: str
-    
+
     is_resolved: bool = Field(default=False)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(UTC),
@@ -24,15 +25,16 @@ class BookmarkedIssue(SQLModel, table=True):
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
             nullable=False,
-        )
+        ),
     )
 
     user: "User" = Relationship(back_populates="bookmarks")
     notes: List["PersonalNote"] = Relationship(back_populates="bookmark")
 
+
 class PersonalNote(SQLModel, table=True):
     __table_args__ = {"schema": "public"}
-    
+
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     bookmark_id: UUID = Field(foreign_key="public.bookmarkedissue.id")
     content: str
@@ -43,5 +45,5 @@ class PersonalNote(SQLModel, table=True):
             nullable=False,
         )
     )
-    
+
     bookmark: BookmarkedIssue = Relationship(back_populates="notes")

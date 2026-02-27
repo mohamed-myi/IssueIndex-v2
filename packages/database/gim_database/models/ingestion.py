@@ -61,7 +61,7 @@ class Issue(SQLModel, table=True):
 
     # 256-dim Nomic embeddings: cast to halfvec at DB level for 10GB optimization
     embedding: List[float] = Field(sa_column=Column(Vector(VECTOR_DIM)))
-    
+
     # Idempotency
     content_hash: Optional[str] = Field(default=None, index=True, max_length=64)
 
